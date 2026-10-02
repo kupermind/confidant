@@ -1,0 +1,162 @@
+# Confidant — Technical Spec
+
+A testnet shielded pool for one XRPL token, where internal transfers are unlinkable
+on-ledger and an auditor key reveals exactly one holder's balance.
+
+**Objective:** demonstrate, live on testnet, a shield → private transfer → unshield →
+auditor-reveal flow where the internal transfer is invisible on the block explorer.
+
+**Non-goals:** multi-asset pool, confidential AMM, ZKML, on-chain proof verification,
+FROST wiring, WASM proving. Mainnet is a stretch, attempted only if the testnet demo is solid.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+  U[User wallet] -->|shield: Payment on XRPL| P[Shielded pool account]
+  P --> T[Commitment tree + nullifier set]
+  T -->|client/backend Halo2 proofs| T
+  T -->|root anchored per batch| X[(XRPL testnet)]
+  T -->|unshield: pool signs Payment| R[Fresh XRPL recipient]
+  A[Auditor key] -.->|reveals one balance| T
+```
+
+Value moves only as XRPL Payments to/from the pool account. Unlinkable transfers happen as
+note-commitment / nullifier state changes proven in zero knowledge; the tree root is anchored
+to the ledger each batch so anyone can verify the pool never double-spent. The auditor key
+decrypts exactly one holder's notes on demand.
+
+**Verification venue — A (chosen):** proofs verified off-chain and published, with the
+commitment-tree root anchored to the ledger (Payment memo) each batch; anyone can re-verify
+against the anchored root. Keeps everything on XRPL, one environment, no EVM/Solidity.
+
+## Stack
+
+- **Rust backend + API** — crypto core (reused Halo 2 circuits), commitment tree + nullifier
+  set, proving, auditor decrypt. XRPL-agnostic.
+- **React/TS front-end + `xrpl.js`** — owns all XRPL: shield/unshield Payments, custody
+  signing, root-memo anchoring, reading the ledger. Minimal UI; use the real testnet explorer
+  (https://testnet.xrpl.org) rather than building a mock.
+
+## Easiest-path decisions
+
+- **Testnet first** (faucet accounts, no real value); mainnet only if time.
+- **Custody:** a single regular key on the pool account for the demo; "SignerList multisig /
+  FROST, fully distributed, in production" is the talking point. Add SignerList only with spare hours.
+- **Proving in the backend** (skip WASM / client-side).
+- **Root anchor** = a Payment memo carrying the tree root each batch.
+- **Pre-populate the pool** — a script shields from many testnet accounts so the pool has a
+  believable anonymity set and unshields aren't 1:1 linkable on stage.
+
+## Privacy — claims & on-stage framing
+
+- **Claim:** parity with Tornado/Railgun (hide the internal graph) on XRPL + selective disclosure.
+- **Hidden:** sender / receiver / amount of internal hops (off-ledger; only the root anchored).
+- **Public (inherent to any pool):** shield/unshield amounts + external addresses. Privacy =
+  anonymity set, simulated with pre-funded testnet accounts + fixed denominations.
+- **Operator trust:** backend proving ⇒ operator sees internal plaintext. The honest line:
+  "distributable with more time, and a TEE removes the operator from the trust base entirely."
+  This is the **only** place TEE is mentioned — a production footnote, never in the demo mechanics.
+- **Don't say:** "fully anonymous / untraceable / trustless today." **Do say:** "the mechanism
+  that hides the graph on XRPL, with compliance built in; scale, distribution and TEE are the roadmap."
+
+## API contract (Rust backend ↔ TS front-end)
+
+The front-end submits every XRPL transaction; the backend only mints notes, proves, and authorizes.
+
+| Method + path | Purpose | Request | Response |
+| --- | --- | --- | --- |
+| `POST /shield` | after the FE submits the deposit Payment, mint a note | `amount`, `token`, `owner`, `depositTxHash` | `commitment`, `leafIndex`, `newRoot` |
+| `POST /transfer` | one private internal hop (spend → new notes) | `spendNoteId`, `outputs:[{amount,owner}]`, `senderAuth` | `nullifier`, `proof`, `newCommitments[]`, `newRoot` |
+| `POST /unshield` | spend a note to exit to an XRPL address | `spendNoteId`, `destination`, `senderAuth` | `nullifier`, `proof`, `newRoot`, `payout:{amount,token,destination}` (+ optional `signedTxBlob`) |
+| `POST /audit/reveal` | auditor key reveals one holder's balance | `auditorKey`, `targetOwner` | `balance`, `notes:[{amount,timestamp}]` |
+| `GET /pool/state` | public pool state (no plaintext) | — | `root`, `anchoredRoot`, `leafCount`, `nullifierCount` |
+
+Flow: FE submits the shield Payment → `/shield`. Private hop = `/transfer` (nothing hits the
+ledger). FE reads `newRoot` and anchors it with a memo Payment. Unshield = `/unshield` → FE
+builds + submits the pool→recipient Payment. Money shot = `/audit/reveal` next to the explorer.
+
+## Data model
+
+- **Note** `{ value, token, owner_pubkey, randomness }` — a unit of shielded value, kept secret.
+- **Commitment** `C = Poseidon(value, token, owner_pubkey, randomness)` — public leaf appended on shield/transfer.
+- **Nullifier** `N = Poseidon(note_secret, leafIndex)` — published on spend; the spent-set prevents double-spends.
+- **Merkle tree** — incremental, leaves = commitments; `root` anchored to XRPL each batch.
+- **Encrypted note** — contents encrypted to the owner's viewing key; the **auditor viewing key** can decrypt for disclosure.
+- **Transfer/unshield proof** (reused Halo 2 circuit) proves: spent commitment ∈ tree (membership),
+  spender knows the secret, nullifier correctly derived, and value conserved (Σ in = Σ out, no overflow) —
+  revealing none of the values or owners.
+
+## Repo layout
+
+```
+circuits/     Rust, Halo 2 — REUSED membership+spend circuit
+backend/      Rust (axum): API, Merkle tree, nullifier set, prover, auditor decrypt
+  src/api/    the 5 endpoints
+  src/pool/   tree + nullifier set + root anchoring hook
+  src/notes/  note, commitment, encryption, keys
+frontend/     React/TS + xrpl.js — UI, explorer links, tx build/submit
+scripts/      testnet faucet funding + pool pre-population
+spec/         SPEC.md, amendment sketch
+README.md
+```
+
+## Milestones (definition of done each)
+
+- [ ] **M0 — pre-event prep (not judged).** Circuits compile and prove/verify a dummy spend;
+  testnet pool account + N funded accounts via faucet; repo scaffold; API stubs returning fixtures.
+- [ ] **M1 — shield.** A Payment into the pool → `POST /shield` → commitment in the tree;
+  `GET /pool/state` shows the new leaf.
+- [ ] **M2 — private transfer.** `POST /transfer`: one spend → new commitments, Halo 2 proof
+  verifies, nullifier recorded, root advances; nothing on the ledger.
+- [ ] **M3 — anchor.** Tree root written to testnet via a memo Payment; re-verifiable against it.
+- [ ] **M4 — unshield.** `POST /unshield` → proof + a pool→fresh-address Payment (single-key signed) → funds arrive.
+- [ ] **M5 — disclosure + demo.** `POST /audit/reveal` shows one balance; the minimal UI drives
+  shield→transfer→unshield→reveal; the demo script is rehearsed on the real explorer.
+
+## Definition of done (the demo passes)
+
+Live on testnet, end to end, narratable in under a minute: a **shield**, a **private transfer
+that is invisible on the explorer**, an **unshield to a fresh address**, and an **auditor-key
+reveal** of exactly one balance. Everything past that (mainnet, SignerList, Proof-of-Innocence)
+is a bonus.
+
+## Critical dependency
+
+M2 is the whole gamble: the **reused Halo 2 circuits must drop in without a rewrite.** Validate
+that at M0 — if the circuits need surgery, cut transfer proving to a stub and pivot the demo to
+"shield → anchored commitments → auditor reveal," so there is always a working story.
+
+## Demo script (~45 seconds)
+
+Pool pre-funded with many testnet accounts; drive it next to the real testnet explorer.
+
+1. **Hook** — "XLS-96 hides the amount. The chain still shows who paid whom. Watch us hide that too."
+2. **Shield** — "Alice shields 100 into the pool — an ordinary XRPL payment." (explorer shows the deposit)
+3. **Private transfer** — "Now she pays Bob inside the pool. Here's the ledger… nothing. No
+   sender, no receiver, no amount — just a root commitment." (explorer shows only the root memo)
+4. **Unshield** — "Bob withdraws to a fresh address. Unlinkable to Alice's deposit among every
+   account in the pool." (explorer shows pool → fresh address)
+5. **Money shot — selective disclosure** — "Compliance: we hand a regulator one viewing key. It
+   reveals exactly Bob's balance — and nothing else." (auditor reveal on screen)
+6. **Close** — "Private on XRPL, auditable on demand. Today it's a pool; here's the XLS that makes it native."
+
+## Amendment sketch (Protocol Innovation)
+
+**XLS-96 → Shielded MPT — from confidential *amounts* to a confidential *graph*.**
+
+- **Gap:** XLS-96 encrypts amounts but ships "no sender or receiver anonymity, no transaction unlinkability."
+- **Proposal:** extend XLS-33 MPTs with a native commitment tree + nullifier set (Zcash/MASP
+  model) as ledger objects, and carry over XLS-96's holder/issuer/auditor key model so selective
+  disclosure is native.
+- **New primitives:** `MPTShield`, `MPTTransfer` (nullifier + proof), `MPTUnshield`; a per-issuer
+  `ShieldedMPT` object holding the Merkle root + nullifier set.
+- **Trust model:** no operator — the ledger maintains the tree and nullifiers; validators verify
+  the proof. Auditor key is a first-class field.
+- **Activation:** XLS → amendment → >80% of UNL validators for two continuous weeks. The running
+  pool is the proof it works before the validators vote.
+- **Open questions:** proof system cheap enough for on-ledger verification (Halo 2 vs a
+  pairing-based SNARK with a verify precompile); nullifier-set storage/pruning in XRPL's object
+  model; post-quantum from day one vs secp256k1 + migrate.
