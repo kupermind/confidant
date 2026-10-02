@@ -1,18 +1,55 @@
-# Secrets / env
+# ---- Secrets / env ----
 .env
 .env.*
+!.env.example
+*.key
+*.pem
+*.seed
+seed.txt
+wallets.json
+secrets/
 
-# Rust
+# ---- Rust ----
 /target
 **/target
-Cargo.lock
+debug/
+*.rs.bk
+*.pdb
+# Note: Cargo.lock IS committed (this repo ships binaries, not just a library)
 
-# Node
+# ---- Node / React / TS ----
 node_modules/
 dist/
-.DS_Store
+build/
+out/
+.next/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnp.*
+.yarn/*
+!.yarn/releases
 
-# Keys / seeds
-*.key
-*.seed
-wallets.json
+# ---- Logs / tmp ----
+*.log
+logs/
+tmp/
+.cache/
+
+# ---- Editors / IDE ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---- OS ----
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+desktop.ini
