@@ -35,7 +35,11 @@ against the anchored root. Keeps everything on XRPL, one environment, no EVM/Sol
 ## Stack
 
 - **Rust backend + API** — crypto core (reused Halo 2 circuits), commitment tree + nullifier
-  set, proving, auditor decrypt. XRPL-agnostic.
+  set, proving, auditor decrypt. XRPL-agnostic. The reused circuit is the **Zcash Orchard Action
+  circuit, unchanged**: crate `orchard` 0.15.5, `BundleVersion::orchard_v2()` /
+  `OrchardCircuitVersion::FixedPostNu6_2` (the circuit on Zcash mainnet since NU6.2); a verifier
+  builds that verifying key. Core crate: `core/` (`confidant-core`). Design + audit record:
+  `docs/audit/REQ-pool-design-2026-10-04.md`, `RESP-pool-design-2026-10-04.md`.
 - **React/TS front-end + `xrpl.js`** — owns all XRPL: shield/unshield Payments, custody
   signing, root-memo anchoring, reading the ledger. Minimal UI; use the real testnet explorer
   (https://testnet.xrpl.org) rather than building a mock.
@@ -56,9 +60,22 @@ against the anchored root. Keeps everything on XRPL, one environment, no EVM/Sol
 - **Hidden:** sender / receiver / amount of internal hops (off-ledger; only the root anchored).
 - **Public (inherent to any pool):** shield/unshield amounts + external addresses. Privacy =
   anonymity set, simulated with pre-funded testnet accounts + fixed denominations.
-- **Operator trust:** backend proving ⇒ operator sees internal plaintext. The honest line:
-  "distributable with more time, and a TEE removes the operator from the trust base entirely."
-  This is the **only** place TEE is mentioned — a production footnote, never in the demo mechanics.
+- **Trust model — custodial (headline, not footnote).** The operator holds every holder's spending
+  key: it sees every internal plaintext **and can spend or move any holder's funds**. Backing is
+  operator-enforced, not cryptographic: the pool mints a shield on the front-end's word that the XRPL
+  deposit happened, and pays an unshield the same way. What *is* cryptographic: every op is a real
+  Orchard proof, re-verifiable by anyone from the published bundle log against the anchored root.
+  The honest line: "distributable with more time, and a TEE removes the operator from the trust base
+  entirely; the trustless deposit↔mint binding is an in-enclave SPV proof, roadmap." This is the
+  **only** place TEE is mentioned — a production footnote, never in the demo mechanics.
+- **Endpoint correlation (limitation, stated plainly).** The pool hides the *internal* graph. It does
+  **not** hide that someone shielded X and later someone unshielded X: with a small or empty anonymity
+  set, amount + timing + external address correlate a deposit to a withdrawal. An empty pool at launch
+  gives the first operations ~no privacy — pre-populate it before the demo.
+- **What the auditor key reveals.** The auditor key is the holder's Orchard full viewing key. It
+  discloses that holder's **complete activity** — receipts, change, which notes were spent, and the
+  recipients and amounts of their outgoing transfers — and current balance; nothing about
+  transactions the holder was not a party to.
 - **Don't say:** "fully anonymous / untraceable / trustless today." **Do say:** "the mechanism
   that hides the graph on XRPL, with compliance built in; scale, distribution and TEE are the roadmap."
 
@@ -71,7 +88,7 @@ The front-end submits every XRPL transaction; the backend only mints notes, prov
 | `POST /shield` | after the FE submits the deposit Payment, mint a note | `amount`, `token`, `owner`, `depositTxHash` | `commitment`, `leafIndex`, `newRoot` |
 | `POST /transfer` | one private internal hop (spend → new notes) | `spendNoteId`, `outputs:[{amount,owner}]`, `senderAuth` | `nullifier`, `proof`, `newCommitments[]`, `newRoot` |
 | `POST /unshield` | spend a note to exit to an XRPL address | `spendNoteId`, `destination`, `senderAuth` | `nullifier`, `proof`, `newRoot`, `payout:{amount,token,destination}` (+ optional `signedTxBlob`) |
-| `POST /audit/reveal` | auditor key reveals one holder's balance | `auditorKey`, `targetOwner` | `balance`, `notes:[{amount,timestamp}]` |
+| `POST /audit/reveal` | a holder's viewing key reveals that holder's activity + balance | `auditorKey` (the holder's full viewing key, 96 bytes hex) | `balance`, `notes:[{direction,amount,leafIndex,bundleIndex,timestamp,spent,recipient?}]` |
 | `GET /pool/state` | public pool state (no plaintext) | — | `root`, `anchoredRoot`, `leafCount`, `nullifierCount` |
 
 Flow: FE submits the shield Payment → `/shield`. Private hop = `/transfer` (nothing hits the
@@ -84,7 +101,9 @@ builds + submits the pool→recipient Payment. Money shot = `/audit/reveal` next
 - **Commitment** `C = Poseidon(value, token, owner_pubkey, randomness)` — public leaf appended on shield/transfer.
 - **Nullifier** `N = Poseidon(note_secret, leafIndex)` — published on spend; the spent-set prevents double-spends.
 - **Merkle tree** — incremental, leaves = commitments; `root` anchored to XRPL each batch.
-- **Encrypted note** — contents encrypted to the owner's viewing key; the **auditor viewing key** can decrypt for disclosure.
+- **Encrypted note** — contents encrypted to the owner's viewing key (Orchard note encryption).
+  The **auditor key for a holder is that holder's full viewing key**, handed over at onboarding;
+  `/audit/reveal` trial-decrypts the bundle log with it.
 - **Transfer/unshield proof** (reused Halo 2 circuit) proves: spent commitment ∈ tree (membership),
   spender knows the secret, nullifier correctly derived, and value conserved (Σ in = Σ out, no overflow) —
   revealing none of the values or owners.
@@ -92,15 +111,13 @@ builds + submits the pool→recipient Payment. Money shot = `/audit/reveal` next
 ## Repo layout
 
 ```
-circuits/     Rust, Halo 2 — REUSED membership+spend circuit
-backend/      Rust (axum): API, Merkle tree, nullifier set, prover, auditor decrypt
-  src/api/    the 5 endpoints
-  src/pool/   tree + nullifier set + root anchoring hook
-  src/notes/  note, commitment, encryption, keys
-frontend/     React/TS + xrpl.js — UI, explorer links, tx build/submit
+core/         Rust lib `confidant-core`: reused Orchard circuit (dep), commitment tree, nullifier
+              set, prover/verifier, auditor reveal, bundle log + snapshot  (crypto lead)
+backend/      Rust (axum): the 5 endpoints, thin wrapper over `confidant-core`  (API/XRPL lead)
+frontend/     React/TS + xrpl.js — UI, explorer links, tx build/submit        (API/XRPL lead)
 scripts/      testnet faucet funding + pool pre-population
-spec/         SPEC.md, amendment sketch
-README.md
+docs/audit/   REQ/RESP design + implementation review records
+README.md, SPEC.md, CLAUDE.md
 ```
 
 ## Milestones (definition of done each)

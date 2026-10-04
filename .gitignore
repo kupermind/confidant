@@ -53,3 +53,8 @@ tmp/
 Thumbs.db
 ehthumbs.db
 desktop.ini
+
+# Confidant runtime state (operator keystore, pool snapshot) — never commit
+/data/
+*.keystore.json
+*.pool-state.json

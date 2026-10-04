@@ -1,0 +1,22 @@
+[package]
+name = "confidant-core"
+version = "0.0.1"
+description = "Confidant: XRPL-agnostic shielded-pool core (Orchard circuits, commitment tree, nullifiers, auditor reveal)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+orchard.workspace = true
+incrementalmerkletree.workspace = true
+shardtree.workspace = true
+zcash_note_encryption.workspace = true
+blake2b_simd.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+nonempty.workspace = true
+subtle.workspace = true
