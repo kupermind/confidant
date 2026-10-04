@@ -376,10 +376,8 @@ impl Pool {
             .map(|(_, v)| *v)
             .try_fold(withdraw, |acc, v| acc.checked_add(v))
             .ok_or(Error::AmountOverflow)?;
-        debug_assert!(
-            total > 0,
-            "callers reject zero amounts before note selection"
-        );
+        // Callers reject zero amounts first; a zero total here selects no notes and ends in
+        // `Error::Internal("empty bundle")` below, in debug and release alike.
 
         // Greedy largest-first note selection.
         let mut candidates: Vec<&TrackedNote> = self
@@ -716,11 +714,15 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "callers reject zero amounts")]
-    fn build_spending_asserts_a_positive_total() {
+    fn build_spending_with_a_zero_total_yields_an_empty_bundle_error() {
+        // Both public callers reject zero amounts first; the helper itself ends in the
+        // empty-bundle invariant error rather than proving nothing. Same in release.
         let mut pool = Pool::new();
         pool.register_owner("a").unwrap();
-        let _ = pool.build_spending("a", &[], 0, OpTag::Unshield, "rX");
+        assert!(matches!(
+            pool.build_spending("a", &[], 0, OpTag::Unshield, "rX"),
+            Err(Error::Internal("empty bundle"))
+        ));
     }
 
     #[test]

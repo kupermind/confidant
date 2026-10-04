@@ -145,10 +145,13 @@ Changes that touch audited code (one slice ruling requested):
    `Error::Internal(&'static str)` / `Error::NoWitness(u64)`; amount overflow in note selection
    is now `Error::AmountOverflow` instead of `ZeroAmount`. Same control flow, same refusals.
 3. **Two defensive branches made explicit invariants** (reachable only from in-crate unit
-   tests, never from the public API): `build_spending` asserts `total > 0`
-   (`debug_assert!`, callers reject zero amounts first); `external_ctx` is infallible and
-   `expect`s a positive unshield balance (the sign check in `verify` and the builders guarantee
-   it). Both have `#[should_panic]` unit tests.
+   tests, never from the public API): `external_ctx` is infallible and `expect`s a positive
+   unshield balance (the sign check in `verify` and the builders guarantee it; `#[should_panic]`
+   unit test, release guard). `build_spending`'s `total == 0` check is simply gone: callers
+   reject zero amounts first, and a zero total selects no notes and ends in
+   `Error::Internal("empty bundle")` — asserted by a unit test in debug and release alike.
+   (First pushed as a `debug_assert!` + `#[should_panic]`; that test cannot pass under CI's
+   `cargo test --release`, where `debug_assert!` is compiled out — corrected before merge.)
 4. Dead code removed: `Keystore::len` / `is_empty`; `OwnerKeys::random` rewritten as an
    iterator chain (same retry semantics, no untestable `loop` fall-through).
 

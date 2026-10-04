@@ -99,4 +99,8 @@ PASS on the slice, merge after CI. Nothing else owed.
 
 **Dev-side:** the caller-owed invariant is recorded as the doc comment on `external_ctx` in
 `core/src/pool.rs`, naming both callers and why the `expect` stays in release. The optional
-`u64`-typed form is left as a note for the next change to that helper.
+`u64`-typed form is left as a note for the next change to that helper. The `build_spending`
+`debug_assert!` the ruling classified as debug-only belt did not survive CI: its
+`#[should_panic]` test fails under `cargo test --release`. Removed; the zero-total case now
+ends in `Error::Internal("empty bundle")` (asserted in both profiles), and the real enforcement
+stays in `verify`, exactly as the ruling described.
