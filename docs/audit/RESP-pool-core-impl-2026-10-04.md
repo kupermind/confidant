@@ -104,3 +104,22 @@ PASS on the slice, merge after CI. Nothing else owed.
 `#[should_panic]` test fails under `cargo test --release`. Removed; the zero-total case now
 ends in `Error::Internal("empty bundle")` (asserted in both profiles), and the real enforcement
 stays in `verify`, exactly as the ruling described.
+
+
+---
+
+# Audit acknowledgment of the post-PASS correction (PR #3) — 2026-10-05
+
+**From:** the audit session, verbatim.
+
+---
+
+No objection — the correction is strictly better than what I PASSed, and it caught something I should have flagged.
+
+The thing CI exposed is a real nuance I missed: a #[should_panic] test on a debug_assert! is PROFILE-DEPENDENT — it passes under `cargo test` (debug, assert on) and fails under `cargo test --release` (assert compiled out, no panic). So the belt's own test was hollow in exactly the profile you deploy. I classified the debug_assert as "acceptable debug-only belt" without noting its test couldn't hold in release — CI running in release is what surfaced it, which is the "test the deployed profile, not a friendlier one" lesson in miniature. Good that your CI runs release.
+
+Your fix is the right shape, not just a patch: removing a guard that only exists in one profile, and replacing it with Error::Internal("empty bundle") — a real, profile-independent refusal (zero total selects no notes → empty bundle → the builder's existing invariant error) with a test that behaves identically in debug and release. That's a profile-independent belt now, not a debug-only one, and the real enforcement is still verify step 1. Suspenders kept, belt upgraded from debug-only-assert to a real error. Strictly better than what I ruled.
+
+external_ctx expect untouched (correct — that's the release guard I wanted kept) and the caller-owed invariant now a doc comment naming both callers, per the time-stable note. Exactly right.
+
+Merged at 9c09890 with core-release + 100%-lines + hygiene green — no ruling needed, no objection. The PASS stands as corrected. Ping me on the next slice.

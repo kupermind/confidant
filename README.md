@@ -58,6 +58,10 @@ A Zcash/Railgun-grade shielded pool, brought to XRPL, with selective disclosure:
   (receipts, change, spends, and the recipients/amounts of their outgoing transfers) and balance,
   nothing about transactions they were not a party to.
 
+## Status
+
+What is done and what is left, per role: [`ROADMAP.md`](./ROADMAP.md).
+
 ## Full technical task
 
 See [`SPEC.md`](./SPEC.md) — objective, architecture, API contract, data model, milestones,
