@@ -34,7 +34,9 @@ A Zcash/Railgun-grade shielded pool, brought to XRPL, with selective disclosure:
 
 ## Stack
 
-- **Backend + API:** Rust (Halo 2 circuits, Merkle tree + nullifier set, prover, auditor decrypt).
+- **Core:** Rust crate `confidant-core` — the Zcash Orchard Action circuit reused unchanged
+  (`orchard` 0.15.5, `FixedPostNu6_2`), commitment tree + nullifier set, prover/verifier, auditor
+  reveal. **Backend + API:** Rust (axum) over the core.
 - **Frontend:** React/TypeScript + `xrpl.js` — owns all XRPL (shield/unshield Payments,
   custody signing, root-memo anchoring).
 - No Solidity, no WASM, no `xrpl-rust`.
@@ -45,9 +47,16 @@ A Zcash/Railgun-grade shielded pool, brought to XRPL, with selective disclosure:
   disclosure. Not a novel privacy guarantee.
 - **Inherent & public (any pool):** shield/unshield amounts + external addresses. Real-world
   privacy = anonymity-set size + fixed denominations + delay.
-- **Operator trust:** backend proving means the operator sees internal plaintext — removed in
-  production by distributing the operator and/or a TEE. **Do not** claim "untraceable /
-  trustless today."
+- **Custodial today:** the operator holds every holder's spending key — it sees internal plaintext
+  **and can spend any holder's funds** — and vouches that each shield is backed by a real XRPL
+  deposit. Removed in production by distributing the operator and/or a TEE. **Do not** claim
+  "untraceable / trustless today."
+- **Endpoint correlation:** the pool hides the internal graph, not the fact that someone shielded X
+  and later someone unshielded X; with a small anonymity set those endpoints correlate. An empty pool
+  gives the first operations no privacy — pre-populate it.
+- **Auditor key = the holder's full viewing key:** it reveals that holder's complete activity
+  (receipts, change, spends, and the recipients/amounts of their outgoing transfers) and balance,
+  nothing about transactions they were not a party to.
 
 ## Full technical task
 

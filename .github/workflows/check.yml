@@ -1,0 +1,50 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core:
+    name: core (fmt / clippy / test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      # Proving tests are release-profile heavy; `--release` keeps CI under control.
+      - run: cargo test --workspace --release
+
+  hygiene:
+    name: hygiene (no secrets)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No key-shaped files in the tree
+        run: |
+          if git ls-files | grep -E '\.(pem|key|seed)$|(^|/)\.env($|\.)|keystore.*\.json$|pool-state.*\.json$'; then
+            echo "::error::key-shaped or state file committed — see CLAUDE.md"; exit 1
+          fi
+      - name: Honest labels present (audit conditions C1–C4)
+        run: |
+          for f in SPEC.md README.md; do
+            for marker in "custodial" "Endpoint correlation" "full viewing key" "pre-populate"; do
+              grep -qi -- "$marker" "$f" || { echo "::error file=$f::missing honest-label marker '$marker' (docs/audit/RESP-pool-design-2026-10-04.md C1–C4)"; exit 1; }
+            done
+          done
+      - name: No over-claims outside the "do not say" rule (audit Q-IMPL-2)
+        # Allow-list: a hit is fine only when its own line or the line before it is the rule
+        # that forbids the claim, or names it as roadmap. Anything else is an over-claim.
+        run: |
+          awk 'tolower($0) ~ /untraceable|trustless|fully anonymous|private from the operator/ {
+                 if ((prev " " $0) !~ /(Do not|Don.t say|Never claim|roadmap)/) {
+                   printf "::error file=%s,line=%d::over-claim outside the do-not-say rule: %s\n", FILENAME, FNR, $0; bad = 1
+                 }
+               }
+               { prev = $0 }
+               END { exit bad }' SPEC.md README.md
