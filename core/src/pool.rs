@@ -672,9 +672,13 @@ impl Pool {
 /// The external context bound into the sighash, derived from the op and the bundle's own
 /// value balance (the payout amount is never taken from a second source).
 ///
-/// Callers check the sign of `value_balance` for the op first (`verify` step 1; the builders
-/// construct unshields with a positive withdrawal), so a non-positive unshield balance here is
-/// an invariant violation, not an input error.
+/// INVARIANT OWED BY EVERY CALLER (audit ruling on PR #3): establish the sign of `value_balance`
+/// for `op` *before* calling this. Today's callers: `Pool::verify` (step 1, the sign-per-op
+/// check, runs before the sighash is computed) and `Pool::build_spending` (an unshield is built
+/// with `withdraw: u64 > 0`, so its balance is positive by construction). A new caller that skips
+/// the check makes the `expect` below reachable. The `expect` is deliberate and stays in release:
+/// in the verify path a sighash must be computed correctly or not at all, so an impossible
+/// negative unshield balance aborts rather than yielding a `Result` every caller has to thread.
 fn external_ctx(op: OpTag, external: &str, value_balance: i64) -> Vec<u8> {
     match op {
         OpTag::Shield => shield_ctx(external),
