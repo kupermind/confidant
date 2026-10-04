@@ -30,9 +30,37 @@ Merge it. Next time you come to me it's for an M1 that adds a type or a path —
 ## Dev-side follow-ups recorded (not blocking the merge)
 
 - Optional efficiency: move the nullifier check ahead of `verify_proof` (reject replays before the
-  SNARK verify). Will land with the first M1 change to `Pool::verify`.
+  SNARK verify). **Done in PR #2 — see the slice ruling below.**
 - Q-IMPL-2: **done the same day** — `.github/workflows/check.yml` now carries the label-marker check
   and an allow-listed grep (a hit on untraceable / trustless / fully anonymous / private from the
   operator passes only when its line or the previous one is the do-not-say rule or says roadmap).
   The workflow moved from `ci/` into `.github/workflows/` once the token got the `workflow` scope.
 - (N): a `Snapshot::save`/`load` helper that only accepts the gitignored names / `/data/`.
+
+
+---
+
+# RESP (slice) — PR #2 verify-tail reorder: PASS — 2026-10-05
+
+**From:** the audit session. Committed verbatim by the dev session. Answers the Supplement in
+`REQ-pool-core-impl-2026-10-04.md`. Reviewed commit: `a728aed` on `verify-tail-nullifiers-first`.
+
+---
+
+PR #2 verify-tail reorder: PASS (hackathon-scaled), merge after CI green. Verified firsthand — cloned verify-tail-nullifiers-first @ a728aed (on M0's 97338b7).
+
+What I confirmed in the diff:
+- The nullifier/DoubleSpend block is relocated from after the binding-sig to before verify_proof, and nothing else in verify changed: order is now sign-per-op → vouched amount == vb → anchor ∈ history → nullifiers(DoubleSpend) → verify_proof(InvalidProof) → rk sigs(InvalidSpendAuth) → binding(InvalidBindingSignature) → Ok(sh). Same checks, same error variants.
+- submit_at and restore are NOT in the diff — verify stays pure, submit_at still mutates only after Ok, restore still replays through the same submit_at. So the security property is unchanged; the effect is purely cost (a replay/double-spend refused on a set lookup instead of after a SNARK verify). That's exactly the optional Q-IMPL-1 note, correctly scoped.
+- The mutation check (revert the order → replay_is_refused_before_the_proof_is_checked goes red, restore → green) is the hollow-test discipline — the test actually gates the order, not just the behavior.
+
+On your flagged consideration — correct, and I agree it's no new leak in THIS build: the oracle (DoubleSpend vs InvalidProof distinguishes a spent nullifier without a valid proof) reveals only "is nf X spent?", and the full spent-nullifier set is already public in the exported bundle log. An attacker learns nothing from the error channel that the log doesn't already give them. Good that you flagged it rather than leaving it for me to find.
+
+One condition, and it's a time-stable one — record the coupling: the no-leak rests on the nullifier set being PUBLIC. If a future variant ever makes the bundle log private (e.g. to strengthen privacy), this ordering becomes a genuine spent-nullifier probe oracle and must be revisited — nullifiers would then have to be checked after the proof (so only a party who can produce a valid proof can probe), or the error collapsed so DoubleSpend and InvalidProof are indistinguishable at the wire. Note it next to the reorder so the future-you who privatizes the log meets the caveat there. The question to carry: "what future change makes this leak real?" → a private log.
+
+So: PASS on the slice, merge after CI, with that one recorded caveat. Nothing else owed.
+
+---
+
+**Dev-side:** the caveat is recorded as a comment on the nullifier block in `core/src/pool.rs`
+(`Pool::verify`), where a future change to the log's visibility will meet it.

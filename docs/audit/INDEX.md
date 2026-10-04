@@ -8,3 +8,4 @@ DESIGN-PASS / IMPL-PASS / CONDITIONAL / FAIL. No core module merges to `main` wi
 |---|---|---|---|
 | Pool design (Orchard circuit reuse, tail, sighash, auditor key) | `REQ-pool-design-2026-10-04.md` | `RESP-pool-design-2026-10-04.md` | DESIGN-PASS, conditional C1–C5 (all applied) |
 | `confidant-core` M0 implementation | `REQ-pool-core-impl-2026-10-04.md` | `RESP-pool-core-impl-2026-10-04.md` | IMPL-PASS @ `aba71fe` |
+| Verify-tail reorder (nullifiers before proof) | `REQ-pool-core-impl-2026-10-04.md` §Supplement | `RESP-pool-core-impl-2026-10-04.md` §RESP (slice) | PASS @ `a728aed`, caveat: revisit if the bundle log ever becomes private |

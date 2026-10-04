@@ -155,6 +155,30 @@ fn replay_of_an_accepted_bundle_is_refused() {
 }
 
 #[test]
+fn replay_is_refused_before_the_proof_is_checked() {
+    // Order matters for cost: a replayed bundle must be refused on its nullifiers, before the
+    // SNARK verification runs. A replay whose proof is ALSO corrupted therefore reports
+    // DoubleSpend, not InvalidProof.
+    let mut pool = pool_with(&["alice"]);
+    pool.shield("alice", 100, "D1").unwrap();
+    let mut rec = pool.records()[0].clone();
+    let mut proof = hex::decode(&rec.proof).unwrap();
+    let mid = proof.len() / 2;
+    proof[mid] ^= 0x01;
+    rec.proof = hex::encode(proof);
+    let replayed = bundle_from_record(&rec, pool.params().version).unwrap();
+    assert!(matches!(
+        pool.verify(&replayed, OpTag::Shield, "D1", Some(100)),
+        Err(Error::DoubleSpend)
+    ));
+    assert!(matches!(
+        pool.submit(replayed, OpTag::Shield, "D1", Some(100)),
+        Err(Error::DoubleSpend)
+    ));
+    assert_eq!(pool.state().bundle_count, 1);
+}
+
+#[test]
 fn unknown_anchor_is_refused() {
     let mut pool = pool_with(&["alice"]);
     pool.shield("alice", 100, "D1").unwrap();
