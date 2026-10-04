@@ -105,3 +105,20 @@ Baseline green before and after every mutation (14/14). Script: scratch `mutate.
 - **Q-IMPL-1** Anything in §1's tail order you want changed before the IMPL-PASS?
 - **Q-IMPL-2** Is the manual-review stance on the negative half of Q-POOL-6.8 acceptable, or do you
   want a CI grep with an allow-list for the "do not say" lines?
+
+---
+
+## Supplement — verify-tail reorder (2026-10-04, after IMPL-PASS)
+
+Takes up the auditor's optional note under Q-IMPL-1. `Pool::verify` now checks nullifiers
+(global spent set and intra-bundle duplicates) **before** `verify_proof`, so replays and
+double-spends are refused before the SNARK verification is paid for. New order:
+
+1. value-balance sign per op → 2. vouched amount == value balance → 3. anchor ∈ history →
+**4. no nullifier spent or repeated** → 5. `verify_proof` → 6. spend-auth signatures →
+7. binding signature.
+
+Nothing else changes: same checks, same errors, `submit` still mutates only after `Ok`. New test
+`replay_is_refused_before_the_proof_is_checked`: a replayed bundle whose proof is also corrupted
+reports `DoubleSpend`, not `InvalidProof` (goes red if the order is reverted). Slice ruling
+requested from the audit session; PR is merged only after CI + that ruling.

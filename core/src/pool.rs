@@ -482,6 +482,11 @@ impl Pool {
     /// Pure verification of a bundle against this pool's current state. Returns the sighash
     /// the signatures were checked against. Mutates nothing.
     ///
+    /// Order, cheapest first: value-balance sign per op → vouched amount == value balance →
+    /// anchor ∈ history → no nullifier spent or repeated → proof → spend-auth signatures →
+    /// binding signature. Replays and double-spends are therefore refused before the SNARK
+    /// verification is paid for.
+    ///
     /// `external` is the deposit tx hash (shield), the XRPL destination (unshield) or empty
     /// (transfer). `expected_amount`, when given, must equal the deposit (shield) or payout
     /// (unshield) the caller vouches for; the payout amount bound into the sighash is always
@@ -518,6 +523,13 @@ impl Pool {
         if !self.tree.is_known_anchor(bundle.anchor()) {
             return Err(Error::UnknownAnchor);
         }
+        let mut seen = HashSet::with_capacity(bundle.actions().len());
+        for action in bundle.actions() {
+            let nf = action.nullifier().to_bytes();
+            if self.nullifiers.contains(&nf) || !seen.insert(nf) {
+                return Err(Error::DoubleSpend);
+            }
+        }
         bundle
             .verify_proof(&self.params.vk)
             .map_err(|_| Error::InvalidProof)?;
@@ -538,13 +550,6 @@ impl Pool {
             .verify(&sh, bundle.authorization().binding_signature())
             .map_err(|_| Error::InvalidBindingSignature)?;
 
-        let mut seen = HashSet::with_capacity(bundle.actions().len());
-        for action in bundle.actions() {
-            let nf = action.nullifier().to_bytes();
-            if self.nullifiers.contains(&nf) || !seen.insert(nf) {
-                return Err(Error::DoubleSpend);
-            }
-        }
         Ok(sh)
     }
 
