@@ -80,7 +80,7 @@ pub struct Accepted {
 }
 
 /// Operator-side persisted state. **Contains spending keys** — keep it out of git.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub format: u32,
@@ -89,7 +89,7 @@ pub struct Snapshot {
     pub records: Vec<BundleRecord>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OwnerSecret {
     pub owner: String,
@@ -305,39 +305,22 @@ impl Pool {
             return Err(Error::ZeroAmount);
         }
         let keys = self.keystore.get(owner)?;
-        let mut builder = Builder::new(
-            BundleType::DEFAULT,
-            self.params.version,
-            Flags::SPENDS_DISABLED,
-            self.tree.current_anchor(),
-        )
-        .map_err(|e| Error::Build(e.to_string()))?;
-        builder
-            .add_output(
-                Some(keys.ovk(Scope::External)),
-                keys.address(),
-                NoteValue::from_raw(amount),
-                MEMO,
-            )
-            .map_err(|e| Error::Build(e.to_string()))?;
+        let version = self.params.version;
+        let anchor = self.tree.current_anchor();
+        let mut builder =
+            Builder::new(BundleType::DEFAULT, version, Flags::SPENDS_DISABLED, anchor)?;
+        let ovk = Some(keys.ovk(Scope::External));
+        builder.add_output(ovk, keys.address(), NoteValue::from_raw(amount), MEMO)?;
         let (unauthorized, meta) = builder
-            .build::<i64>(OsRng)
-            .map_err(|e| Error::Build(e.to_string()))?
-            .ok_or_else(|| Error::Build("empty bundle".into()))?;
+            .build::<i64>(OsRng)?
+            .ok_or(Error::Internal("empty bundle"))?;
         let output_action = meta
             .output_action_index(0)
-            .ok_or_else(|| Error::Build("output not placed".into()))?;
-        let commitment: [u8; 32] = unauthorized
-            .commitment(TxVersion::V5)
-            .map_err(|e| Error::Build(e.to_string()))?
-            .into();
+            .ok_or(Error::Internal("output not placed"))?;
+        let commitment: [u8; 32] = unauthorized.commitment(TxVersion::V5)?.into();
         let sh = sighash(&commitment, OpTag::Shield, &shield_ctx(deposit_tx_hash));
-        let proven = unauthorized
-            .create_proof(&self.params.pk, OsRng)
-            .map_err(|e| Error::Build(e.to_string()))?;
-        let bundle = proven
-            .apply_signatures(OsRng, sh, &[])
-            .map_err(|e| Error::Build(e.to_string()))?;
+        let proven = unauthorized.create_proof(&self.params.pk, OsRng)?;
+        let bundle = proven.apply_signatures(OsRng, sh, &[])?;
         Ok((bundle, output_action))
     }
 
@@ -392,10 +375,11 @@ impl Pool {
             .iter()
             .map(|(_, v)| *v)
             .try_fold(withdraw, |acc, v| acc.checked_add(v))
-            .ok_or(Error::ZeroAmount)?;
-        if total == 0 {
-            return Err(Error::ZeroAmount);
-        }
+            .ok_or(Error::AmountOverflow)?;
+        debug_assert!(
+            total > 0,
+            "callers reject zero amounts before note selection"
+        );
 
         // Greedy largest-first note selection.
         let mut candidates: Vec<&TrackedNote> = self
@@ -422,59 +406,35 @@ impl Pool {
         }
 
         let anchor = self.tree.current_anchor();
-        let mut builder = Builder::new(
-            BundleType::DEFAULT,
-            self.params.version,
-            self.params.version.default_flags(),
-            anchor,
-        )
-        .map_err(|e| Error::Build(e.to_string()))?;
+        let version = self.params.version;
+        let flags = version.default_flags();
+        let mut builder = Builder::new(BundleType::DEFAULT, version, flags, anchor)?;
         for n in &selected {
             let path = self.tree.witness(n.position)?;
-            builder
-                .add_spend(keys.full_viewing_key().clone(), n.note, path)
-                .map_err(|e| Error::Build(e.to_string()))?;
+            builder.add_spend(keys.full_viewing_key().clone(), n.note, path)?;
         }
+        let ovk = Some(keys.ovk(Scope::External));
         for (addr, value) in outputs {
-            builder
-                .add_output(
-                    Some(keys.ovk(Scope::External)),
-                    *addr,
-                    NoteValue::from_raw(*value),
-                    MEMO,
-                )
-                .map_err(|e| Error::Build(e.to_string()))?;
+            builder.add_output(ovk.clone(), *addr, NoteValue::from_raw(*value), MEMO)?;
         }
         let change = sum - total;
         if change > 0 {
-            builder
-                .add_output(
-                    Some(keys.ovk(Scope::Internal)),
-                    keys.change_address(),
-                    NoteValue::from_raw(change),
-                    MEMO,
-                )
-                .map_err(|e| Error::Build(e.to_string()))?;
+            let ovk = Some(keys.ovk(Scope::Internal));
+            let addr = keys.change_address();
+            builder.add_output(ovk, addr, NoteValue::from_raw(change), MEMO)?;
         }
 
         let (unauthorized, _meta) = builder
-            .build::<i64>(OsRng)
-            .map_err(|e| Error::Build(e.to_string()))?
-            .ok_or_else(|| Error::Build("empty bundle".into()))?;
+            .build::<i64>(OsRng)?
+            .ok_or(Error::Internal("empty bundle"))?;
         let vb = *unauthorized.value_balance();
         debug_assert_eq!(vb, withdraw as i64);
-        let commitment: [u8; 32] = unauthorized
-            .commitment(TxVersion::V5)
-            .map_err(|e| Error::Build(e.to_string()))?
-            .into();
-        let ctx = external_ctx(op, external, vb)?;
-        let sh = sighash(&commitment, op, &ctx);
-        let proven = unauthorized
-            .create_proof(&self.params.pk, OsRng)
-            .map_err(|e| Error::Build(e.to_string()))?;
+        let commitment: [u8; 32] = unauthorized.commitment(TxVersion::V5)?.into();
+        let sh = sighash(&commitment, op, &external_ctx(op, external, vb));
+        let proven = unauthorized.create_proof(&self.params.pk, OsRng)?;
         proven
             .apply_signatures(OsRng, sh, &[keys.spend_authorizing_key()])
-            .map_err(|e| Error::Build(e.to_string()))
+            .map_err(Error::from)
     }
 
     // ----- the common tail -----------------------------------------------------------------
@@ -510,6 +470,11 @@ impl Pool {
         if let Some(amount) = expected_amount {
             let expected = match op {
                 OpTag::Shield => -(amount as i64),
+                // A transfer has no external leg; vouching a non-zero amount for one is a
+                // caller error, not something to silently accept.
+                OpTag::Transfer if amount != 0 => {
+                    return Err(Error::VouchedAmountNotApplicable { op, amount });
+                }
                 OpTag::Transfer => 0,
                 OpTag::Unshield => amount as i64,
             };
@@ -542,11 +507,8 @@ impl Pool {
             .verify_proof(&self.params.vk)
             .map_err(|_| Error::InvalidProof)?;
 
-        let commitment: [u8; 32] = bundle
-            .commitment(TxVersion::V5)
-            .map_err(|e| Error::Build(e.to_string()))?
-            .into();
-        let sh = sighash(&commitment, op, &external_ctx(op, external, vb)?);
+        let commitment: [u8; 32] = bundle.commitment(TxVersion::V5)?.into();
+        let sh = sighash(&commitment, op, &external_ctx(op, external, vb));
         for action in bundle.actions() {
             action
                 .rk()
@@ -709,16 +671,60 @@ impl Pool {
 
 /// The external context bound into the sighash, derived from the op and the bundle's own
 /// value balance (the payout amount is never taken from a second source).
-fn external_ctx(op: OpTag, external: &str, value_balance: i64) -> Result<Vec<u8>, Error> {
-    Ok(match op {
+///
+/// Callers check the sign of `value_balance` for the op first (`verify` step 1; the builders
+/// construct unshields with a positive withdrawal), so a non-positive unshield balance here is
+/// an invariant violation, not an input error.
+fn external_ctx(op: OpTag, external: &str, value_balance: i64) -> Vec<u8> {
+    match op {
         OpTag::Shield => shield_ctx(external),
         OpTag::Transfer => Vec::new(),
         OpTag::Unshield => {
-            let amount = u64::try_from(value_balance).map_err(|_| Error::ValueBalanceSign {
-                op,
-                actual: value_balance,
-            })?;
+            let amount = u64::try_from(value_balance).expect("unshield balance sign checked");
             unshield_ctx(external, amount)
         }
-    })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn external_ctx_maps_each_op() {
+        assert_eq!(
+            external_ctx(OpTag::Transfer, "ignored", 0),
+            Vec::<u8>::new()
+        );
+        assert_eq!(external_ctx(OpTag::Shield, "D", -5), shield_ctx("D"));
+        assert_eq!(
+            external_ctx(OpTag::Unshield, "rX", 7),
+            unshield_ctx("rX", 7)
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "unshield balance sign checked")]
+    fn external_ctx_treats_a_non_positive_unshield_balance_as_an_invariant_violation() {
+        // Unreachable through `verify` (the sign check runs first) and through the builders
+        // (withdraw > 0); the helper refuses to build a context for it rather than guess.
+        let _ = external_ctx(OpTag::Unshield, "rX", -1);
+    }
+
+    #[test]
+    #[should_panic(expected = "callers reject zero amounts")]
+    fn build_spending_asserts_a_positive_total() {
+        let mut pool = Pool::new();
+        pool.register_owner("a").unwrap();
+        let _ = pool.build_spending("a", &[], 0, OpTag::Unshield, "rX");
+    }
+
+    #[test]
+    fn build_spending_checks_the_owner_first() {
+        let pool = Pool::new();
+        assert!(matches!(
+            pool.build_spending("nobody", &[], 1, OpTag::Unshield, "rX"),
+            Err(Error::UnknownOwner(_))
+        ));
+    }
 }

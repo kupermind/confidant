@@ -85,17 +85,14 @@ impl CommitmentTree {
             } else {
                 Retention::Marked
             };
-            self.inner
-                .append(*leaf, retention)
-                .map_err(|e| Error::Tree(e.to_string()))?;
+            self.inner.append(*leaf, retention)?;
         }
         self.checkpoint = next_checkpoint;
         self.leaf_count += leaves.len() as u64;
         let root = self
             .inner
-            .root_at_checkpoint_id(&self.checkpoint)
-            .map_err(|e| Error::Tree(e.to_string()))?
-            .ok_or_else(|| Error::Tree("checkpoint has no root".into()))?;
+            .root_at_checkpoint_id(&self.checkpoint)?
+            .ok_or(Error::Internal("checkpoint has no root"))?;
         let anchor = Anchor::from(root);
         self.anchors.push(anchor.to_bytes());
         Ok(anchor)
@@ -104,13 +101,12 @@ impl CommitmentTree {
     /// Merkle witness for the leaf at `position`, valid under [`Self::current_anchor`].
     pub fn witness(&self, position: u64) -> Result<MerklePath, Error> {
         if position >= self.leaf_count {
-            return Err(Error::Tree(format!("no leaf at position {position}")));
+            return Err(Error::NoWitness(position));
         }
         let path = self
             .inner
-            .witness_at_checkpoint_id(Position::from(position), &self.checkpoint)
-            .map_err(|e| Error::Tree(e.to_string()))?
-            .ok_or_else(|| Error::Tree(format!("no witness for position {position}")))?;
+            .witness_at_checkpoint_id(Position::from(position), &self.checkpoint)?
+            .ok_or(Error::NoWitness(position))?;
         Ok(MerklePath::from(path))
     }
 }
@@ -131,7 +127,8 @@ mod tests {
 
     #[test]
     fn roots_and_witnesses_are_consistent() {
-        let mut t = CommitmentTree::new();
+        let mut t = CommitmentTree::default();
+        assert_eq!(t.checkpoint_count(), 0);
         assert_eq!(t.current_anchor(), Anchor::empty_tree());
         assert_eq!(
             t.current_anchor(),
@@ -148,6 +145,8 @@ mod tests {
             .unwrap();
         assert_ne!(a1, a2);
         assert_eq!(t.leaf_count(), 5);
+        assert_eq!(t.checkpoint_count(), 2);
+        assert_eq!(t.anchors().len(), 3);
         assert!(t.is_known_anchor(&a1) && t.is_known_anchor(&a2));
         assert!(t.is_known_anchor(&Anchor::empty_tree()));
 
@@ -157,7 +156,7 @@ mod tests {
             assert_eq!(path.position(), pos as u32);
             assert_eq!(path.root(*cmx), a2);
         }
-        assert!(t.witness(5).is_err());
+        assert!(matches!(t.witness(5), Err(Error::NoWitness(5))));
         assert!(t.append_batch(&[]).is_err());
     }
 }

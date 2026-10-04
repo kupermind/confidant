@@ -20,6 +20,23 @@ jobs:
       # Proving tests are release-profile heavy; `--release` keeps CI under control.
       - run: cargo test --workspace --release
 
+  coverage:
+    name: coverage (100% of core lines)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: llvm-cov
+      # Every line of the core is exercised by its tests; a drop below 100% fails the build.
+      # Regions/functions are reported for information (unreachable `?` error branches on
+      # library calls that cannot fail under the pool's invariants stay as missed regions).
+      - run: cargo llvm-cov --workspace --all-targets --fail-under-lines 100
+
   hygiene:
     name: hygiene (no secrets)
     runs-on: ubuntu-latest

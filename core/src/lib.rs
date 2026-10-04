@@ -28,7 +28,7 @@ pub mod tree;
 pub mod types;
 
 pub use error::Error;
-pub use pool::{Accepted, Pool};
+pub use pool::{Accepted, OwnerSecret, Pool, Snapshot};
 pub use sighash::OpTag;
 pub use types::*;
 

@@ -122,3 +122,37 @@ Nothing else changes: same checks, same errors, `submit` still mutates only afte
 `replay_is_refused_before_the_proof_is_checked`: a replayed bundle whose proof is also corrupted
 reports `DoubleSpend`, not `InvalidProof` (goes red if the order is reverted). Slice ruling
 requested from the audit session; PR is merged only after CI + that ruling.
+
+---
+
+## Supplement 2 — full line coverage of the core (2026-10-05)
+
+Requested by the owner: every line of `confidant-core` exercised by tests, enforced in CI
+(`cargo llvm-cov --workspace --all-targets --fail-under-lines 100`, new `coverage` job).
+Result: **lines 100%, functions 100%, regions 97.6%**. The missed regions are the `Err` arms of
+`?` on library calls that cannot fail under the pool's invariants (builder with valid flags,
+in-memory tree, self-built bundles) and the false arms of `matches!` in tests.
+
+Changes that touch audited code (one slice ruling requested):
+
+1. **`Pool::verify` step 2 tightened.** A transfer has no external leg; vouching a non-zero
+   `expected_amount` for one used to be silently accepted (`expected = 0`, `vb == 0` ⇒ pass).
+   It now refuses with `Error::VouchedAmountNotApplicable { op, amount }`. `Some(0)` still passes.
+   Test: `request_validation_corners`; mutation (arm removed) ⇒ that test goes red.
+2. **Error plumbing.** `map_err(|e| Error::Build(e.to_string()))` closures replaced by
+   `From<BuildError | SpendError | OutputError | CommitmentError | ShardTreeError<Infallible>>
+   for Error` (unit-tested); `ok_or_else` closures replaced by unit variants
+   `Error::Internal(&'static str)` / `Error::NoWitness(u64)`; amount overflow in note selection
+   is now `Error::AmountOverflow` instead of `ZeroAmount`. Same control flow, same refusals.
+3. **Two defensive branches made explicit invariants** (reachable only from in-crate unit
+   tests, never from the public API): `build_spending` asserts `total > 0`
+   (`debug_assert!`, callers reject zero amounts first); `external_ctx` is infallible and
+   `expect`s a positive unshield balance (the sign check in `verify` and the builders guarantee
+   it). Both have `#[should_panic]` unit tests.
+4. Dead code removed: `Keystore::len` / `is_empty`; `OwnerKeys::random` rewritten as an
+   iterator chain (same retry semantics, no untestable `loop` fall-through).
+
+New tests: `core/tests/coverage.rs` (accessors, request corners, malformed keys/roots, snapshot
+corruption incl. duplicate owner / bad key hex / unsupported format / unknown anchored root,
+every malformed-record field, note selection early stop, exact spend without change) and unit
+tests in `error.rs`, `pool.rs`, `tree.rs`.
