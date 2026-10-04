@@ -29,15 +29,16 @@ pub struct OwnerKeys {
 impl OwnerKeys {
     /// Generates a fresh random spending key.
     pub fn random(rng: &mut (impl RngCore + CryptoRng)) -> Self {
-        let sk = loop {
+        // `from_bytes` rejects the negligible fraction of byte strings whose derived spend
+        // authorizing key would be zero; keep drawing until one is accepted.
+        let sk = std::iter::repeat_with(|| {
             let mut bytes = [0u8; 32];
             rng.fill_bytes(&mut bytes);
-            // `from_bytes` rejects the negligible fraction of byte strings whose derived
-            // spend authorizing key would be zero; just draw again.
-            if let Some(sk) = SpendingKey::from_bytes(bytes).into_option() {
-                break sk;
-            }
-        };
+            SpendingKey::from_bytes(bytes).into_option()
+        })
+        .flatten()
+        .next()
+        .expect("an infinite iterator yields a valid spending key");
         Self::from_spending_key(sk)
     }
 
@@ -131,14 +132,6 @@ impl Keystore {
 
     pub fn iter(&self) -> impl Iterator<Item = (&OwnerId, &OwnerKeys)> {
         self.owners.iter()
-    }
-
-    pub fn len(&self) -> usize {
-        self.owners.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.owners.is_empty()
     }
 }
 

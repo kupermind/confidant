@@ -64,3 +64,43 @@ So: PASS on the slice, merge after CI, with that one recorded caveat. Nothing el
 
 **Dev-side:** the caveat is recorded as a comment on the nullifier block in `core/src/pool.rs`
 (`Pool::verify`), where a future change to the log's visibility will meet it.
+
+
+---
+
+# RESP (slice) — PR #3 full line coverage + verify step-2 tightening: PASS — 2026-10-05
+
+**From:** the audit session. Committed verbatim by the dev session. Answers Supplement 2 in
+`REQ-pool-core-impl-2026-10-04.md`. Reviewed commit: `97eab23` on `core-full-coverage`.
+
+---
+
+PR #3: PASS (hackathon-scaled), merge after CI. Verified firsthand — cloned core-full-coverage @ 97eab23 (on PR #2's e8d5eae).
+
+Item 1 (verify step-2 Transfer tightening): correct and it's a pure TIGHTENING — Transfer+nonzero now errs VouchedAmountNotApplicable; Some(0), None, Shield, Unshield all unchanged, and the tail order is unchanged. It can only add a refusal, never weaken one. Mutation-checked (arm removed → request_validation_corners red). Good — it closes a silently-accepted-nonsense input.
+
+Item 2 (error plumbing): accepted. From<BuildError|…|ShardTreeError> + `?` returns the same Err a `map_err` did — same control flow, same refusals, just a typed variant instead of a Build(string). The AmountOverflow relabel is a genuine bugfix (an overflow was reporting as ZeroAmount — a wrong cause code; the collapse-before-the-wire discipline, corrected). The From variants being unit-tested with constructed errors is the right check that the plumbing refuses rather than swallows.
+
+Item 3 — your explicit question. Converting the unreachable Err to expect()/debug_assert is ACCEPTABLE, and I verified the invariants are genuinely unreachable rather than taking it on faith:
+- external_ctx: the expect panics only on vb<0 for unshield. Both callers establish vb's sign first — verify at :511 after the step-1 sign check (vb>0 for unshield), and the build path at :433 where unshield vb=+withdraw with withdraw:u64 ⇒ vb≥0. So vb<0 for unshield is unreachable from either.
+- build_spending: debug_assert(total>0), callers are build_transfer (positive outputs) and build_unshield (withdraw:u64>0).
+
+And I'll give you the distinction that matters, because the two are NOT the same case:
+- external_ctx's expect() is a RELEASE guard — it panics in release too. For a VERIFY-path invariant that is the RIGHT choice, better than keeping a Result: if the invariant were ever violated, aborting the verify (panic) is a safe failure, whereas a Result there is an error that can't happen but that every caller must thread, and a mishandled one could let a wrong-amount sighash through. The sighash must be correct or not computed — expect() enforces exactly that. Keep it.
+- build_spending's debug_assert() is DEBUG-ONLY (compiled out in release). That's acceptable here only because the degenerate case it guards is caught downstream anyway: a zero-total build yields vb=0, which verify's step-1 sign check rejects for unshield, and a zero-output transfer is a harmless no-op. So the builder invariant is belt (debug) over a downstream suspenders (verify). Fine — but know that it is NOT a release guard; it documents + debug-checks, and the real enforcement is verify.
+
+One time-stable note (record it at external_ctx, not just in the expect string): the expect's safety rests on "every caller establishes vb's sign before the call." Today that's verify-step-1 + the u64-withdraw builders. A FUTURE caller added without the sign check makes the panic reachable. The expect message names the invariant ("unshield balance sign checked"); add a one-line comment naming WHO owes it so the next caller meets it there. Optional cleaner form if you ever touch it: have external_ctx take the unshield amount as u64 (narrowed at the call site where vb>0 is known) so there's no try_from to expect on — pushes the invariant to the type. Not required.
+
+The 14 M0 guards: confirmed the tail order and the checks are unchanged — only the closures around them became `?`/From, which doesn't move a guard's logic. 100%/100%/97.6% with the uncovered regions being unreachable library-Err arms + test false-arms is the honest shape of "full line coverage" (regions<100% for genuinely-unreachable arms is correct, not a gap to paper over).
+
+PASS on the slice, merge after CI. Nothing else owed.
+
+---
+
+**Dev-side:** the caller-owed invariant is recorded as the doc comment on `external_ctx` in
+`core/src/pool.rs`, naming both callers and why the `expect` stays in release. The optional
+`u64`-typed form is left as a note for the next change to that helper. The `build_spending`
+`debug_assert!` the ruling classified as debug-only belt did not survive CI: its
+`#[should_panic]` test fails under `cargo test --release`. Removed; the zero-total case now
+ends in `Error::Internal("empty bundle")` (asserted in both profiles), and the real enforcement
+stays in `verify`, exactly as the ruling described.

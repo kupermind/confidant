@@ -27,9 +27,15 @@ let alice = pool.register_owner("alice")?;    // OwnerInfo { owner, address, vie
 | (publish / re-verify) | `pool.records()` → `&[BundleRecord]`; `record::bundle_from_record` + `pool.verify(...)` | The public log: no plaintext, no keys. A third party replays it into a fresh `Pool` and checks the final root against the anchored one (see `core/examples/demo.rs`). |
 | (persistence) | `pool.snapshot()` / `Pool::restore(&snapshot)` | **Contains spending keys.** Write to a gitignored file (`*.pool-state.json`). Restore replays the log through the same verify tail. |
 
-Errors are `confidant_core::Error` (`thiserror`); map `UnknownOwner`/`ZeroAmount`/
-`InsufficientFunds`/`TooManyOutputs` to 400, `DoubleSpend`/`UnknownAnchor`/`Invalid*` to 409/422,
-the rest to 500.
+Errors are `confidant_core::Error` (`thiserror`); map `UnknownOwner` / `OwnerExists` /
+`ZeroAmount` / `AmountOverflow` / `InsufficientFunds` / `TooManyOutputs` /
+`VouchedAmountNotApplicable` / `InvalidEncoding` to 400, `DoubleSpend` / `UnknownAnchor` /
+`ValueBalance*` / `InvalidProof` / `InvalidSpendAuth` / `InvalidBindingSignature` to 409/422, and
+`Build` / `Tree` / `NoWitness` / `Snapshot` / `Internal` to 500.
+
+Tests: `cargo test --workspace` (behavioural + negative suite in `core/tests/pool.rs`, coverage
+corners in `core/tests/coverage.rs`); `cargo llvm-cov --workspace --all-targets` reports 100% line
+coverage of the core, which CI enforces.
 
 Timings on a laptop (release): keys 2.5 s once; shield/transfer/unshield ≈ 0.9 s each (2-action
 bundle, +0.45 s per extra action); verify ≈ 10 ms; reveal is linear in the number of actions.
