@@ -523,6 +523,14 @@ impl Pool {
         if !self.tree.is_known_anchor(bundle.anchor()) {
             return Err(Error::UnknownAnchor);
         }
+        // Nullifiers are checked BEFORE the proof so a replay or double-spend costs a set lookup,
+        // not a SNARK verification. This makes `DoubleSpend` vs `InvalidProof` an oracle for
+        // "is this nullifier spent?" that needs no valid proof. It leaks nothing TODAY because
+        // the spent-nullifier set is public anyway (every nullifier is in the exported bundle
+        // log). CAVEAT (audit ruling on PR #2): if a future variant makes the bundle log
+        // private, this ordering becomes a real spent-nullifier probe — then either move this
+        // block back after the signature checks (so only a party who can produce a valid proof
+        // can probe) or collapse the two errors so they are indistinguishable at the wire.
         let mut seen = HashSet::with_capacity(bundle.actions().len());
         for action in bundle.actions() {
             let nf = action.nullifier().to_bytes();
