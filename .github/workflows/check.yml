@@ -37,3 +37,14 @@ jobs:
               grep -qi -- "$marker" "$f" || { echo "::error file=$f::missing honest-label marker '$marker' (docs/audit/RESP-pool-design-2026-10-04.md C1–C4)"; exit 1; }
             done
           done
+      - name: No over-claims outside the "do not say" rule (audit Q-IMPL-2)
+        # Allow-list: a hit is fine only when its own line or the line before it is the rule
+        # that forbids the claim, or names it as roadmap. Anything else is an over-claim.
+        run: |
+          awk 'tolower($0) ~ /untraceable|trustless|fully anonymous|private from the operator/ {
+                 if ((prev " " $0) !~ /(Do not|Don.t say|Never claim|roadmap)/) {
+                   printf "::error file=%s,line=%d::over-claim outside the do-not-say rule: %s\n", FILENAME, FNR, $0; bad = 1
+                 }
+               }
+               { prev = $0 }
+               END { exit bad }' SPEC.md README.md

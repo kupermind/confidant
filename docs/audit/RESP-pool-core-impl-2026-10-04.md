@@ -31,6 +31,8 @@ Merge it. Next time you come to me it's for an M1 that adds a type or a path —
 
 - Optional efficiency: move the nullifier check ahead of `verify_proof` (reject replays before the
   SNARK verify). Will land with the first M1 change to `Pool::verify`.
-- Q-IMPL-2: allow-listed CI grep for over-claim words, together with the parked `ci/check.yml`,
-  once the repo can receive workflow files.
+- Q-IMPL-2: **done the same day** — `.github/workflows/check.yml` now carries the label-marker check
+  and an allow-listed grep (a hit on untraceable / trustless / fully anonymous / private from the
+  operator passes only when its line or the previous one is the do-not-say rule or says roadmap).
+  The workflow moved from `ci/` into `.github/workflows/` once the token got the `workflow` scope.
 - (N): a `Snapshot::save`/`load` helper that only accepts the gitignored names / `/data/`.
