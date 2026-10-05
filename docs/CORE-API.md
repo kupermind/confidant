@@ -1,5 +1,9 @@
 # `confidant-core` — how the API layer uses it (v2)
 
+> The reference implementation of the verifier side is `backend/node` (`confidant-node`), and of the
+> quorum (signer sidecars + coordinator) `backend/quorum/` — see `backend/README.md`. A user-facing
+> API can sit in front of the coordinator or call a node directly.
+
 Two types, two sides of the trust boundary. Neither touches XRPL or HTTP.
 
 | Type | Runs where | Holds | Does |

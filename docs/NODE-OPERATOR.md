@@ -53,3 +53,15 @@ For each proposal from a coordinator you receive `{submission, proposedMemo}`:
 If you fall behind (missed a proposal), `endorse` refuses; catch up with `rebuild` from the ledger
 and the mirror. The reference implementation of a coordinator and three signers is
 `e2e/testnet/run.mjs`.
+
+
+## Running it as services (`backend/`)
+
+- **Verifier node** (Rust): `confidant-node --listen 127.0.0.1:7001 --state data/n1.verifier-state.json --xrpl-rpc https://s.altnet.rippletest.net:51234 --pool <pool> --signers r1,r2,r3 --quorum 2`; add `--rebuild --mirror http://<any node>/log` to join from the ledger. It holds no keys. It **refuses to start** when the pool's on-ledger SignerList is not exactly `--signers` with `SignerQuorum == --quorum` and the master key disabled; when rebuilding, also when the `account_tx` scan does not start at the pool account's creation (partial-history server), when a memo's bundle is missing from the mirror or hashes differently, when a shield's deposit is missing or short, or when any root differs from its memo.
+- **Signer sidecar** (Node, `backend/quorum/signer.mjs`): `PORT NODE_URL POOL SINK KEY_FILE XRPL_RPC [MAX_FEE_DROPS]` — holds your XRPL key, signs only what *your* node endorsed and only transactions whose shape matches that endorsement, with Fee ≤ the ceiling, Sequence equal to the pool's next sequence as the sidecar itself reads it (anchor, then payout) and a LastLedgerSequence present and within the window.
+- **Coordinator** (Node, `backend/quorum/coordinator.mjs`): `PORT NODE_URL NODES SIGNERS QUORUM POOL SINK XRPL_WS` — the public entry point; holds no keys.
+- `backend/quorum/setup-pool.mjs` installs the SignerList and disables the master key; `start-all.mjs` launches everything from `data/quorum/config.json`.
+
+What a sidecar refuses, by construction: an anchor whose memo differs from the one its node endorsed, an anchor not paid pool → sink for 1 drop, a payout whose destination or amount differs from its node's `payout`, any transaction from another account, a Fee above the ceiling, a Sequence that is not the pool's next (or a payout not directly after its anchor), a missing or too-distant LastLedgerSequence, anything when its node refuses. The coordinator's claims never reach a signature — not even "this root is anchored": a node marks a root anchored only after reading the anchor transaction from the ledger itself.
+
+**If a payout fails after its anchor landed** (the note is spent, the user unpaid): the coordinator's answer carries `payoutBlob`, the multisigned payout; resubmit it (`submit` with `tx_blob`) from any machine until its LastLedgerSequence. Nothing else can be paid in its place. **If the coordinator itself is gone:** start another one (it holds nothing) and submit the same `{record, destination}` again — every node's `/endorse` is idempotent for that exact submission, the payout is prepared at the pool's current next sequence, the sidecars re-sign, and it lands.

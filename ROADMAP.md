@@ -3,9 +3,12 @@
 **As of 2026-10-05, `main` after PR #8.** Hackathon: AI & Fintech XRP Ledger Hackathon, NYC,
 **Oct 24–25, 2026**. Testnet-first. Design of record: [`SPEC.md`](./SPEC.md) / [`SPEC.ru.md`](./SPEC.ru.md).
 
-Roles (names never, roles only): the **crypto/ZK lead** owns the Rust core (`core/`), the CLI test
-tool and the e2e harness; the **API/XRPL lead** (repo owner) owns the HTTP layer, signer services,
-everything XRPL in the front-end, the UI and the pitch.
+Roles (names never, roles only): the **crypto/ZK lead** owns the Rust core (`core/`), the quorum
+services (`backend/`: verifier node, signer sidecars, coordinator, setup/launch scripts), the CLI test
+tool and the e2e harnesses; the **API/XRPL lead** (repo owner) owns the user-facing layer: local
+wallet UX, the deposit Payment from the user's account, the UI over the coordinator, pre-population,
+the demo and the pitch. (Reassigned 2026-10-05 with the owner's go: the quorum machinery is the
+security-critical part and a direct extension of `endorse`/`rebuild_checked`.)
 
 Judging rule: *only what is built during the hackathon counts.* The core and the harness are
 pre-event preparation on a pre-existing library (the Zcash Orchard circuit). The judged work is the
@@ -26,8 +29,8 @@ XRPL integration built on-site. Say so on stage.
 | Honest labels (v2 wording) | ✅ SPEC, SPEC.ru, README, crate docs | — |
 | XRPL testnet e2e | ✅ 2-of-3 SignerList, deposit memo binding, 3/3 signers endorsing, multisigned anchors + payout, lying coordinator refused, new node rebuilt from `account_tx` with deposit re-validation, lagging signer caught up | `e2e/testnet/run.mjs`, `docs/E2E.md` |
 | Core ↔ API contract, node-operator guide | ✅ | `docs/CORE-API.md`, `docs/NODE-OPERATOR.md` |
-| HTTP backend (`GET /log`, `POST /submit/*`, `/audit/reveal`), signer services, scanner | ⬜ not started | `backend/` (API/XRPL lead) |
-| Front-end: local wallet, deposit memo, explorer links, UI; pre-population script; demo + pitch | ⬜ not started | `frontend/`, `scripts/` (API/XRPL lead) |
+| **Quorum services**: Rust verifier node (`/submit/*`, `/endorse` idempotent, `/log`, scanner + `rebuild_checked` on start), Node signer sidecars (sign only what their own node endorsed, tx shape checks), coordinator (k-of-N multisig, anchor then payout) | ✅ built 2026-10-05 (crypto lead); e2e through the services on testnet — see PR | `backend/`, `docs/E2E.md` §2b |
+| Front-end: local wallet UX, deposit memo from the user's account, UI over the coordinator, explorer links; pre-population script; demo + pitch | ⬜ not started | `frontend/`, `scripts/` (API/XRPL lead) |
 
 ---
 
@@ -84,10 +87,10 @@ XRPL integration built on-site. Say so on stage.
 
 ---
 
-## 4. To do — crypto/ZK lead (core)
+## 4. To do — crypto/ZK lead (core + quorum services)
 
-1. **Integration support.** Adjust types/signatures as the API layer needs them; each via PR + an
-   audit slice ruling. Expect small, fast slices.
+1. **Integration support.** Adjust types/endpoints as the UI needs them; each core change via PR + an
+   audit slice ruling. Harden the services as the demo rehearsal demands (restart paths, logging).
 2. **Keep the docs in sync** with every core change (SPEC, SPEC.ru, CORE-API, E2E, this file).
 3. **Roadmap items from the audit (not for the hackathon):** pool-instance id in the sighash
    personalization; `external_ctx` taking the unshield amount as `u64`; bounded anchor history;
@@ -98,21 +101,14 @@ XRPL integration built on-site. Say so on stage.
 In demo order; `docs/CORE-API.md` maps each endpoint to a core call, `docs/NODE-OPERATOR.md` describes
 a signer, `e2e/testnet/run.mjs` has every XRPL step working.
 
-1. **Backend scaffold** (`backend/`, axum): one `Verifier`; `GET /log?from=N`;
-   `POST /submit/shield` (look the deposit up on-ledger: validated Payment, Destination = pool,
-   `delivered_amount`, `confidant/shield` memo → `DepositRef`), `POST /submit/transfer`,
-   `POST /submit/unshield`, `POST /audit/reveal`; `VerifierSnapshot` to a gitignored file.
-2. **Signer services** (3 processes on stage, quorum 2): each a `Verifier` behind "endorse this
-   `{submission, proposedMemo}`" → signature of the anchor (and payout) only on success; a coordinator
-   collecting ≥ k signatures and submitting; rebuild from the ledger with `rebuild_checked` on start.
-3. **XRPL plumbing** (`scripts/`, `xrpl.js`): pool account on testnet with `SignerListSet` + master
-   disabled; faucet funding; the token (XRP or issued — decide).
-4. **Front-end:** local wallet process (`Wallet` behind localhost) or the CLI during the hackathon;
-   deposit Payment with memo = bundle hash; explorer links; shield / transfer / unshield / reveal
-   buttons; the reveal JSON.
-5. **Pre-populate the pool** before the demo (many testnet accounts shield fixed denominations, some
+1. **Deploy the quorum** for the demo: `backend/quorum/setup-pool.mjs` + `start-all.mjs` (3 signers,
+   quorum 2) on the stage machine(s); decide the token (XRP today) and denominations.
+2. **Front-end:** a local wallet process (`Wallet` behind localhost) or the CLI during the hackathon;
+   the deposit Payment with memo = bundle hash from the user's XRPL account; shield / transfer /
+   unshield / reveal buttons calling the coordinator; explorer links; the reveal JSON.
+3. **Pre-populate the pool** before the demo (many testnet accounts shield fixed denominations, some
    transfer) so the anonymity set is believable.
-6. **Demo script + pitch** (SPEC §10): rehearse the 45 seconds with the v2 wording (non-custodial
+4. **Demo script + pitch** (SPEC §10): rehearse the 45 seconds with the v2 wording (non-custodial
    notes, quorum can drain the pool account, internal graph hidden but not the endpoints, ZK first,
    TEE a footnote). Bonus only if time: Proof-of-Innocence, FROST.
 
@@ -120,10 +116,10 @@ a signer, `e2e/testnet/run.mjs` has every XRPL step working.
 
 | Step | What | Status |
 |---|---|---|
-| **1. Keys and proving on the client** | `Wallet` / `Verifier` split; the API takes a ready bundle (`senderAuth` gone); deposit binding via the memo hash + consumed set | ✅ core (PR #8) · ✅ harness · ⬜ backend/FE |
-| **2. State on the ledger** | anchor memo per op; proofs mirrored by hash; `rebuild` / `rebuild_checked` | ✅ core codec + rebuild · ✅ harness scanner (`account_tx`) · ⬜ backend scanner |
-| **3. k-of-N verifiers (SignerList)** | SignerList quorum, master disabled; every signer `endorse`s on its own state; coordinator assembles the multisig; anchor first, payout second | ✅ core `endorse` · ✅ harness 2-of-3 on testnet · ⬜ signer services |
-| **4. Permissionless relaying** | any verifier accepts; `export-log` / `rebuild`; node-operator guide | ✅ core/CLI · ✅ `docs/NODE-OPERATOR.md` · ⬜ `GET /log` endpoint |
+| **1. Keys and proving on the client** | `Wallet` / `Verifier` split; the API takes a ready bundle (`senderAuth` gone); deposit binding via the memo hash + consumed set | ✅ core (PR #8) · ✅ harness · ✅ node `/submit/*` · ⬜ FE wallet UX |
+| **2. State on the ledger** | anchor memo per op; proofs mirrored by hash; `rebuild` / `rebuild_checked` | ✅ core codec + rebuild · ✅ node scanner (`--rebuild --mirror`) |
+| **3. k-of-N verifiers (SignerList)** | SignerList quorum, master disabled; every signer `endorse`s on its own state; coordinator assembles the multisig; anchor first, payout second | ✅ core `endorse` · ✅ node `/endorse` + signer sidecars + coordinator (`backend/`) · ✅ 2-of-3 on testnet |
+| **4. Permissionless relaying** | any verifier accepts; `GET /log` on every node; node-operator guide | ✅ core/CLI · ✅ node `GET /log` · ✅ `docs/NODE-OPERATOR.md` |
 
 Honest label after v2: notes non-custodial; pool account and verification federated (k-of-N); state
 reconstructible from the ledger; **collusion of k signers can drain the pool account but cannot spend

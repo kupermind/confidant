@@ -1,0 +1,51 @@
+// Signer sidecar: holds ONE signer's XRPL key and signs only what its own verifier node endorsed.
+//
+//   POST /sign { txs: [{ kind: "anchor" | "payout", tx }], submission, memoHex }
+//     1. ask MY node POST /endorse { submission, proposedMemoHex } (the node validates on its own
+//        state and re-reads the deposit from the ledger itself; idempotent for retries)
+//     2. read the pool account's next Sequence and the current ledger index MYSELF (XRPL_RPC), then
+//        check every tx against what that endorsement authorizes (lib.checkTxShape): shape, Fee
+//        ceiling, Sequence pinned (anchor = next, payout = next + 1), LastLedgerSequence bounded
+//     3. only then sign each tx with the multisign flag and return the blobs
+//   GET  /address
+//
+// Env: PORT, NODE_URL, POOL, SINK, KEY_FILE (JSON {address, seed}, 0600), XRPL_RPC (default testnet),
+// MAX_FEE_DROPS (default 5000). The sidecar keeps no
+// verifier state; the node does. Nothing from the coordinator reaches a signature unverified.
+
+import { serve, http, refuse, checkTxShape, loadWallet, xrplRpc } from "./lib.mjs";
+
+const { PORT, NODE_URL, POOL, SINK, KEY_FILE } = process.env;
+const MAX_FEE_DROPS = Number(process.env.MAX_FEE_DROPS ?? 5000);
+const XRPL_RPC = process.env.XRPL_RPC ?? "https://s.altnet.rippletest.net:51234";
+if (!PORT || !NODE_URL || !POOL || !SINK || !KEY_FILE) {
+  console.error("signer: need PORT, NODE_URL, POOL, SINK, KEY_FILE");
+  process.exit(2);
+}
+const wallet = loadWallet(KEY_FILE);
+console.error(`signer ${wallet.address}: node ${NODE_URL}, pool ${POOL}, sink ${SINK}, port ${PORT} — WARNING: key file ${KEY_FILE} holds the signing seed unencrypted (test deployment)`);
+
+await serve(Number(PORT), {
+  "GET /address": async () => ({ address: wallet.address, node: NODE_URL }),
+  "POST /sign": async (body) => {
+    const { txs, submission, memoHex } = body ?? {};
+    if (!Array.isArray(txs) || !txs.length || !submission || !memoHex) throw refuse(400, "need txs[], submission, memoHex");
+    // 1. my own node decides; its refusal is my refusal.
+    let endorse;
+    try {
+      endorse = await http("POST", `${NODE_URL}/endorse`, { submission, proposedMemoHex: memoHex });
+    } catch (e) {
+      throw refuse(409, `my node refused to endorse: ${e.message}`, e.details);
+    }
+    // 2. the transactions must be exactly what that endorsement authorizes — against MY view of the
+    //    pool account's next Sequence and the current ledger, not the coordinator's.
+    const kinds = txs.map((t) => t.kind).join(",");
+    if (!["anchor", "payout", "anchor,payout"].includes(kinds)) throw refuse(400, `txs must be [anchor], [payout] or [anchor, payout] in that order; got [${kinds}]`);
+    const [info, cur] = await Promise.all([xrplRpc(XRPL_RPC, "account_info", { account: POOL, ledger_index: "current" }), xrplRpc(XRPL_RPC, "ledger_current")]);
+    const nextSequence = info.account_data.Sequence, ledgerIndex = cur.ledger_current_index;
+    txs.forEach(({ kind, tx }, i) => checkTxShape(kind, tx, { pool: POOL, sink: SINK, memoHex, endorse, expectedSequence: nextSequence + i, ledgerIndex, maxFeeDrops: MAX_FEE_DROPS }));
+    // 3. sign.
+    const blobs = txs.map(({ kind, tx }) => ({ kind, tx_blob: wallet.sign(tx, true).tx_blob }));
+    return { signer: wallet.address, endorsedRoot: endorse.newRoot, blobs };
+  },
+});

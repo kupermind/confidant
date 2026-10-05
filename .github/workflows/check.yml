@@ -36,7 +36,25 @@ jobs:
       # Every line of the core is exercised by its tests; a drop below 100% fails the build.
       # Regions/functions are reported for information (unreachable `?` error branches on
       # library calls that cannot fail under the pool's invariants stay as missed regions).
-      - run: cargo llvm-cov --workspace --all-targets --fail-under-lines 100
+      - run: cargo llvm-cov -p confidant-core --all-targets --fail-under-lines 100
+      # The node is tested against a fake ledger; `main.rs` and the real JSON-RPC client (`rpc.rs`)
+      # need a process and a network and are exercised by the testnet harness instead.
+      - run: cargo llvm-cov -p confidant-node --all-targets --ignore-filename-regex '(main|rpc)\.rs' --fail-under-lines 95
+
+  quorum:
+    # The signer sidecar's "no blind signing" guard (tx shape vs. its own node's endorsement) is pure
+    # and unit-tested without a ledger; the services themselves run in the manual testnet job.
+    name: quorum (sidecar shape tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: backend/quorum
+      - run: npm test
+        working-directory: backend/quorum
 
   hygiene:
     name: hygiene (no secrets)
@@ -88,13 +106,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --release --example cli
+      - run: cargo build --release --example cli --bin confidant-node
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: npm ci
         working-directory: e2e/testnet
+      - run: npm ci
+        working-directory: backend/quorum
       - run: CLI=../../target/release/examples/cli npm run e2e
+        working-directory: e2e/testnet
+      - run: CLI=../../target/release/examples/cli NODE_BIN=../../target/release/confidant-node npm run e2e:services
         working-directory: e2e/testnet
       - uses: actions/upload-artifact@v4
         if: always()
@@ -103,3 +125,4 @@ jobs:
           path: |
             data/e2e-*.report.json
             data/e2e-*.log.json
+            data/e2e-services-*/report.json
