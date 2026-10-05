@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   core:
@@ -65,3 +66,28 @@ jobs:
                }
                { prev = $0 }
                END { exit bad }' SPEC.md README.md
+
+  e2e-testnet:
+    # Manual only: real XRPL testnet Payments via the faucet. Run from the Actions tab.
+    name: e2e on XRPL testnet (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --example cli
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: e2e/testnet
+      - run: CLI=../../target/release/examples/cli npm run e2e
+        working-directory: e2e/testnet
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-testnet-report
+          path: |
+            data/e2e-*.report.json
+            data/e2e-*.log.json

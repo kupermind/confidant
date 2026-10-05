@@ -19,7 +19,8 @@ is the XRPL integration built on-site. Be honest about that split on stage.
 |---|---|---|
 | Reused circuit validated (SPEC's "critical dependency", M0 gate) | ✅ done — Zcash Orchard Action circuit via `orchard` 0.15.5, `orchard_v2` / `FixedPostNu6_2`, unchanged | `core/src/pool.rs` (`BUNDLE_VERSION`) |
 | Rust core: tree, nullifiers, shield / transfer / unshield, verify tail, auditor reveal, public bundle log, snapshot/restore | ✅ done | `core/` (`confidant-core`) |
-| Tests | ✅ 28 tests (21 integration, 7 unit); negative suite from the audit REQ; every guard mutation-tested; **100% line coverage, enforced in CI** | `core/tests/`, CI `coverage` job |
+| Tests | ✅ 29 tests (22 integration, 7 unit); negative suite from the audit REQ; every guard mutation-tested; **100% line coverage, enforced in CI**; core-level **e2e of the demo script** | `core/tests/`, CI `coverage` job |
+| End-to-end | ✅ core level (`core/tests/e2e_demo.rs`) · ✅ **XRPL testnet level** (`e2e/testnet/run.mjs`: real deposit, memo anchors, payout to a fresh address, auditor reveal, log replay vs. anchored roots) · ⬜ through the HTTP API once `backend/` exists | `docs/E2E.md` |
 | CI | ✅ fmt / clippy `-D warnings` / tests (release) / coverage gate / hygiene (no key-shaped files, honest-label markers present, allow-listed over-claim grep) | `.github/workflows/check.yml` |
 | Security review | ✅ DESIGN-PASS + IMPL-PASS from the audit session, two slice PASSes for follow-ups; conditions applied | `docs/audit/` (`INDEX.md`) |
 | Honest labels (custodial model, endpoint correlation, auditor-key scope, empty pool) | ✅ in SPEC, README, crate docs | `SPEC.md` §Privacy, `README.md` |
@@ -65,7 +66,9 @@ is the XRPL integration built on-site. Be honest about that split on stage.
 - **Serde types** for the five SPEC endpoints (camelCase), ready to return as-is.
 
 ### Quality gates
-- 28 tests; the negative suite covers double-spend, replay, unknown anchor, tampered value
+- 29 tests; `e2e_demo.rs` plays the whole SPEC demo script (pre-populated pool, shield, anchor,
+  private hop, backend restart, unshield, auditor reveal of exactly one holder, third-party replay
+  of the public log); the negative suite covers double-spend, replay, unknown anchor, tampered value
   balance, swapped binding signature, corrupted proof, re-pointed unshield, cross-op tag, other
   circuit version, insufficient funds, old-anchor spend, snapshot restore (nullifiers survive,
   witnesses survive, corruption refused), reveal scope, every malformed record field.
@@ -91,8 +94,8 @@ Priority order; each item that touches `core/` goes through a PR + an audit slic
 2. **Snapshot path helper** (audit note N): `Snapshot::save(path)` / `load(path)` that only
    accepts the gitignored names (`*.pool-state.json`, `/data/`), so a caller cannot write keys
    next to the code.
-3. **Pre-population support.** Nothing new in the core (`shield` per account already works); provide
-   a tiny helper/example that shields N owners in a loop so the XRPL-side script has a template.
+3. **Pre-population support.** Nothing new in the core (`shield` per account already works);
+   `core/examples/cli.rs` + `e2e/testnet/run.mjs` are the template for a pre-population script.
 4. **Fixed denominations (optional, demo privacy).** If the API lead wants it, a `Denominations`
    policy check in the core (`shield`/`unshield` amounts ∈ allowed set). Otherwise API-layer policy.
 5. **Roadmap items from the audit (not for the hackathon):** pool-instance id in the sighash
@@ -118,7 +121,10 @@ In demo order; `docs/CORE-API.md` maps each endpoint to a core call.
    anonymity set is believable and unshields are not 1:1 linkable on stage.
 7. **Minimal UI**: shield / transfer / unshield / reveal buttons, explorer links, the reveal JSON.
    Use the real testnet explorer, not a mock.
-8. **Demo script + pitch** (SPEC §Demo script): rehearse the 45 seconds; keep the honest labels in
+8. **API-level e2e** (`docs/E2E.md` §3): point `e2e/testnet/run.mjs` at the endpoints instead of
+   the CLI; the XRPL side (deposit validation, memo anchoring, payout) is already written there and
+   can be lifted into the backend.
+9. **Demo script + pitch** (SPEC §Demo script): rehearse the 45 seconds; keep the honest labels in
    the words (custodial today, hides the internal graph, not the endpoints; ZK first, TEE only as
    a roadmap footnote). Bonus only if time: SignerList multisig, Proof-of-Innocence.
 
