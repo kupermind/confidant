@@ -1,10 +1,4 @@
-//! Owner keys and the operator-held keystore.
-//!
-//! Every registered owner gets a fresh random Orchard [`SpendingKey`]; the pool derives the
-//! [`FullViewingKey`], the payment address (external scope, index 0) and the change address
-//! (internal scope, index 0). The operator holds all of it — see the trust model in the crate docs.
-
-use std::collections::BTreeMap;
+//! A holder's keys: a random Orchard spending key and what the wallet derives from it.
 
 use orchard::keys::{
     FullViewingKey, OutgoingViewingKey, PreparedIncomingViewingKey, Scope, SpendAuthorizingKey,
@@ -15,10 +9,7 @@ use rand::{CryptoRng, RngCore};
 
 use crate::error::Error;
 
-/// Opaque owner identifier chosen by the API layer (e.g. `"alice"`).
-pub type OwnerId = String;
-
-/// One owner's keys, with the prepared incoming viewing keys cached for trial decryption.
+/// One holder's keys, with the prepared incoming viewing keys cached for trial decryption.
 pub struct OwnerKeys {
     sk: SpendingKey,
     fvk: FullViewingKey,
@@ -63,7 +54,7 @@ impl OwnerKeys {
         &self.fvk
     }
 
-    /// The key that signs this owner's spends.
+    /// The key that signs this holder's spends.
     pub fn spend_authorizing_key(&self) -> SpendAuthorizingKey {
         SpendAuthorizingKey::from(&self.sk)
     }
@@ -73,7 +64,7 @@ impl OwnerKeys {
         self.fvk.address_at(0u32, Scope::External)
     }
 
-    /// Address this owner's own change goes to (internal scope, diversifier index 0).
+    /// Address this holder's own change goes to (internal scope, diversifier index 0).
     pub fn change_address(&self) -> Address {
         self.fvk.address_at(0u32, Scope::Internal)
     }
@@ -88,7 +79,7 @@ impl OwnerKeys {
     }
 }
 
-/// Encodes a full viewing key as 96 hex bytes — the "auditor key" handed over at onboarding.
+/// Encodes a full viewing key as 96 hex bytes — the "auditor key" a holder hands over.
 pub fn fvk_to_hex(fvk: &FullViewingKey) -> String {
     hex::encode(fvk.to_bytes())
 }
@@ -105,44 +96,20 @@ pub fn address_to_hex(addr: &Address) -> String {
     hex::encode(addr.to_raw_address_bytes())
 }
 
-/// The operator-held map of owners to keys.
-#[derive(Default)]
-pub struct Keystore {
-    owners: BTreeMap<OwnerId, OwnerKeys>,
+/// Parses a 43-byte hex raw Orchard address.
+pub fn address_from_hex(s: &str) -> Result<Address, Error> {
+    let bytes = hex::decode(s.trim()).map_err(|_| Error::InvalidEncoding)?;
+    let arr: [u8; 43] = bytes.try_into().map_err(|_| Error::InvalidEncoding)?;
+    Address::from_raw_address_bytes(&arr)
+        .into_option()
+        .ok_or(Error::InvalidEncoding)
 }
 
-impl Keystore {
-    pub fn register(
-        &mut self,
-        id: &str,
-        rng: &mut (impl RngCore + CryptoRng),
-    ) -> Result<&OwnerKeys, Error> {
-        if self.owners.contains_key(id) {
-            return Err(Error::OwnerExists(id.to_owned()));
-        }
-        self.owners.insert(id.to_owned(), OwnerKeys::random(rng));
-        Ok(&self.owners[id])
-    }
-
-    pub fn get(&self, id: &str) -> Result<&OwnerKeys, Error> {
-        self.owners
-            .get(id)
-            .ok_or_else(|| Error::UnknownOwner(id.to_owned()))
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&OwnerId, &OwnerKeys)> {
-        self.owners.iter()
-    }
-}
-
-impl Keystore {
-    /// Re-inserts an owner from a persisted spending key (snapshot restore).
-    pub fn insert_existing(&mut self, id: &str, sk: SpendingKey) -> Result<&OwnerKeys, Error> {
-        if self.owners.contains_key(id) {
-            return Err(Error::OwnerExists(id.to_owned()));
-        }
-        self.owners
-            .insert(id.to_owned(), OwnerKeys::from_spending_key(sk));
-        Ok(&self.owners[id])
-    }
+/// Parses a 32-byte hex spending key.
+pub fn spending_key_from_hex(s: &str) -> Result<SpendingKey, Error> {
+    let bytes = hex::decode(s.trim()).map_err(|_| Error::InvalidEncoding)?;
+    let arr: [u8; 32] = bytes.try_into().map_err(|_| Error::InvalidEncoding)?;
+    SpendingKey::from_bytes(arr)
+        .into_option()
+        .ok_or(Error::InvalidEncoding)
 }

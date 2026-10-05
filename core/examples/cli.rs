@@ -1,29 +1,46 @@
-//! A thin command-line front over `confidant-core` for end-to-end harnesses.
+//! A thin command-line front over `confidant-core` for end-to-end harnesses — v2 shape.
 //!
-//! This is a TEST TOOL, not the product API: it does what the backend will do (hold one `Pool`,
-//! persist a snapshot, expose the five operations) so an XRPL-side script can drive the whole
-//! demo on testnet before the HTTP layer exists. One command per invocation; JSON on stdout.
+//! TEST TOOL, not the product API. Two roles, two state files:
 //!
 //! ```text
-//! cli --state data/e2e.pool-state.json register <owner>
-//! cli --state ... shield <owner> <amount> <depositTxHash>
-//! cli --state ... transfer <owner> <recipient> <amount>
-//! cli --state ... unshield <owner> <amount> <destination>
-//! cli --state ... reveal <viewingKeyHex>
-//! cli --state ... anchored <rootHex>          # the FE confirms a root it wrote into a memo
-//! cli --state ... state | owner <id> | export-log <file> | verify-log <file>
+//! cli wallet   --file data/alice.wallet.json         init | info | balance | sync <log.json>
+//!                                                    build-shield <amount> <out.json>
+//!                                                    build-transfer <recipientAddrHex> <amount> <out.json>
+//!                                                    build-unshield <amount> <destination> <out.json>
+//! cli verifier --state data/v1.verifier-state.json   submit-shield <bundle.json> <depositTxHash> <delivered> <memoHashHex>
+//!                                                    submit-transfer <bundle.json>
+//!                                                    submit-unshield <bundle.json> <destination>
+//!                                                    state | export-log <log.json> | anchored <rootHex>
+//!                                                    anchor-memo <index> | check-memo <index> <memoHex>
+//!                                                    rebuild <memos.json> <log.json> | reveal <viewingKeyHex>
 //! ```
 //!
-//! The state file holds spending keys **unencrypted**. The tool refuses any path that is not
-//! covered by the repo's `.gitignore` patterns (`*.pool-state.json` or under `data/`), writes the
-//! file with mode 0600, and says so loudly on every run. Real key custody (threshold / TEE) is
-//! the backend's problem and a roadmap item — never pick this tool up as a backend.
+//! The wallet file holds the spending key **unencrypted**: it must be gitignored
+//! (`*.wallet.json` or under `data/`), is written 0600, and every run says so. The verifier
+//! state is public (no keys). The XRPL side (deposit validation, memo Payments, payouts, the
+//! SignerList quorum) lives in `e2e/testnet/run.mjs`.
 
 use std::path::{Path, PathBuf};
 use std::process::exit;
 
-use confidant_core::record::bundle_from_record;
-use confidant_core::{BundleRecord, Pool, Snapshot, TransferOutput};
+use confidant_core::memo::AnchorMemo;
+use confidant_core::{
+    BundleRecord, DepositRef, TransferOutput, Verifier, VerifierSnapshot, Wallet, WalletSecret,
+};
+
+const WARNING: &str = "the wallet file holds the spending key UNENCRYPTED; test tool only, never \
+production — real key custody (threshold / TEE) is the roadmap";
+
+const USAGE: &str = "usage: cli wallet --file <*.wallet.json> <cmd> | cli verifier --state <*.verifier-state.json> <cmd>
+wallet:   init | info | balance | sync <log.json>
+          build-shield <amount> <out.json>
+          build-transfer <recipientAddressHex> <amount> <out.json>
+          build-unshield <amount> <destination> <out.json>
+verifier: submit-shield <bundle.json> <depositTxHash> <deliveredAmount> <memoHashHex>
+          submit-transfer <bundle.json> | submit-unshield <bundle.json> <destination>
+          state | export-log <log.json> | anchored <rootHex> | reveal <viewingKeyHex>
+          anchor-memo <index> | check-memo <index> <memoHex> | rebuild <memos.json> <log.json>
+files must be gitignored: *.wallet.json / *.verifier-state.json or under data/";
 
 fn die(msg: impl std::fmt::Display) -> ! {
     eprintln!("error: {msg}");
@@ -36,50 +53,33 @@ fn arg<'a>(args: &'a [String], i: usize, name: &str) -> &'a str {
         .unwrap_or_else(|| die(format!("missing argument <{name}>")))
 }
 
-fn amount(s: &str) -> u64 {
+fn num(s: &str) -> u64 {
     s.parse()
-        .unwrap_or_else(|_| die(format!("amount `{s}` is not a u64")))
+        .unwrap_or_else(|_| die(format!("`{s}` is not a u64")))
 }
 
-fn check_state_path(p: &Path) {
+fn check_path(p: &Path, suffix: &str) {
     let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
     let under_data = p.components().any(|c| c.as_os_str() == "data");
-    if !(name.ends_with(".pool-state.json") || under_data) {
-        die("state path must end in .pool-state.json or live under data/ (gitignored)");
+    if !(name.ends_with(suffix) || under_data) {
+        die(format!(
+            "path must end in {suffix} or live under data/ (gitignored)"
+        ));
     }
 }
 
-fn load(p: &Path) -> Pool {
-    if !p.exists() {
-        return Pool::new();
-    }
-    let text = std::fs::read_to_string(p).unwrap_or_else(|e| die(e));
-    let snap: Snapshot = serde_json::from_str(&text).unwrap_or_else(|e| die(e));
-    Pool::restore(&snap).unwrap_or_else(|e| die(e))
+fn read_json<T: serde::de::DeserializeOwned>(p: &Path) -> T {
+    let text = std::fs::read_to_string(p).unwrap_or_else(|e| die(format!("{}: {e}", p.display())));
+    serde_json::from_str(&text).unwrap_or_else(|e| die(format!("{}: {e}", p.display())))
 }
 
-const WARNING: &str = "writes spending keys UNENCRYPTED to the state file; test tool only, never \
-production — the backend owns real key custody (threshold / TEE, roadmap)";
-
-const USAGE: &str = "usage: cli [--state <file>] <command> [args]
-  register <owner>                         new owner (random spending key, held in the state file)
-  owner <owner>                            address + viewing key of an owner
-  shield <owner> <amount> <depositTxHash>  mint after the XRPL deposit was validated by the caller
-  transfer <owner> <recipient> <amount>    one private hop
-  unshield <owner> <amount> <destination>  authorize a payout to an XRPL address
-  reveal <viewingKeyHex>                   selective disclosure for one holder
-  anchored <rootHex>                       record the root the caller wrote into an XRPL memo
-  state | export-log <file> | verify-log <file>
-state file: must end in .pool-state.json or live under data/ (both gitignored); written 0600";
-
-/// Writes the snapshot owner-read/write only (0600), replacing any existing file.
-fn save(p: &Path, pool: &Pool) {
+/// Writes a file owner-read/write only (0600), replacing any existing file.
+fn write_private(p: &Path, text: &str) {
     if let Some(dir) = p.parent() {
         if !dir.as_os_str().is_empty() {
             std::fs::create_dir_all(dir).unwrap_or_else(|e| die(e));
         }
     }
-    let text = serde_json::to_string_pretty(&pool.snapshot()).unwrap_or_else(|e| die(e));
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);
     #[cfg(unix)]
@@ -91,12 +91,20 @@ fn save(p: &Path, pool: &Pool) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        // An existing file keeps its old mode on open; force it.
         f.set_permissions(std::fs::Permissions::from_mode(0o600))
             .unwrap_or_else(|e| die(e));
     }
     use std::io::Write;
     f.write_all(text.as_bytes()).unwrap_or_else(|e| die(e));
+}
+
+fn write_public(p: &Path, text: &str) {
+    if let Some(dir) = p.parent() {
+        if !dir.as_os_str().is_empty() {
+            std::fs::create_dir_all(dir).unwrap_or_else(|e| die(e));
+        }
+    }
+    std::fs::write(p, text).unwrap_or_else(|e| die(e));
 }
 
 fn out<T: serde::Serialize>(v: &T) {
@@ -106,101 +114,211 @@ fn out<T: serde::Serialize>(v: &T) {
     );
 }
 
-fn main() {
-    let mut args: Vec<String> = std::env::args().skip(1).collect();
-    let mut state = PathBuf::from("data/e2e.pool-state.json");
-    if args.first().map(String::as_str) == Some("--state") {
-        state = PathBuf::from(arg(&args, 1, "state file"));
-        args.drain(..2);
-    }
-    check_state_path(&state);
-    let cmd = args.first().cloned().unwrap_or_else(|| "help".into());
-    if matches!(cmd.as_str(), "help" | "--help" | "-h") {
-        eprintln!("{USAGE}\n\nWARNING: {WARNING}");
-        return;
-    }
-    eprintln!("WARNING: cli {WARNING} ({})", state.display());
+fn wallet_cmd(file: PathBuf, args: &[String]) {
+    check_path(&file, ".wallet.json");
+    eprintln!("WARNING: {WARNING} ({})", file.display());
+    let cmd = arg(args, 0, "command");
     let a = &args[1..];
-
-    match cmd.as_str() {
-        "register" => {
-            let mut pool = load(&state);
-            let info = pool
-                .register_owner(arg(a, 0, "owner"))
-                .unwrap_or_else(|e| die(e));
-            save(&state, &pool);
-            out(&info);
+    let load = || -> Wallet {
+        let secret: WalletSecret = read_json(&file);
+        Wallet::from_secret(&secret).unwrap_or_else(|e| die(e))
+    };
+    // A wallet needs the public log to know its notes; every command but init/info takes one.
+    let synced = |log: &str| -> Wallet {
+        let mut w = load();
+        let log: Vec<BundleRecord> = read_json(Path::new(log));
+        w.sync(&log).unwrap_or_else(|e| die(e));
+        w
+    };
+    match cmd {
+        "init" => {
+            if file.exists() {
+                die("wallet file exists; refusing to overwrite a spending key");
+            }
+            let w = Wallet::new();
+            write_private(
+                &file,
+                &serde_json::to_string_pretty(&w.secret()).unwrap_or_else(|e| die(e)),
+            );
+            out(&w.info());
         }
-        "owner" => out(&load(&state)
-            .owner_info(arg(a, 0, "owner"))
-            .unwrap_or_else(|e| die(e))),
-        "shield" => {
-            let mut pool = load(&state);
-            let r = pool
-                .shield(
-                    arg(a, 0, "owner"),
-                    amount(arg(a, 1, "amount")),
-                    arg(a, 2, "depositTxHash"),
-                )
-                .unwrap_or_else(|e| die(e));
-            save(&state, &pool);
-            out(&r);
+        "info" => out(&load().info()),
+        "balance" => {
+            let w = synced(arg(a, 0, "log.json"));
+            out(&serde_json::json!({ "balance": w.balance(), "synced": w.synced() }));
         }
-        "transfer" => {
-            let mut pool = load(&state);
+        "sync" => {
+            let w = synced(arg(a, 0, "log.json"));
+            out(
+                &serde_json::json!({ "balance": w.balance(), "synced": w.synced(), "root": w.replica().state().root }),
+            );
+        }
+        "build-shield" => {
+            // `<log.json>` is optional for shields (no witnesses needed) — but syncing keeps the
+            // anchor current; the harness always passes it.
+            let w = match a.get(2) {
+                Some(log) => synced(log),
+                None => load(),
+            };
+            let p = w
+                .build_shield(num(arg(a, 0, "amount")))
+                .unwrap_or_else(|e| die(e));
+            write_public(
+                Path::new(arg(a, 1, "out.json")),
+                &serde_json::to_string_pretty(&p.record).unwrap_or_else(|e| die(e)),
+            );
+            out(&serde_json::json!({ "bundleHash": p.hash_hex(), "file": arg(a, 1, "out.json") }));
+        }
+        "build-transfer" => {
+            let w = synced(arg(a, 3, "log.json"));
             let outputs = [TransferOutput {
-                recipient: arg(a, 1, "recipient").to_owned(),
-                amount: amount(arg(a, 2, "amount")),
+                recipient: arg(a, 0, "recipientAddressHex").to_owned(),
+                amount: num(arg(a, 1, "amount")),
             }];
-            let r = pool
-                .transfer(arg(a, 0, "owner"), &outputs)
-                .unwrap_or_else(|e| die(e));
-            save(&state, &pool);
-            out(&r);
+            let p = w.build_transfer(&outputs).unwrap_or_else(|e| die(e));
+            write_public(
+                Path::new(arg(a, 2, "out.json")),
+                &serde_json::to_string_pretty(&p.record).unwrap_or_else(|e| die(e)),
+            );
+            out(&serde_json::json!({ "bundleHash": p.hash_hex(), "file": arg(a, 2, "out.json") }));
         }
-        "unshield" => {
-            let mut pool = load(&state);
-            let r = pool
-                .unshield(
-                    arg(a, 0, "owner"),
-                    amount(arg(a, 1, "amount")),
-                    arg(a, 2, "destination"),
-                )
+        "build-unshield" => {
+            let w = synced(arg(a, 3, "log.json"));
+            let p = w
+                .build_unshield(num(arg(a, 0, "amount")), arg(a, 1, "destination"))
                 .unwrap_or_else(|e| die(e));
-            save(&state, &pool);
-            out(&r);
+            write_public(
+                Path::new(arg(a, 2, "out.json")),
+                &serde_json::to_string_pretty(&p.record).unwrap_or_else(|e| die(e)),
+            );
+            out(&serde_json::json!({ "bundleHash": p.hash_hex(), "file": arg(a, 2, "out.json") }));
         }
-        "reveal" => out(&load(&state)
+        other => die(format!("unknown wallet command `{other}`")),
+    }
+}
+
+fn verifier_cmd(state: PathBuf, args: &[String]) {
+    check_path(&state, ".verifier-state.json");
+    let cmd = arg(args, 0, "command");
+    let a = &args[1..];
+    let load = || -> Verifier {
+        if !state.exists() {
+            return Verifier::new();
+        }
+        let snap: VerifierSnapshot = read_json(&state);
+        Verifier::restore(&snap).unwrap_or_else(|e| die(e))
+    };
+    let save = |v: &Verifier| {
+        write_public(
+            &state,
+            &serde_json::to_string_pretty(&v.snapshot()).unwrap_or_else(|e| die(e)),
+        );
+    };
+    let bundle = |p: &str| -> BundleRecord { read_json(Path::new(p)) };
+    match cmd {
+        "submit-shield" => {
+            let mut v = load();
+            let dep = DepositRef {
+                tx_hash: arg(a, 1, "depositTxHash").to_owned(),
+                delivered: num(arg(a, 2, "deliveredAmount")),
+                memo_hash: arg(a, 3, "memoHashHex").to_owned(),
+            };
+            let acc = v
+                .submit_shield(&bundle(arg(a, 0, "bundle.json")), &dep)
+                .unwrap_or_else(|e| die(e));
+            save(&v);
+            out(&acc);
+        }
+        "submit-transfer" => {
+            let mut v = load();
+            let acc = v
+                .submit_transfer(&bundle(arg(a, 0, "bundle.json")))
+                .unwrap_or_else(|e| die(e));
+            save(&v);
+            out(&acc);
+        }
+        "submit-unshield" => {
+            let mut v = load();
+            let acc = v
+                .submit_unshield(&bundle(arg(a, 0, "bundle.json")), arg(a, 1, "destination"))
+                .unwrap_or_else(|e| die(e));
+            save(&v);
+            out(&acc);
+        }
+        "state" => out(&load().state()),
+        "export-log" => {
+            let v = load();
+            write_public(
+                Path::new(arg(a, 0, "log.json")),
+                &serde_json::to_string_pretty(v.records()).unwrap_or_else(|e| die(e)),
+            );
+            out(&v.state());
+        }
+        "anchored" => {
+            let mut v = load();
+            v.set_anchored_root(arg(a, 0, "rootHex"))
+                .unwrap_or_else(|e| die(e));
+            save(&v);
+            out(&v.state());
+        }
+        "anchor-memo" => {
+            let v = load();
+            let m = v
+                .anchor_memo(num(arg(a, 0, "index")) as usize)
+                .unwrap_or_else(|e| die(e));
+            out(
+                &serde_json::json!({ "memoHex": m.encode_hex().unwrap_or_else(|e| die(e)), "root": hex::encode(m.root), "bundleHash": hex::encode(m.bundle_hash), "external": m.external }),
+            );
+        }
+        "check-memo" => {
+            let v = load();
+            let m = AnchorMemo::decode_hex(arg(a, 1, "memoHex")).unwrap_or_else(|e| die(e));
+            v.check_memo(num(arg(a, 0, "index")) as usize, &m)
+                .unwrap_or_else(|e| die(e));
+            out(&serde_json::json!({ "ok": true }));
+        }
+        "rebuild" => {
+            // A new node: memos read off the ledger (hex strings, in order) + a mirror log.
+            let memo_hex: Vec<String> = read_json(Path::new(arg(a, 0, "memos.json")));
+            let memos: Vec<AnchorMemo> = memo_hex
+                .iter()
+                .map(|h| AnchorMemo::decode_hex(h).unwrap_or_else(|e| die(e)))
+                .collect();
+            let log: Vec<BundleRecord> = read_json(Path::new(arg(a, 1, "log.json")));
+            let v = Verifier::rebuild(&memos, |h| {
+                log.iter()
+                    .find(|r| confidant_core::record::bundle_hash(r).ok() == Some(*h))
+                    .cloned()
+            })
+            .unwrap_or_else(|e| die(e));
+            save(&v);
+            out(&v.state());
+        }
+        "reveal" => out(&load()
             .reveal(arg(a, 0, "viewingKeyHex"))
             .unwrap_or_else(|e| die(e))),
-        "anchored" => {
-            let mut pool = load(&state);
-            pool.set_anchored_root(arg(a, 0, "rootHex"))
-                .unwrap_or_else(|e| die(e));
-            save(&state, &pool);
-            out(&pool.state());
+        other => die(format!("unknown verifier command `{other}`")),
+    }
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
+        Some("wallet") if args.get(1).map(String::as_str) == Some("--file") => {
+            wallet_cmd(PathBuf::from(arg(&args, 2, "wallet file")), &args[3..])
         }
-        "state" => out(&load(&state).state()),
-        "export-log" => {
-            let pool = load(&state);
-            let text = serde_json::to_string_pretty(pool.records()).unwrap_or_else(|e| die(e));
-            std::fs::write(arg(a, 0, "file"), text).unwrap_or_else(|e| die(e));
-            out(&pool.state());
+        Some("verifier") if args.get(1).map(String::as_str) == Some("--state") => {
+            verifier_cmd(PathBuf::from(arg(&args, 2, "state file")), &args[3..])
         }
-        "verify-log" => {
-            // A third party: no keys, no snapshot — only the public log.
-            let text = std::fs::read_to_string(arg(a, 0, "file")).unwrap_or_else(|e| die(e));
-            let log: Vec<BundleRecord> = serde_json::from_str(&text).unwrap_or_else(|e| die(e));
-            let mut verifier = Pool::new();
-            for record in &log {
-                let bundle = bundle_from_record(record, verifier.params().version)
-                    .unwrap_or_else(|e| die(format!("record {}: {e}", record.index)));
-                verifier
-                    .submit(bundle, record.op, &record.external, None)
-                    .unwrap_or_else(|e| die(format!("record {} refused: {e}", record.index)));
-            }
-            out(&verifier.state());
+        _ => {
+            eprintln!("{USAGE}\n\nWARNING: {WARNING}");
+            exit(
+                if args.is_empty() || matches!(args[0].as_str(), "help" | "--help" | "-h") {
+                    0
+                } else {
+                    1
+                },
+            );
         }
-        other => die(format!("unknown command `{other}`")),
     }
 }

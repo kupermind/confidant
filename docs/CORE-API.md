@@ -1,43 +1,64 @@
-# `confidant-core` — how the API layer uses it
+# `confidant-core` — how the API layer uses it (v2)
 
-The Rust core is XRPL-agnostic and HTTP-agnostic. The backend (axum, owned by the API/XRPL
-lead) holds one `confidant_core::Pool` behind a mutex and maps the five SPEC endpoints onto it.
-Every public type is `serde` camelCase, so responses can be returned as-is.
+Two types, two sides of the trust boundary. Neither touches XRPL or HTTP.
+
+| Type | Runs where | Holds | Does |
+|---|---|---|---|
+| `Wallet` | the holder's machine (a local process the UI talks to over localhost) | the spending key, the holder's notes, a replica of the public state | `sync` from the public log; `build_shield` / `build_transfer` / `build_unshield` → a `Prepared` bundle (proven and signed) |
+| `Verifier` | every signer of the pool account's SignerList, and anyone else who wants one | public state only: tree, nullifiers, consumed deposits, bundle log | `submit_*` (verify-and-apply), `anchor_memo`, `check_memo`, `rebuild`, `reveal`, `snapshot` / `restore` |
 
 ```toml
 # backend/Cargo.toml
 confidant-core = { path = "../core" }
 ```
 
-```rust
-use confidant_core::{Pool, TransferOutput};
+## Verifier side — the five v2 endpoints
 
-let mut pool = Pool::new();                   // builds the Orchard proving/verifying keys once (~2.5 s)
-let alice = pool.register_owner("alice")?;    // OwnerInfo { owner, address, viewingKey }
-```
-
-| SPEC endpoint | Core call | Notes |
+| SPEC v2 endpoint | Core call | Notes |
 | --- | --- | --- |
-| `POST /shield` `{amount, owner, depositTxHash}` | `pool.shield(owner, amount, deposit_tx_hash)` → `ShieldReceipt {commitment, leafIndex, newRoot, bundleIndex, proof}` | Call **after** the deposit Payment is validated on XRPL. The core takes the (amount, deposit) pairing on your word — backing is operator-enforced. |
-| `POST /transfer` `{owner, outputs:[{recipient, amount}]}` | `pool.transfer(owner, &[TransferOutput{recipient, amount}])` → `TransferReceipt {nullifiers[], newCommitments[], newRoot, bundleIndex, proof}` | Nothing hits the ledger. `recipient` is a registered owner id. ≤ 8 outputs. `senderAuth` (who may act as `owner`) is the API layer's job. |
-| `POST /unshield` `{owner, amount, destination}` | `pool.unshield(owner, amount, destination)` → `UnshieldReceipt {…, payout:{amount, destination}}` | Then build + submit the pool→`destination` Payment for `payout.amount`. The proof's signatures are bound to `destination` and to the bundle's own value balance. |
-| `POST /audit/reveal` `{auditorKey}` | `pool.reveal(viewing_key_hex)` → `RevealReport {balance, notes[]}` | `auditorKey` = the holder's full viewing key (`OwnerInfo.viewingKey`, 96 bytes hex). Reveals that holder's complete activity, nothing about others' transactions. |
-| `GET /pool/state` | `pool.state()` → `PoolState {root, anchoredRoot, leafCount, nullifierCount, bundleCount}` | `root` is what the FE writes into the memo Payment each batch. |
-| (anchoring hook) | `pool.set_anchored_root(root_hex)` | Call after the memo Payment is confirmed; must be a root the pool has had. |
-| (publish / re-verify) | `pool.records()` → `&[BundleRecord]`; `record::bundle_from_record` + `pool.verify(...)` | The public log: no plaintext, no keys. A third party replays it into a fresh `Pool` and checks the final root against the anchored one (see `core/examples/demo.rs`). |
-| (persistence) | `pool.snapshot()` / `Pool::restore(&snapshot)` | **Contains spending keys.** Write to a gitignored file (`*.pool-state.json`). Restore replays the log through the same verify tail. |
+| `GET /log?from=N` | `verifier.records()[N..]`, `verifier.state()` | The public log is the mirror wallets sync from and new nodes rebuild from. Serve it whole; it contains no plaintext and no keys. |
+| `POST /submit/shield` `{bundle, depositTxHash}` | 1. look the deposit up on XRPL (`tx`): validated, `TransactionType == Payment`, `Destination == pool`, read `meta.delivered_amount` and the `confidant/shield` memo; 2. `verifier.submit_shield(&bundle, &DepositRef { tx_hash, delivered, memo_hash })` → `Accepted` | The ledger facts are yours; the core enforces `delivered == −valueBalance`, memo hash == bundle hash, and one shield per deposit. Then write the anchor memo (below). |
+| `POST /submit/transfer` `{bundle}` | `verifier.submit_transfer(&bundle)` → `Accepted` | Nothing hits the ledger except the anchor memo. |
+| `POST /submit/unshield` `{bundle, destination}` | `verifier.submit_unshield(&bundle, destination)` → `Accepted { payout: Some(..) }` | The signatures inside the bundle bind `destination` and the amount. The quorum then pays `payout.amount` to `payout.destination` from the pool account. |
+| `POST /audit/reveal` `{viewingKey}` | `verifier.reveal(viewing_key_hex)` → `RevealReport` | Convenience over the public log; the holder's auditor can run the same on any mirror. |
 
-Errors are `confidant_core::Error` (`thiserror`); map `UnknownOwner` / `OwnerExists` /
-`ZeroAmount` / `AmountOverflow` / `InsufficientFunds` / `TooManyOutputs` /
-`VouchedAmountNotApplicable` / `InvalidEncoding` to 400, `DoubleSpend` / `UnknownAnchor` /
-`ValueBalance*` / `InvalidProof` / `InvalidSpendAuth` / `InvalidBindingSignature` to 409/422, and
-`Build` / `Tree` / `NoWitness` / `Snapshot` / `Internal` to 500.
+After every accepted bundle: `verifier.anchor_memo(acc.bundle_index)?.encode_hex()` is the
+`MemoData` (type `confidant/anchor`) of the Payment the quorum multisigns from the pool account;
+once validated, `verifier.set_anchored_root(&acc.new_root)`. For an unshield the same batch (or the
+next transaction) carries the payout.
 
-Tests: `cargo test --workspace` (behavioural + negative suite in `core/tests/pool.rs`, coverage
-corners in `core/tests/coverage.rs`); `cargo llvm-cov --workspace --all-targets` reports 100% line
-coverage of the core, which CI enforces.
+Each signer runs its own `Verifier` and repeats the deposit lookup itself before signing; a
+coordinator just collects ≥ k signatures. A signer that refuses a bundle will not produce the
+memo and must not sign.
 
-Timings on a laptop (release): keys 2.5 s once; shield/transfer/unshield ≈ 0.9 s each (2-action
-bundle, +0.45 s per extra action); verify ≈ 10 ms; reveal is linear in the number of actions.
+Joining as a new node: read the pool account's transactions (`account_tx`), decode each
+`confidant/anchor` memo (`AnchorMemo::decode_hex`), fetch bundles by hash from any `GET /log`, and
+`Verifier::rebuild(&memos, mirror)`. The root must land on the last memo's root.
 
-Run `cargo run --release --example demo` for an offline walk-through of the demo script.
+## Wallet side — what the local wallet process exposes to the UI
+
+| UI action | Core call | Notes |
+| --- | --- | --- |
+| show address / auditor key | `wallet.info()` → `{ address, viewingKey }` | the holder hands `viewingKey` to their auditor; nobody else needs it |
+| refresh | `wallet.sync(&log)` after `GET /log` | re-verifies new records into the replica; finds the wallet's notes; marks spent ones |
+| balance | `wallet.balance()` | |
+| shield | `let p = wallet.build_shield(amount)?;` then the UI sends the deposit Payment with memo `confidant/shield` = `p.hash_hex()`, then `POST /submit/shield { bundle: p.record, depositTxHash }` | build first, deposit second: the memo must commit to the bundle |
+| transfer | `wallet.build_transfer(&[TransferOutput { recipient: <address hex>, amount }])?` → `POST /submit/transfer` | recipients are raw Orchard addresses, not ids |
+| unshield | `wallet.build_unshield(amount, destination)?` → `POST /submit/unshield { bundle, destination }` | |
+| persist | `wallet.secret()` → `WalletSecret` (JSON, **holds the spending key**, write 0600, never commit) / `Wallet::from_secret` | a wallet restores by re-syncing the log |
+
+Errors are `confidant_core::Error` (`thiserror`). Map `ZeroAmount` / `AmountOverflow` /
+`InsufficientFunds` / `TooManyOutputs` / `VouchedAmountNotApplicable` / `InvalidEncoding` /
+`DepositRequired` / `MemoMalformed` to 400; `DoubleSpend` / `DepositConsumed` /
+`DepositBindingMismatch` / `UnknownAnchor` / `ValueBalance*` / `InvalidProof` / `InvalidSpendAuth`
+/ `InvalidBindingSignature` / `BundleHashMismatch` / `MemoMismatch` / `RecordOutOfOrder` to
+409/422; `Build` / `Tree` / `NoWitness` / `Snapshot` / `MirrorMissing` / `LogRewound` /
+`Internal` to 500.
+
+Timings (laptop, release): circuit params 2.5 s once per process; a 2-action bundle proves in
+≈ 0.9 s on the wallet side (+0.45 s per extra action); the verifier accepts in ≈ 10 ms; `sync` and
+`rebuild` cost ≈ 10 ms per record; anchor memos are ≈ 230 B for 2 actions, ≤ 1 KB up to 8.
+
+Tests: `cargo test --workspace`; `cargo llvm-cov --workspace --all-targets` reports 100% line
+coverage of the core, which CI enforces. `cargo run --release --example demo` walks the v2 flow
+offline; `core/examples/cli.rs` is the test tool the testnet harness drives.

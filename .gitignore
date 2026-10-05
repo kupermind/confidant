@@ -58,3 +58,5 @@ desktop.ini
 /data/
 *.keystore.json
 *.pool-state.json
+*.wallet.json
+*.verifier-state.json

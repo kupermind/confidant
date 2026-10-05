@@ -1,57 +1,63 @@
 //! Serde-ready public types. Field names are camelCase so the API layer can return them as-is
-//! for the endpoints in `SPEC.md` (`/shield`, `/transfer`, `/unshield`, `/audit/reveal`,
-//! `/pool/state`).
+//! for the v2 endpoints in `SPEC.md` (`/log`, `/submit/*`, `/audit/reveal`).
 
 use serde::{Deserialize, Serialize};
 
 use crate::sighash::OpTag;
 
-/// What the API layer learns about a registered owner.
+/// What a wallet publishes about itself: where to pay it and the key an auditor may be given.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct OwnerInfo {
-    pub owner: String,
+pub struct WalletInfo {
     /// Raw Orchard payment address (43 bytes, hex).
     pub address: String,
-    /// The owner's full viewing key (96 bytes, hex) — the "auditor key" for this holder.
+    /// The holder's full viewing key (96 bytes, hex) — the "auditor key" for this holder.
     pub viewing_key: String,
-}
-
-/// Result of `POST /shield`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ShieldReceipt {
-    /// `cmx` of the minted note.
-    pub commitment: String,
-    pub leaf_index: u64,
-    pub new_root: String,
-    pub bundle_index: usize,
-    pub proof: String,
 }
 
 /// One recipient of a private transfer.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransferOutput {
-    /// Registered owner id of the recipient.
+    /// Recipient's raw Orchard address (43 bytes, hex).
     pub recipient: String,
     pub amount: u64,
 }
 
-/// Result of `POST /transfer`. Nothing in here identifies sender, recipients or amounts.
+/// What the API layer hands a verifier about a deposit it found on XRPL. The layer is
+/// responsible for the ledger facts (the tx is validated, is a Payment, its destination is the
+/// pool account); the core enforces amount, binding and single use.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TransferReceipt {
-    /// One per action (real and dummy spends alike); SPEC's single `nullifier` generalised.
-    pub nullifiers: Vec<String>,
-    /// `cmx` of every action's output, in leaf order (real and dummy alike).
-    pub new_commitments: Vec<String>,
-    pub new_root: String,
-    pub bundle_index: usize,
-    pub proof: String,
+pub struct DepositRef {
+    /// XRPL transaction hash of the deposit Payment.
+    pub tx_hash: String,
+    /// `meta.delivered_amount` in the pool's token units (drops for XRP).
+    pub delivered: u64,
+    /// The deposit memo (`confidant/shield`): hex of the shield bundle's hash.
+    pub memo_hash: String,
 }
 
-/// The XRPL Payment the front-end must now build and submit from the pool account.
+/// Result of accepting a bundle (`POST /submit/*`). Nothing in here identifies sender,
+/// recipients or amounts beyond what the ledger shows anyway.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Accepted {
+    pub bundle_index: usize,
+    pub first_leaf: u64,
+    pub new_root: String,
+    /// Hash of the accepted bundle (hex) — what the anchor memo carries.
+    pub bundle_hash: String,
+    /// One per action (real and dummy alike).
+    pub nullifiers: Vec<String>,
+    /// `cmx` of every action's output, in leaf order (real and dummy alike).
+    pub commitments: Vec<String>,
+    /// Present for unshields: the Payment the quorum must now make from the pool account.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payout: Option<Payout>,
+}
+
+/// The XRPL Payment the quorum makes from the pool account after an accepted unshield.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Payout {
@@ -59,28 +65,17 @@ pub struct Payout {
     pub destination: String,
 }
 
-/// Result of `POST /unshield`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UnshieldReceipt {
-    pub nullifiers: Vec<String>,
-    pub new_commitments: Vec<String>,
-    pub new_root: String,
-    pub bundle_index: usize,
-    pub proof: String,
-    pub payout: Payout,
-}
-
-/// Result of `GET /pool/state`. Contains no plaintext.
+/// Public verifier state (`GET /log` header, `GET /pool/state`). Contains no plaintext.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PoolState {
     pub root: String,
-    /// The last root the front-end confirmed it wrote into an XRPL memo, if any.
+    /// The last root confirmed as written into an XRPL memo, if any.
     pub anchored_root: Option<String>,
     pub leaf_count: u64,
     pub nullifier_count: usize,
     pub bundle_count: usize,
+    pub consumed_deposits: usize,
 }
 
 /// Direction of a revealed note relative to the holder whose key was used.
@@ -93,7 +88,7 @@ pub enum Direction {
     Outgoing,
 }
 
-/// One note the auditor key could decrypt.
+/// One note the viewing key could decrypt.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RevealedNote {
@@ -101,7 +96,7 @@ pub struct RevealedNote {
     pub amount: u64,
     pub leaf_index: u64,
     pub bundle_index: usize,
-    /// Unix seconds at which the pool accepted the bundle.
+    /// Unix seconds at which this verifier accepted the bundle.
     pub timestamp: u64,
     /// For incoming notes: whether the holder has already spent it. Always `false` for outgoing.
     pub spent: bool,
@@ -124,7 +119,7 @@ pub struct RevealReport {
 }
 
 /// Public effects of one action, exactly what Zcash would put on chain.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionRecord {
     pub nullifier: String,
@@ -137,16 +132,17 @@ pub struct ActionRecord {
     pub spend_auth_sig: String,
 }
 
-/// Public effects of one accepted bundle — the unit of the exportable log that a third party
-/// re-verifies against the anchored roots. Contains no plaintext and no keys.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// Public effects of one bundle — what a wallet submits and what the verifier logs. Contains no
+/// plaintext and no keys. `index`, `timestamp` and `first_leaf` are verifier metadata, set on
+/// acceptance; a wallet leaves them at zero.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BundleRecord {
     pub index: usize,
     pub op: OpTag,
     pub timestamp: u64,
-    /// For a shield: the XRPL deposit tx hash; for an unshield: the XRPL destination;
-    /// empty for a transfer. The sighash binds it (see `sighash`).
+    /// Shield: the XRPL deposit tx hash (set by the verifier on acceptance). Unshield: the XRPL
+    /// destination. Transfer: empty. The anchor memo carries it; the sighash binds it for unshields.
     pub external: String,
     pub anchor: String,
     pub flags: u8,
