@@ -44,7 +44,9 @@ impl IntoResponse for ApiError {
                 | CoreError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
                 _ => StatusCode::CONFLICT,
             },
-            NodeError::Ledger(LedgerError::Deposit(_)) => StatusCode::UNPROCESSABLE_ENTITY,
+            NodeError::Ledger(LedgerError::Deposit(_) | LedgerError::Anchor(_)) => {
+                StatusCode::UNPROCESSABLE_ENTITY
+            }
             NodeError::Ledger(_) => StatusCode::BAD_GATEWAY,
             NodeError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -104,6 +106,8 @@ pub struct Endorse {
 #[serde(rename_all = "camelCase")]
 pub struct Anchored {
     pub root: String,
+    /// Hash of the pool's anchor Payment; the node reads it from the ledger and checks the memo.
+    pub anchor_tx_hash: String,
 }
 
 #[derive(Deserialize)]
@@ -171,7 +175,7 @@ async fn anchored<L: Ledger>(
     State(n): State<Arc<Node<L>>>,
     Json(b): Json<Anchored>,
 ) -> Result<confidant_core::PoolState> {
-    Ok(Json(n.anchored(&b.root)?))
+    Ok(Json(n.anchored(&b.root, &b.anchor_tx_hash).await?))
 }
 
 async fn reveal<L: Ledger>(

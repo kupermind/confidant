@@ -68,10 +68,31 @@ export function firstMemo(txJson) {
  * Anything else — another account, another destination, another amount, extra memos — is refused.
  */
 export const DEFAULT_MAX_FEE_DROPS = 5000;
-export function checkTxShape(kind, tx, { pool, sink, memoHex, endorse, maxFeeDrops = DEFAULT_MAX_FEE_DROPS }) {
+/** Ledgers (≈ 4 s each) a signed anchor may stay valid: short, so a withheld blob dies quickly. */
+export const DEFAULT_ANCHOR_LLS_WINDOW = 60;
+/** Ledgers a signed payout may stay valid: generous, so a payout that failed once can be resubmitted
+ *  (by the coordinator or by the user holding the blob) after the note is already spent. */
+export const DEFAULT_PAYOUT_LLS_WINDOW = 600;
+/**
+ * The sidecar's "no blind signing" guard for an XRPL transaction the coordinator prepared. Beyond
+ * the Payment's shape (Account/Destination/Amount/memo) it pins what the coordinator could otherwise
+ * choose freely: the Fee (paid by the pool — unbounded, it is a drain), the Sequence (must be the
+ * pool account's next, as the sidecar itself read it; no pre-signing future sequences, one anchor in
+ * flight per state) and LastLedgerSequence (present and within a window — no blob that lives forever).
+ */
+export function checkTxShape(kind, tx, {
+  pool, sink, memoHex, endorse, expectedSequence, ledgerIndex,
+  maxFeeDrops = DEFAULT_MAX_FEE_DROPS, anchorLlsWindow = DEFAULT_ANCHOR_LLS_WINDOW, payoutLlsWindow = DEFAULT_PAYOUT_LLS_WINDOW,
+}) {
   if (tx?.TransactionType !== "Payment") throw refuse(409, `${kind}: not a Payment`);
   if (tx.Account !== pool) throw refuse(409, `${kind}: Account is not the pool`);
   if (!/^[0-9]{1,15}$/.test(String(tx.Fee)) || Number(tx.Fee) > maxFeeDrops) throw refuse(409, `${kind}: fee missing or above ${maxFeeDrops} drops`);
+  if (!Number.isInteger(expectedSequence) || tx.Sequence !== expectedSequence) throw refuse(409, `${kind}: Sequence ${tx.Sequence} is not the pool account's next sequence ${expectedSequence}`);
+  const window = kind === "payout" ? payoutLlsWindow : anchorLlsWindow;
+  if (!Number.isInteger(ledgerIndex)) throw refuse(409, `${kind}: current ledger index unknown`);
+  if (!Number.isInteger(tx.LastLedgerSequence) || tx.LastLedgerSequence <= ledgerIndex || tx.LastLedgerSequence > ledgerIndex + window) {
+    throw refuse(409, `${kind}: LastLedgerSequence ${tx.LastLedgerSequence} missing or outside (${ledgerIndex}, ${ledgerIndex + window}]`);
+  }
   if (kind === "anchor") {
     if (tx.Destination !== sink) throw refuse(409, "anchor: destination is not the sink");
     if (tx.Amount !== "1") throw refuse(409, "anchor: amount is not 1 drop");
@@ -88,6 +109,14 @@ export function checkTxShape(kind, tx, { pool, sink, memoHex, endorse, maxFeeDro
     return;
   }
   throw refuse(409, `unknown tx kind ${kind}`);
+}
+
+/** One JSON-RPC call to a rippled/clio server (the sidecar's own view of the ledger). */
+export async function xrplRpc(url, command, params = {}) {
+  const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ method: command, params: [params] }) });
+  const j = await r.json();
+  if (!j.result || j.result.status === "error") throw refuse(502, `xrpl ${command}: ${j.result?.error_message ?? j.result?.error ?? "no result"}`);
+  return j.result;
 }
 
 // ---- key files -------------------------------------------------------------------------------
@@ -148,11 +177,12 @@ export async function launchQuorum({ config, dir, nodeBin, xrplRpc, xrplWs, base
   const signerUrl = (i) => `http://127.0.0.1:${basePort + 100 + i}`; // 1..n
   const coordinatorUrl = `http://127.0.0.1:${basePort + 200}`;
   for (let i = 0; i <= n; i++) {
-    run(nodeBin, ["--listen", `127.0.0.1:${basePort + i}`, "--state", `${dir}/node${i}.verifier-state.json`, "--xrpl-rpc", xrplRpc, "--pool", config.pool]);
+    run(nodeBin, ["--listen", `127.0.0.1:${basePort + i}`, "--state", `${dir}/node${i}.verifier-state.json`, "--xrpl-rpc", xrplRpc, "--pool", config.pool,
+      "--signers", config.signers.map((s) => s.address).join(","), "--quorum", String(config.quorum)]);
   }
   for (let i = 1; i <= n; i++) {
     run(process.execPath, [new URL("./signer.mjs", import.meta.url).pathname], {
-      PORT: String(basePort + 100 + i), NODE_URL: nodeUrl(i), POOL: config.pool, SINK: config.sink, KEY_FILE: config.signers[i - 1].keyFile,
+      PORT: String(basePort + 100 + i), NODE_URL: nodeUrl(i), POOL: config.pool, SINK: config.sink, KEY_FILE: config.signers[i - 1].keyFile, XRPL_RPC: xrplRpc,
     });
   }
   run(process.execPath, [new URL("./coordinator.mjs", import.meta.url).pathname], {

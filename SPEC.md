@@ -295,6 +295,21 @@ shape matches that endorsement; the **coordinator** (Node) accepts `POST /submit
 ≥ k signatures and submits anchor then payout. Core call mapping and error → HTTP mapping:
 `docs/CORE-API.md`; services: `backend/README.md`.
 
+What a sidecar pins beyond the Payment's shape (audit condition C1): **Fee ≤ a ceiling** (the pool
+pays fees; unbounded, it is a drain), **Sequence = the pool account's next sequence as the sidecar
+reads it itself** (anchor first, payout next; no pre-signing of future sequences), and a
+**LastLedgerSequence that is present and bounded** (short for anchors, generous for payouts). The
+coordinator's claim that a root is anchored is not trusted either: `POST /anchored {root,
+anchorTxHash}` makes each node read the anchor Payment from the ledger and check its memo. On startup
+a node refuses to serve unless the pool's on-ledger SignerList is exactly the configured k-of-N with
+the master key disabled, and, when rebuilding, unless the `account_tx` scan starts at the pool's
+creation and every memo is backed by the mirror (C4).
+
+**Payout recovery (C5).** The anchor always lands before the payout, so a failure leaves a spent note
+and an unpaid user — never a double payment. The coordinator returns the multisigned payout blob
+with its answer; anyone may resubmit it until its LastLedgerSequence (hundreds of ledgers). Atomic
+anchor + payout via XLS-56 Batch is the production fix (roadmap).
+
 ---
 
 ## 7. The XRPL side (API/XRPL lead)

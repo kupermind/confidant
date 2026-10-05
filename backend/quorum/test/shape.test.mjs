@@ -7,15 +7,40 @@ import { checkTxShape, memoOf, MEMO_ANCHOR } from "../lib.mjs";
 
 const pool = "rPOOL", sink = "rSINK", memoHex = "01ab".repeat(8);
 const endorse = { newRoot: "00".repeat(32), payout: { destination: "rBOB", amount: 25000000 } };
-const ctx = { pool, sink, memoHex, endorse };
-const anchor = () => ({ TransactionType: "Payment", Account: pool, Destination: sink, Amount: "1", Fee: "40", Sequence: 7, Memos: [memoOf(MEMO_ANCHOR, memoHex)] });
-const payout = () => ({ TransactionType: "Payment", Account: pool, Destination: "rBOB", Amount: "25000000", Fee: "40", Sequence: 8 });
-const refused = (kind, tx, re, c = ctx) => assert.throws(() => checkTxShape(kind, tx, c), (e) => { assert.equal(e.status, 409); assert.match(e.message, re); return true; });
+// The sidecar read: the pool account's next Sequence is 7 and the current ledger is 1000.
+const ctx = { pool, sink, memoHex, endorse, expectedSequence: 7, ledgerIndex: 1000 };
+const pctx = { ...ctx, expectedSequence: 8 }; // the payout follows the anchor
+const anchor = () => ({ TransactionType: "Payment", Account: pool, Destination: sink, Amount: "1", Fee: "40", Sequence: 7, LastLedgerSequence: 1020, Memos: [memoOf(MEMO_ANCHOR, memoHex)] });
+const payout = () => ({ TransactionType: "Payment", Account: pool, Destination: "rBOB", Amount: "25000000", Fee: "40", Sequence: 8, LastLedgerSequence: 1500 });
+const refused = (kind, tx, re, c = kind === "payout" ? pctx : ctx) => assert.throws(() => checkTxShape(kind, tx, c), (e) => { assert.equal(e.status, 409); assert.match(e.message, re); return true; });
 
 test("honest anchor and payout pass", () => {
   checkTxShape("anchor", anchor(), ctx);
-  checkTxShape("payout", payout(), ctx);
+  checkTxShape("payout", payout(), pctx);
   checkTxShape("anchor", { ...anchor(), Memos: [memoOf(MEMO_ANCHOR, memoHex.toUpperCase())] }, ctx); // hex case-insensitive
+  checkTxShape("anchor", { ...anchor(), LastLedgerSequence: 1060 }, ctx); // window edge inclusive
+  checkTxShape("payout", { ...payout(), LastLedgerSequence: 1600 }, pctx);
+});
+
+test("sequence is pinned to the pool account's next sequence as the sidecar read it", () => {
+  refused("anchor", { ...anchor(), Sequence: 8 }, /Sequence 8 is not the pool account's next sequence 7/);
+  refused("anchor", { ...anchor(), Sequence: 6 }, /not the pool account's next sequence/);
+  refused("anchor", { ...anchor(), Sequence: undefined }, /not the pool account's next sequence/);
+  refused("anchor", { ...anchor(), Sequence: "7" }, /not the pool account's next sequence/);
+  refused("payout", { ...payout(), Sequence: 7 }, /not the pool account's next sequence 8/);
+  refused("anchor", anchor(), /not the pool account's next sequence/, { ...ctx, expectedSequence: undefined });
+});
+
+test("LastLedgerSequence is required and bounded (short for anchors, generous for payouts)", () => {
+  refused("anchor", { ...anchor(), LastLedgerSequence: undefined }, /LastLedgerSequence .* missing or outside \(1000, 1060\]/);
+  refused("anchor", { ...anchor(), LastLedgerSequence: 1000 }, /missing or outside/); // already expired
+  refused("anchor", { ...anchor(), LastLedgerSequence: 900 }, /missing or outside/);
+  refused("anchor", { ...anchor(), LastLedgerSequence: 1061 }, /missing or outside/);
+  refused("anchor", { ...anchor(), LastLedgerSequence: 1500 }, /missing or outside/); // payout-sized window is not for anchors
+  refused("payout", { ...payout(), LastLedgerSequence: 1601 }, /outside \(1000, 1600\]/);
+  refused("payout", { ...payout(), LastLedgerSequence: undefined }, /missing or outside/);
+  refused("anchor", anchor(), /current ledger index unknown/, { ...ctx, ledgerIndex: undefined });
+  refused("anchor", { ...anchor(), LastLedgerSequence: 1011 }, /outside \(1000, 1010\]/, { ...ctx, anchorLlsWindow: 10 });
 });
 
 test("common: not a Payment, foreign account, fee", () => {
@@ -43,15 +68,15 @@ test("anchor: destination, amount, memo count, memo type and bytes", () => {
 });
 
 test("payout: only what the sidecar's own node endorsed", () => {
-  refused("payout", payout(), /has no payout/, { ...ctx, endorse: { newRoot: endorse.newRoot } });
-  refused("payout", payout(), /has no payout/, { ...ctx, endorse: undefined });
+  refused("payout", payout(), /has no payout/, { ...pctx, endorse: { newRoot: endorse.newRoot } });
+  refused("payout", payout(), /has no payout/, { ...pctx, endorse: undefined });
   refused("payout", { ...payout(), Destination: "rEVE" }, /destination differs/);
   refused("payout", { ...payout(), Amount: "50000000" }, /amount differs/);
   refused("payout", { ...payout(), Amount: "24999999" }, /amount differs/);
   refused("payout", { ...payout(), Memos: [memoOf(MEMO_ANCHOR, memoHex)] }, /unexpected memos/);
-  checkTxShape("payout", { ...payout(), Memos: [] }, ctx);
+  checkTxShape("payout", { ...payout(), Memos: [] }, pctx);
 });
 
 test("unknown kinds are refused", () => {
-  refused("refund", payout(), /unknown tx kind/);
+  refused("refund", { ...payout(), LastLedgerSequence: 1020 }, /unknown tx kind/, pctx);
 });

@@ -67,12 +67,16 @@ anchor.
 The same demo as a client of the **coordinator**, with real services: 4 Rust verifier nodes (the
 coordinator's and three signers'), 3 signer sidecars, 1 coordinator, launched by the harness from
 `backend/quorum/lib.mjs`. Asserted on top of §2: a bogus deposit hash is refused by the coordinator's
-node (ledger lookup); a duplicate deposit is refused; exactly one pool transaction (the anchor) during
-the private hop; a **signer sidecar refuses** a tampered memo, a re-pointed payout, an inflated payout
-amount, a transaction from another account and an anchor to another destination, and signs the honest
-set; a replay is refused by the coordinator; the unshield is anchored and paid 2-of-3; reveal through
-the coordinator; a **new Rust node started with `--rebuild --mirror`** lands on the quorum's root and
-anchored root with every deposit re-validated.
+node (ledger lookup); the same deposit again (identical bundle, fresh bundle) is refused; exactly one
+pool transaction (the anchor) during the private hop; an unshield through the coordinator is anchored
+then paid 2-of-3 and the answer carries the multisigned payout blob (decodes to the payout, is
+resubmittable); a **signer sidecar refuses** a tampered memo, a re-pointed payout, an inflated payout
+amount, a transaction from another account, an inflated fee, an anchor to another destination, a
+future Sequence, a missing or too-distant LastLedgerSequence and a payout placed before its anchor,
+and signs the honest set; a replay is refused by the coordinator; a node refuses `/anchored` for a
+non-anchor transaction or a root the anchor does not carry; **nodes configured for another quorum or
+signer set refuse to start** (custody gate); a **new Rust node started with `--rebuild --mirror`**
+lands on the quorum's root and anchored root with every deposit re-validated.
 
 ```bash
 cargo build --release --example cli --bin confidant-node

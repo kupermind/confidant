@@ -1,6 +1,7 @@
-//! `confidant-node --listen 127.0.0.1:7001 --state data/n1.verifier-state.json --xrpl-rpc URL --pool rPOOL [--mirror http://host/log] [--rebuild]`
+//! `confidant-node --listen 127.0.0.1:7001 --state data/n1.verifier-state.json --xrpl-rpc URL --pool rPOOL --signers r1,r2,r3 --quorum 2 [--mirror http://host/log] [--rebuild]`
 //!
-//! Holds no keys. With `--rebuild` the node ignores its state file and rebuilds from the pool
+//! Holds no keys. Refuses to start unless the pool account's on-ledger SignerList is exactly
+//! `--signers` with `SignerQuorum == --quorum` and the master key disabled. With `--rebuild` the node ignores its state file and rebuilds from the pool
 //! account's anchor memos on the ledger plus the mirror's log, re-validating every shield's
 //! deposit (`rebuild_checked`); otherwise it restores its state file (or starts empty).
 
@@ -29,6 +30,15 @@ async fn main() {
     let rpc =
         arg(&args, "--xrpl-rpc").unwrap_or_else(|| "https://s.altnet.rippletest.net:51234".into());
     let pool = arg(&args, "--pool").unwrap_or_else(|| die("--pool <poolAccount> is required"));
+    let signers: Vec<String> = arg(&args, "--signers")
+        .unwrap_or_else(|| die("--signers r1,r2,... (the pool's SignerList) is required"))
+        .split(',')
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let quorum: u64 = arg(&args, "--quorum")
+        .and_then(|q| q.parse().ok())
+        .unwrap_or_else(|| die("--quorum <k> is required"));
     let mirror = arg(&args, "--mirror");
     let rebuild = args.iter().any(|a| a == "--rebuild");
 
@@ -41,6 +51,14 @@ async fn main() {
     }
 
     let ledger = JsonRpc::new(rpc.clone());
+    // Custody gate: serve only against the quorum this node believes in.
+    Node::<JsonRpc>::check_custody(&ledger, &pool, &signers, quorum)
+        .await
+        .unwrap_or_else(|e| die(e));
+    eprintln!(
+        "pool custody verified on the ledger: {quorum}-of-{} SignerList, master key disabled",
+        signers.len()
+    );
     let verifier = if rebuild {
         let mirror_url =
             mirror.unwrap_or_else(|| die("--rebuild needs --mirror <url of another node's /log>"));

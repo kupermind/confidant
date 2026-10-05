@@ -9,12 +9,15 @@
 //     2. prepare the anchor Payment (and the payout Payment for an unshield) with xrpl.js autofill
 //     3. fan {txs, submission, memoHex} out to every signer sidecar; keep the ones that signed
 //     4. with ≥ QUORUM signatures: multisign + submit the anchor, then the payout
-//     5. tell every node POST /anchored { root }
+//     5. tell every node POST /anchored { root, anchorTxHash } (each verifies the tx on the ledger)
+//   The signed payout blob is returned to the client too: if the payout fails after the anchor
+//   landed (note spent, user unpaid), anyone may resubmit it until its LastLedgerSequence.
 //
 // Env: PORT, NODE_URL (own node), NODES (all nodes, comma-separated), SIGNERS (sidecar URLs),
 //      QUORUM, POOL, SINK, XRPL_WS.
 
 import { Client, multisign } from "xrpl";
+import { DEFAULT_PAYOUT_LLS_WINDOW } from "./lib.mjs";
 import { serve, http, refuse, memoOf, MEMO_ANCHOR } from "./lib.mjs";
 
 const env = process.env;
@@ -30,7 +33,7 @@ await client.connect();
 console.error(`coordinator: node ${env.NODE_URL}, ${SIGNERS.length} signers, quorum ${QUORUM}, pool ${env.POOL}, port ${env.PORT} (holds no keys)`);
 
 async function submitMultisigned(blobs, label) {
-  const res = await client.submitAndWait(multisign(blobs));
+  const res = await client.submitAndWait(blobs.length === 1 ? blobs[0] : multisign(blobs));
   const code = res.result.meta?.TransactionResult;
   if (code !== "tesSUCCESS") throw refuse(502, `${label} failed on ledger: ${code}`);
   return res.result.hash;
@@ -50,6 +53,8 @@ async function anchorThroughQuorum(accepted, submission) {
       TransactionType: "Payment", Account: env.POOL, Destination: accepted.payout.destination, Amount: String(accepted.payout.amount),
     }, SIGNERS.length);
     payoutTx.Sequence = anchorTx.Sequence + 1; // the anchor goes first
+    // Generous validity so a failed payout can be resubmitted; well inside the sidecars' window.
+    payoutTx.LastLedgerSequence = anchorTx.LastLedgerSequence + Math.floor(DEFAULT_PAYOUT_LLS_WINDOW * 0.8);
     txs.push({ kind: "payout", tx: payoutTx });
   }
   const results = await Promise.allSettled(SIGNERS.map((s) => http("POST", `${s}/sign`, { txs, submission, memoHex })));
@@ -58,10 +63,15 @@ async function anchorThroughQuorum(accepted, submission) {
   if (signed.length < QUORUM) throw refuse(409, `only ${signed.length}/${SIGNERS.length} signers endorsed (quorum ${QUORUM})`, { refusals });
   const use = signed.slice(0, QUORUM);
   const anchorHash = await submitMultisigned(use.map((s) => s.blobs.find((b) => b.kind === "anchor").tx_blob), "anchor");
-  let payoutHash = null;
-  if (accepted.payout) payoutHash = await submitMultisigned(use.map((s) => s.blobs.find((b) => b.kind === "payout").tx_blob), "payout");
-  await Promise.allSettled(NODES.map((n) => http("POST", `${n}/anchored`, { root: accepted.newRoot })));
-  return { ...accepted, anchorTx: anchorHash, payoutTx: payoutHash, signers: use.map((s) => s.signer), refusals };
+  await Promise.allSettled(NODES.map((n) => http("POST", `${n}/anchored`, { root: accepted.newRoot, anchorTxHash: anchorHash })));
+  let payoutHash = null, payoutBlob = null, payoutError = null;
+  if (accepted.payout) {
+    // The note is spent now (anchor landed). Pay; if the ledger refuses, hand the blob back so the
+    // client can resubmit it until LastLedgerSequence — never pay before the anchor.
+    payoutBlob = multisign(use.map((s) => s.blobs.find((b) => b.kind === "payout").tx_blob));
+    try { payoutHash = await submitMultisigned([payoutBlob], "payout"); } catch (e) { payoutError = e.message; }
+  }
+  return { ...accepted, anchorTx: anchorHash, payoutTx: payoutHash, payoutBlob, payoutError, signers: use.map((s) => s.signer), refusals };
 }
 
 await serve(Number(env.PORT), {

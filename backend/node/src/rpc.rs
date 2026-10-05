@@ -52,6 +52,14 @@ impl Ledger for JsonRpc {
         self.call("tx", json!({ "transaction": hash })).await
     }
 
+    async fn account_info(&self, account: &str) -> Result<Value, LedgerError> {
+        self.call(
+            "account_info",
+            json!({ "account": account, "ledger_index": "validated", "signer_lists": true }),
+        )
+        .await
+    }
+
     async fn account_tx(&self, account: &str) -> Result<Vec<Value>, LedgerError> {
         let mut out = Vec::new();
         let mut marker: Option<Value> = None;

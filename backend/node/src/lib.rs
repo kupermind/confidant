@@ -10,7 +10,13 @@
 //!   looks the deposit up on the ledger itself.
 //! - `POST /endorse` — a signer's whole duty ([`Verifier::endorse`]), idempotent for retries; for a
 //!   shield the node re-looks the deposit up itself and ignores the coordinator's facts.
-//! - `POST /anchored`, `POST /audit/reveal`.
+//! - `POST /anchored {root, anchorTxHash}` — the node reads the anchor Payment from the ledger and
+//!   checks its memo carries the root before marking it anchored; `POST /audit/reveal`.
+//!
+//! On startup the node refuses to serve unless the pool account's on-ledger custody is the
+//! configured k-of-N SignerList with the master key disabled, and (with `--rebuild`) unless the
+//! `account_tx` scan starts at the pool's creation and every anchor memo is backed by the mirror
+//! and, for shields, by a deposit the node reads itself.
 //!
 //! The XRPL *transactions* (anchor memo Payments, payouts) are signed by the Node.js signer
 //! sidecar next to this node, only after this node endorsed — see `backend/quorum/`.
@@ -22,4 +28,7 @@ pub mod xrpl;
 
 pub use node::{AcceptedWithMemo, Node, NodeError};
 pub use rpc::JsonRpc;
-pub use xrpl::{anchor_memos, deposit_facts, Ledger, LedgerError, MEMO_SHIELD};
+pub use xrpl::{
+    anchor_fact, anchor_memos, check_custody_info, deposit_facts, ensure_full_history, Ledger,
+    LedgerError, LSF_DISABLE_MASTER, MEMO_SHIELD,
+};

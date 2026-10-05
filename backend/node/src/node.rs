@@ -12,7 +12,10 @@ use confidant_core::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::xrpl::{anchor_memos, deposit_facts, Ledger, LedgerError};
+use crate::xrpl::{
+    anchor_fact, anchor_memos, check_custody_info, deposit_facts, ensure_full_history, Ledger,
+    LedgerError,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum NodeError {
@@ -215,11 +218,36 @@ impl<L: Ledger> Node<L> {
         }))
     }
 
-    pub fn anchored(&self, root_hex: &str) -> Result<PoolState, NodeError> {
+    /// Marks `root_hex` anchored only after reading the anchor transaction from the ledger itself:
+    /// validated, sent by the pool, carrying a `confidant/anchor` memo whose root is `root_hex`.
+    /// A coordinator's bare claim is never enough.
+    pub async fn anchored(
+        &self,
+        root_hex: &str,
+        anchor_tx_hash: &str,
+    ) -> Result<PoolState, NodeError> {
+        let tx = self.ledger.tx(anchor_tx_hash).await?;
+        let memo = anchor_fact(&tx, &self.pool)?;
+        if hex::encode(memo.root) != root_hex.to_ascii_lowercase() {
+            return Err(LedgerError::Anchor("anchor memo does not carry the claimed root").into());
+        }
         let mut v = self.lock();
         v.set_anchored_root(root_hex)?;
         self.persist(&v)?;
         Ok(v.state())
+    }
+
+    /// Startup gate: the pool account's on-ledger custody must be exactly the configured
+    /// `signers` with quorum `quorum` and the master key disabled; otherwise the node refuses to
+    /// serve (it would be trusting a custody it does not believe in).
+    pub async fn check_custody(
+        ledger: &L,
+        pool: &str,
+        signers: &[String],
+        quorum: u64,
+    ) -> Result<(), NodeError> {
+        let info = ledger.account_info(pool).await?;
+        Ok(check_custody_info(&info, signers, quorum)?)
     }
 
     pub fn snapshot(&self) -> VerifierSnapshot {
@@ -237,6 +265,7 @@ impl<L: Ledger> Node<L> {
         mirror: &[BundleRecord],
     ) -> Result<Verifier, NodeError> {
         let txs = ledger.account_tx(pool).await?;
+        ensure_full_history(&txs, pool)?;
         let memos = anchor_memos(&txs, pool)?;
         let mut deposits = std::collections::BTreeMap::new();
         for memo in &memos {

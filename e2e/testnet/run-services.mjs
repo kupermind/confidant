@@ -6,17 +6,21 @@
 //   shield      wallet builds → deposit Payment with memo = bundle hash → POST coordinator /submit/shield
 //               (coordinator's node validates the deposit; every signer's node re-validates it before endorsing)
 //   transfer    POST /submit/transfer — only the anchor memo reaches the ledger
-//   unshield    POST /submit/unshield — anchor then 2-of-3 payout to a fresh address
-//   negatives   a sidecar refuses: tampered anchor memo, re-pointed payout, a tx from another account
+//   unshield    POST /submit/unshield — anchor then 2-of-3 payout to a fresh address; the multisigned
+//               payout blob comes back (resubmittable recovery path)
+//   negatives   a sidecar refuses: tampered anchor memo, re-pointed/inflated payout, a tx from another
+//               account, inflated fee, future Sequence, missing/far LastLedgerSequence, payout before anchor;
+//               a node refuses /anchored for a non-anchor tx or a root the tx does not carry
 //   reveal      POST /audit/reveal on the coordinator (proxied to its node)
+//   custody     nodes configured for another quorum or signer set refuse to start
 //   new node    a fresh Rust node started with --rebuild --mirror <coordinator node>/log must land on the same root
 //
 // Usage: cargo build --release --example cli --bin confidant-node && cd e2e/testnet && npm install &&
 //        CLI=../../target/release/examples/cli NODE_BIN=../../target/release/confidant-node npm run e2e:services
 
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { Client, Wallet, xrpToDrops, convertHexToString } from "xrpl";
+import { Client, Wallet, xrpToDrops, convertHexToString, decode } from "xrpl";
 import { setupPool, launchQuorum, http, memoOf, MEMO_SHIELD, MEMO_ANCHOR } from "../../backend/quorum/lib.mjs";
 
 const XRPL_WS = process.env.XRPL_WS ?? "wss://s.altnet.rippletest.net:51233";
@@ -103,10 +107,26 @@ async function main() {
     assert(seqAfter === seqBefore + 1, "exactly one pool transaction (the anchor) during the private hop");
     step("private transfer accepted and anchored; only the anchor reached the ledger");
 
-    // ---- negatives at a signer sidecar: it signs nothing its own node did not endorse or that
-    //      does not match the endorsement.
+    // ---- 3. unshield #1 through the coordinator: anchor then payout, 2-of-3. The multisigned
+    //      payout blob comes back so the client could resubmit it had the payout failed after the
+    //      anchor landed (note spent, user unpaid) — the documented recovery path.
     await syncLog(C);
-    bob("build-unshield", DEPOSIT_DROPS, bobFresh.address, `${DIR}/unshield.json`, LOG);
+    const UNSHIELD_1 = xrpToDrops(10), UNSHIELD_2 = String(Number(DEPOSIT_DROPS) - Number(UNSHIELD_1));
+    bob("build-unshield", UNSHIELD_1, bobFresh.address, `${DIR}/unshield1.json`, LOG);
+    const s3 = await http("POST", `${C}/submit/unshield`, { record: JSON.parse(readFileSync(`${DIR}/unshield1.json`, "utf8")), destination: bobFresh.address });
+    link("anchor after unshield #1 (coordinator, 2-of-3)", s3.anchorTx);
+    assert(s3.payoutTx && !s3.payoutError, `payout through the coordinator failed: ${s3.payoutError}`);
+    link("payout #1 pool → bob's fresh address (coordinator, 2-of-3)", s3.payoutTx);
+    const blob = decode(s3.payoutBlob);
+    assert(blob.Account === config.pool && blob.Destination === bobFresh.address && blob.Amount === UNSHIELD_1 && blob.Signers?.length === 2 && blob.LastLedgerSequence > 0, `payout blob is not the multisigned payout: ${JSON.stringify(blob)}`);
+    const resubmit = await client.request({ command: "submit", tx_blob: s3.payoutBlob });
+    assert(/^(tefPAST_SEQ|tefALREADY|tesSUCCESS)$/.test(resubmit.result.engine_result), `resubmitting the landed payout blob: ${resubmit.result.engine_result}`);
+    step("unshield #1 through the coordinator: anchored, paid 2-of-3, payout blob returned and resubmittable", { resubmit: resubmit.result.engine_result, payoutLls: blob.LastLedgerSequence - blob.Sequence > 0 });
+
+    // ---- negatives at a signer sidecar: it signs nothing its own node did not endorse or that
+    //      does not match the endorsement — and nothing whose Fee/Sequence/LastLedgerSequence it did not pin.
+    await syncLog(C);
+    bob("build-unshield", UNSHIELD_2, bobFresh.address, `${DIR}/unshield.json`, LOG);
     const unshieldRecord = JSON.parse(readFileSync(`${DIR}/unshield.json`, "utf8"));
     const sub = { op: "unshield", record: unshieldRecord, destination: bobFresh.address };
     // Get the honest memo from a verifier node WITHOUT applying to the quorum: use a scratch node state? Simpler:
@@ -123,12 +143,16 @@ async function main() {
     await expectRefusal("sidecar: tx from another account", http("POST", `${S1}/sign`, { txs: [{ kind: "anchor", tx: { ...anchorTx, Account: aliceXrpl.address } }], submission: sub, memoHex: honest.memoHex }), /not the pool/);
     await expectRefusal("sidecar: anchor fee inflated", http("POST", `${S1}/sign`, { txs: [{ kind: "anchor", tx: { ...anchorTx, Fee: "1000000" } }], submission: sub, memoHex: honest.memoHex }), /fee missing or above/);
     await expectRefusal("sidecar: anchor to another destination", http("POST", `${S1}/sign`, { txs: [{ kind: "anchor", tx: { ...anchorTx, Destination: aliceXrpl.address } }], submission: sub, memoHex: honest.memoHex }), /not the sink/);
-    step("signer sidecar refused: tampered memo, re-pointed payout, inflated payout, foreign account, inflated fee, wrong anchor destination");
+    await expectRefusal("sidecar: future sequence", http("POST", `${S1}/sign`, { txs: [{ kind: "anchor", tx: { ...anchorTx, Sequence: anchorTx.Sequence + 1 } }], submission: sub, memoHex: honest.memoHex }), /not the pool account's next sequence/);
+    await expectRefusal("sidecar: no LastLedgerSequence", http("POST", `${S1}/sign`, { txs: [{ kind: "anchor", tx: { ...anchorTx, LastLedgerSequence: undefined } }], submission: sub, memoHex: honest.memoHex }), /LastLedgerSequence .* missing or outside/);
+    await expectRefusal("sidecar: LastLedgerSequence too far", http("POST", `${S1}/sign`, { txs: [{ kind: "anchor", tx: { ...anchorTx, LastLedgerSequence: anchorTx.LastLedgerSequence + 1000 } }], submission: sub, memoHex: honest.memoHex }), /missing or outside/);
+    await expectRefusal("sidecar: payout before anchor", http("POST", `${S1}/sign`, { txs: [{ kind: "payout", tx: payoutTx }, { kind: "anchor", tx: anchorTx }], submission: sub, memoHex: honest.memoHex }), /in that order/);
+    step("signer sidecar refused: tampered memo, re-pointed payout, inflated payout, foreign account, inflated fee, wrong anchor destination, future sequence, missing/far LastLedgerSequence, payout before anchor");
     // Note: signer1's node has now endorsed the honest unshield (idempotent) — the quorum flow below reuses it.
 
-    // ---- 3. unshield through the coordinator (its node already accepted it; the coordinator path
-    //      re-submits the same record → the node refuses the replay, so drive the quorum step directly)
-    // The coordinator exposes only /submit/*; a second submit of the same bundle is a replay (409).
+    // ---- unshield #2 via the sidecars directly (the coordinator's node already accepted it above;
+    //      re-submitting the same bundle to the coordinator is a replay → refused). Exactly what the
+    //      coordinator does internally.
     await expectRefusal("replay of the unshield", http("POST", `${C}/submit/unshield`, { record: unshieldRecord, destination: bobFresh.address }), /already spent|nullifier/);
     // So anchor + pay out via the sidecars directly, exactly as the coordinator does internally.
     const { multisign } = await import("xrpl");
@@ -142,25 +166,35 @@ async function main() {
     link("anchor after unshield", anchorRes.result.hash);
     const payoutRes = await client.submitAndWait(multisign(signed.slice(0, 2).map((s) => s.blobs.find((b) => b.kind === "payout").tx_blob)));
     assert(payoutRes.result.meta?.TransactionResult === "tesSUCCESS", "payout failed");
-    link("payout pool → bob's fresh address (2-of-3)", payoutRes.result.hash);
-    for (let i = 0; i <= 3; i++) await http("POST", `${q.nodeUrl(i)}/anchored`, { root: honest.newRoot });
+    link("payout #2 pool → bob's fresh address (2-of-3)", payoutRes.result.hash);
+    // A node marks a root anchored only after reading the anchor tx itself: a payout tx or a wrong root is refused.
+    await expectRefusal("anchored with a non-anchor tx", http("POST", `${q.nodeUrl(1)}/anchored`, { root: honest.newRoot, anchorTxHash: payoutRes.result.hash }), /no confidant\/anchor memo/);
+    await expectRefusal("anchored with a root the tx does not carry", http("POST", `${q.nodeUrl(1)}/anchored`, { root: s3.newRoot, anchorTxHash: anchorRes.result.hash }), /does not carry the claimed root/);
+    for (let i = 0; i <= 3; i++) await http("POST", `${q.nodeUrl(i)}/anchored`, { root: honest.newRoot, anchorTxHash: anchorRes.result.hash });
     const bal = (await client.request({ command: "account_info", account: bobFresh.address, ledger_index: "validated" })).result.account_data.Balance;
-    assert(bal === String(honest.payout.amount), `fresh address balance ${bal}`);
-    step("unshield: 3/3 signers endorsed on their own nodes, anchor + payout multisigned 2-of-3, funds arrived");
+    assert(bal === DEPOSIT_DROPS, `fresh address balance ${bal}, expected ${DEPOSIT_DROPS} (both payouts)`);
+    step("unshield #2: 3/3 signers endorsed on their own nodes, anchor + payout multisigned 2-of-3, funds arrived; nodes verified the anchor tx on the ledger");
 
     // ---- 4. reveal via the coordinator
     const reveal = await http("POST", `${C}/audit/reveal`, { viewingKey: bobInfo.viewingKey });
-    assert(reveal.balance === 0 && reveal.notes.length === 1 && reveal.notes[0].spent, "auditor should see exactly bob's one spent note");
+    assert(reveal.balance === 0 && reveal.notes.length === 2 && reveal.notes.every((n) => n.spent), `auditor should see bob's two spent notes (25 in, 15 change): ${JSON.stringify(reveal.notes)}`);
     step("auditor reveal (bob) through the coordinator", { balance: reveal.balance });
 
-    // ---- 5. a new node joins from the ledger with --rebuild (scanner + rebuild_checked)
-    const newNode = spawn(NODE_BIN, ["--listen", "127.0.0.1:7399", "--state", `${DIR}/newnode.verifier-state.json`, "--xrpl-rpc", XRPL_RPC, "--pool", config.pool, "--mirror", `${q.nodeUrl(0)}/log`, "--rebuild"], { stdio: ["ignore", "ignore", "pipe"] });
+    // ---- 5. a new node joins from the ledger with --rebuild (scanner + rebuild_checked). First the
+    //      custody gate: a node configured for a quorum the ledger does not show refuses to start.
+    const signerAddrs = config.signers.map((s) => s.address).join(",");
+    const wrong = spawnSync(NODE_BIN, ["--listen", "127.0.0.1:7398", "--state", `${DIR}/wrong.verifier-state.json`, "--xrpl-rpc", XRPL_RPC, "--pool", config.pool, "--signers", signerAddrs, "--quorum", "3"], { encoding: "utf8", timeout: 60000 });
+    assert(wrong.status !== 0 && /custody/.test(wrong.stderr) && /SignerQuorum is 2, expected 3/.test(wrong.stderr), `node with the wrong quorum must refuse to start: ${wrong.status} ${wrong.stderr}`);
+    const stranger = spawnSync(NODE_BIN, ["--listen", "127.0.0.1:7398", "--state", `${DIR}/wrong.verifier-state.json`, "--xrpl-rpc", XRPL_RPC, "--pool", config.pool, "--signers", `${aliceXrpl.address},${config.signers[1].address},${config.signers[2].address}`, "--quorum", "2"], { encoding: "utf8", timeout: 60000 });
+    assert(stranger.status !== 0 && /differ from the configured/.test(stranger.stderr), `node with a foreign signer set must refuse to start: ${stranger.stderr}`);
+    step("custody gate: nodes configured for another quorum or signer set refuse to start");
+    const newNode = spawn(NODE_BIN, ["--listen", "127.0.0.1:7399", "--state", `${DIR}/newnode.verifier-state.json`, "--xrpl-rpc", XRPL_RPC, "--pool", config.pool, "--signers", signerAddrs, "--quorum", String(config.quorum), "--mirror", `${q.nodeUrl(0)}/log`, "--rebuild"], { stdio: ["ignore", "ignore", "pipe"] });
     let newNodeErr = ""; newNode.stderr.on("data", (d) => { newNodeErr += d.toString(); });
     let st = null;
     for (let t = 0; t < 150 && !st; t++) { try { st = await http("GET", "http://127.0.0.1:7399/state"); } catch { await new Promise((r) => setTimeout(r, 200)); } }
     assert(st, `new node did not come up: ${newNodeErr}`);
     const coordState = await http("GET", `${C}/state`);
-    assert(st.root === coordState.root && st.bundleCount === 3 && st.consumedDeposits === 1 && st.anchoredRoot === coordState.root, `new node state differs: ${JSON.stringify(st)} vs ${JSON.stringify(coordState)}`);
+    assert(st.root === coordState.root && st.bundleCount === 4 && st.consumedDeposits === 1 && st.anchoredRoot === coordState.root, `new node state differs: ${JSON.stringify(st)} vs ${JSON.stringify(coordState)}`);
     newNode.kill("SIGTERM");
     step("new node rebuilt from account_tx anchor memos + mirror with every deposit re-validated; root equals the quorum's", { bundles: st.bundleCount });
 
