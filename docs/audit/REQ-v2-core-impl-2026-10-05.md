@@ -83,7 +83,12 @@ before and after)
 | C2 memo decode: trailing bytes | RED ✔ | anchor_memo_codec_rejects_malformed_bytes_and_oversize |
 | C3 memo decode: version hard-reject | RED ✔ | anchor_memo_codec_rejects_malformed_bytes_and_oversize |
 
-Baseline green before and after every mutation (23 guards: D1–D5 deposit binding, E1–E7 endorse, M1–M2 check_memo, R1–R4 rebuild/replay, W1–W2 wallet sync, C1–C3 memo codec). Earlier run: the duplicate early consumed-deposit check in `submit_shield` was found HOLLOW (same refusal from `accept`) and removed; the single remaining check (D2) is red on the shield-specific tests.
+| J1 rebuild_checked: deposit facts required for every shield | RED ✔ | anchor_memos_round_trip_and_rebuild_the_verifier |
+| J2 rebuild_checked: lookup answers for the memo's tx hash | RED ✔ | anchor_memos_round_trip_and_rebuild_the_verifier |
+| J3 rebuild_checked: memo == bundle hash (deposit binding) | RED ✔ | anchor_memos_round_trip_and_rebuild_the_verifier |
+| J4 rebuild_checked: delivered == −valueBalance | RED ✔ | anchor_memos_round_trip_and_rebuild_the_verifier |
+
+Baseline green before and after every mutation (27 guards after the IMPL-PASS condition landed in-core: D1–D5 deposit binding, E1–E7 endorse, M1–M2 check_memo, R1–R4 rebuild/replay, W1–W2 wallet sync, C1–C3 memo codec). Earlier run: the duplicate early consumed-deposit check in `submit_shield` was found HOLLOW (same refusal from `accept`) and removed; the single remaining check (D2) is red on the shield-specific tests.
 
 ## 4. Coverage and profiles
 
@@ -95,5 +100,8 @@ pool's invariants). `cargo test --release` (CI's profile) green.
 
 - **Q-V2I-1** Anything in the `endorse` order (memo-vs-submission equality → own deposit state → own
   tail → own root → apply) you want changed?
-- **Q-V2I-2** `rebuild` trusts the memo's `op`/`external` and re-verifies everything else; the
-  deposit itself is re-validated by the XRPL side (harness does it). Acceptable split?
+- **Q-V2I-2** (answered after the ruling, in this slice): `Verifier::rebuild_checked` now enforces
+  backing on join inside the core from the XRPL side's ledger facts (J1–J4 above); `rebuild`
+  (crypto-only, backing deferred to the k-quorum) remains for non-signing nodes and is labeled so.
+  The harness join path uses `rebuild_checked` for the new node and the lagging signer and asserts
+  that wrong or missing deposit facts refuse the join.
