@@ -677,6 +677,17 @@ fn verifier_snapshot_restore_keeps_nullifiers_and_consumed_deposits() {
         Verifier::restore(&bad),
         Err(Error::DepositRequired)
     ));
+    // Two shields in a log claiming the same deposit: the second is refused on replay.
+    let mut v2 = Verifier::new();
+    let mut carol = Wallet::new();
+    shield(&mut v2, &mut carol, 1, "DUP");
+    shield(&mut v2, &mut carol, 2, "OTHER");
+    let mut bad = v2.snapshot();
+    bad.records[1].external = "DUP".into();
+    assert!(matches!(
+        Verifier::restore(&bad),
+        Err(Error::DepositConsumed(_))
+    ));
     let mut bad = v.snapshot();
     bad.anchored_root = Some("00".repeat(32));
     assert!(matches!(Verifier::restore(&bad), Err(Error::UnknownAnchor)));
