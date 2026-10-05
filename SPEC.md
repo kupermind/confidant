@@ -293,7 +293,8 @@ deposit from the ledger itself) and `POST /anchored`; a **signer sidecar** (Node
 signer's key and signs an anchor/payout only after *its own* node endorsed and the transaction's
 shape matches that endorsement; the **coordinator** (Node) accepts `POST /submit/*`, fans out, assembles
 ≥ k signatures and submits anchor then payout. Core call mapping and error → HTTP mapping:
-`docs/CORE-API.md`; services: `backend/README.md`.
+`docs/CORE-API.md`; services: `backend/README.md`; the contract the UI consumes and the hand-off
+between the two leads: `docs/API-BOUNDARY.md`.
 
 What a sidecar pins beyond the Payment's shape (audit condition C1): **Fee ≤ a ceiling** (the pool
 pays fees; unbounded, it is a drain), **Sequence = the pool account's next sequence as the sidecar

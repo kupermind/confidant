@@ -1,0 +1,6 @@
+# `systemctl start confidant.target` brings up every node, every sidecar and the coordinator.
+[Unit]
+Description=Confidant quorum services (verifier nodes, signer sidecars, coordinator)
+
+[Install]
+WantedBy=multi-user.target

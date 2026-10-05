@@ -1,0 +1,24 @@
+# One signer sidecar (Node, xrpl.js): the ONLY process holding a signer key. Instance %i = 1..N.
+# Env: common.env + signer-%i.env (PORT, NODE_URL, KEY_FILE, SINK, MAX_FEE_DROPS).
+[Unit]
+Description=Confidant signer sidecar %i (signs only what its own node endorsed)
+After=network-online.target confidant-node@%i.service
+Wants=network-online.target
+Requires=confidant-node@%i.service
+PartOf=confidant.target
+
+[Service]
+User=confidant
+Group=confidant
+WorkingDirectory=/srv/confidant/repo/backend/quorum
+EnvironmentFile=/srv/confidant/env/common.env
+EnvironmentFile=/srv/confidant/env/signer-%i.env
+ExecStart=/usr/bin/node /srv/confidant/repo/backend/quorum/signer.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+PrivateTmp=true
+
+[Install]
+WantedBy=confidant.target
