@@ -60,3 +60,4 @@ desktop.ini
 *.pool-state.json
 *.wallet.json
 *.verifier-state.json
+*.key.json

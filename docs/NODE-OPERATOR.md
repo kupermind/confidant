@@ -53,3 +53,13 @@ For each proposal from a coordinator you receive `{submission, proposedMemo}`:
 If you fall behind (missed a proposal), `endorse` refuses; catch up with `rebuild` from the ledger
 and the mirror. The reference implementation of a coordinator and three signers is
 `e2e/testnet/run.mjs`.
+
+
+## Running it as services (`backend/`)
+
+- **Verifier node** (Rust): `confidant-node --listen 127.0.0.1:7001 --state data/n1.verifier-state.json --xrpl-rpc https://s.altnet.rippletest.net:51234 --pool <pool>`; add `--rebuild --mirror http://<any node>/log` to join from the ledger (the scanner reads `account_tx`, re-validates every shield's deposit and refuses to start on any mismatch). It holds no keys.
+- **Signer sidecar** (Node, `backend/quorum/signer.mjs`): `PORT NODE_URL POOL SINK KEY_FILE` — holds your XRPL key, signs only what *your* node endorsed and only transactions whose shape matches that endorsement.
+- **Coordinator** (Node, `backend/quorum/coordinator.mjs`): `PORT NODE_URL NODES SIGNERS QUORUM POOL SINK XRPL_WS` — the public entry point; holds no keys.
+- `backend/quorum/setup-pool.mjs` installs the SignerList and disables the master key; `start-all.mjs` launches everything from `data/quorum/config.json`.
+
+What a sidecar refuses, by construction: an anchor whose memo differs from the one its node endorsed, an anchor not paid pool → sink for 1 drop, a payout whose destination or amount differs from its node's `payout`, any transaction from another account, anything when its node refuses. The coordinator's claims never reach a signature.

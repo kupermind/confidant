@@ -4,7 +4,8 @@
   "type": "module",
   "description": "End-to-end harness: the Confidant demo script on XRPL testnet, driving the core through its CLI. Uses a local Node 22 (devDependency `node`) because xrpl 5.x's dependency tree is ESM-only and needs require(esm).",
   "scripts": {
-    "e2e": "node run.mjs"
+    "e2e": "node run.mjs",
+    "e2e:services": "node run-services.mjs"
   },
   "dependencies": {
     "xrpl": "^5.3.0"

@@ -1,0 +1,22 @@
+[package]
+name = "confidant-node"
+version = "0.0.1"
+description = "Confidant verifier node: HTTP over confidant-core's Verifier, with on-ledger deposit lookup, idempotent endorse and a startup scanner (rebuild_checked from the pool account's anchor memos)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+confidant-core = { path = "../../core" }
+axum.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

@@ -36,7 +36,10 @@ jobs:
       # Every line of the core is exercised by its tests; a drop below 100% fails the build.
       # Regions/functions are reported for information (unreachable `?` error branches on
       # library calls that cannot fail under the pool's invariants stay as missed regions).
-      - run: cargo llvm-cov --workspace --all-targets --fail-under-lines 100
+      - run: cargo llvm-cov -p confidant-core --all-targets --fail-under-lines 100
+      # The node is tested against a fake ledger; `main.rs` and the real JSON-RPC client (`rpc.rs`)
+      # need a process and a network and are exercised by the testnet harness instead.
+      - run: cargo llvm-cov -p confidant-node --all-targets --ignore-filename-regex '(main|rpc)\.rs' --fail-under-lines 95
 
   hygiene:
     name: hygiene (no secrets)
@@ -88,7 +91,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --release --example cli
+      - run: cargo build --release --example cli --bin confidant-node
       - uses: actions/setup-node@v4
         with:
           node-version: 22

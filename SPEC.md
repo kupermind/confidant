@@ -52,8 +52,8 @@ stylized wordmark `C0nf!d@nt` only for the banner, demo and social flair; identi
 
 | Role | Owns | Where |
 |---|---|---|
-| **Crypto/ZK lead** | the Rust core: `Wallet`, `Verifier`, circuit reuse, tree, nullifiers, deposit binding, anchor memos, reveal; the CLI test tool and the e2e harness; tests, coverage, the audit cycle | `core/`, `e2e/testnet/`, `docs/audit/`, `docs/CORE-API.md`, `docs/E2E.md`, `docs/NODE-OPERATOR.md` |
-| **API/XRPL lead** (repo owner) | the HTTP layer over `Verifier` (`GET /log`, `POST /submit/*`, `POST /audit/reveal`), signer services, the memo scanner, everything XRPL in the front-end (deposit memo, local wallet), UI, demo script, pitch | `backend/`, `frontend/`, `scripts/` |
+| **Crypto/ZK lead** | the Rust core: `Wallet`, `Verifier`, circuit reuse, tree, nullifiers, deposit binding, anchor memos, reveal; the **quorum services** (`backend/`: Rust verifier node with scanner and `/endorse`, Node signer sidecars, coordinator, setup/launch scripts); the CLI test tool and the e2e harnesses; tests, coverage, the audit cycle | `core/`, `backend/`, `e2e/testnet/`, `docs/audit/`, `docs/CORE-API.md`, `docs/E2E.md`, `docs/NODE-OPERATOR.md` |
+| **API/XRPL lead** (repo owner) | the user-facing layer: local wallet UX, the deposit Payment with memo from the user's account, the UI over the coordinator, pre-population, demo script, pitch | `frontend/`, `scripts/` |
 | **Audit session** | answers `REQ-*` with `RESP-*` verdicts; never merges | `docs/audit/` (committed verbatim by the lead) |
 
 ---
@@ -287,14 +287,19 @@ deposit checks trusts the quorum on backing, which adds no risk beyond the conce
 | `POST /audit/reveal` | convenience over the public log | `viewingKey` | `balance`, `notes[]` |
 
 No `owner`, no `senderAuth`: the spend-authorization signatures inside the bundle are the
-authorization. A signer service takes `{submission, proposedMemo}` and returns a signature only
-after a successful `endorse`. Core call mapping and error → HTTP mapping: `docs/CORE-API.md`.
+authorization. Implemented in `backend/`: the **verifier node** (`confidant-node`, Rust) serves
+these plus `POST /endorse {submission, proposedMemoHex}` (idempotent; the node re-reads a shield's
+deposit from the ledger itself) and `POST /anchored`; a **signer sidecar** (Node, xrpl.js) holds one
+signer's key and signs an anchor/payout only after *its own* node endorsed and the transaction's
+shape matches that endorsement; the **coordinator** (Node) accepts `POST /submit/*`, fans out, assembles
+≥ k signatures and submits anchor then payout. Core call mapping and error → HTTP mapping:
+`docs/CORE-API.md`; services: `backend/README.md`.
 
 ---
 
 ## 7. The XRPL side (API/XRPL lead)
 
-Reference for every step: `e2e/testnet/run.mjs` (xrpl.js), to be lifted into backend and front-end.
+Implemented in `backend/quorum/` (xrpl.js) and exercised by `e2e/testnet/run.mjs` and `run-services.mjs`; the front-end only needs the deposit Payment with the memo and calls to the coordinator.
 
 - **Pool account.** `SignerListSet` with quorum k of N signer keys, then `AccountSet
   asfDisableMaster`. Exercised on testnet with 2 of 3.
@@ -323,11 +328,14 @@ core/src/   wallet.rs (Wallet), verifier.rs (Verifier, endorse, rebuild*), recor
 core/tests/ verifier.rs (negative suite v1 + v2), e2e_demo.rs (demo with two signers and a
             rebuilding node), common/
 core/examples/ cli.rs (wallet and verifier roles — test tool), demo.rs
-e2e/testnet/ XRPL testnet harness (xrpl.js): 2-of-3 quorum, anchors, payout, new node
+backend/node/  confidant-node: Rust verifier node (HTTP over Verifier, ledger reads, scanner, /endorse)
+backend/quorum/ signer.mjs (sidecar: holds a signer key, signs only what its node endorsed),
+               coordinator.mjs (k-of-N multisig, anchor then payout), setup-pool.mjs, start-all.mjs, lib.mjs
+e2e/testnet/ XRPL testnet harnesses (xrpl.js): run.mjs (CLI-driven), run-services.mjs (through backend/)
 docs/audit/  REQ/RESP of every round, INDEX.md
 docs/CORE-API.md, docs/E2E.md, docs/NODE-OPERATOR.md
 .github/workflows/check.yml  CI: fmt / clippy / tests (release) / 100% line coverage / hygiene / manual e2e
-backend/, frontend/, scripts/   — the API/XRPL lead's area (not started)
+frontend/, scripts/   — the API/XRPL lead's area (not started)
 README.md, SPEC.md, SPEC.ru.md, ROADMAP.md, CLAUDE.md
 ```
 
@@ -346,7 +354,7 @@ no WASM, no `xrpl-rust`.
 | **M3 — anchor** | an anchor memo per op, multisigned by the quorum; re-verifiable and rebuildable from the ledger | ✅ (testnet, twice) | ⬜ |
 | **M4 — unshield** | `POST /submit/unshield` → multisigned payout to a fresh address | ✅ (testnet) | ⬜ |
 | **M5 — disclosure + demo** | `POST /audit/reveal`; UI drives the script; rehearsed on the real explorer | ✅ reveal | ⬜ UI, demo |
-| **v2 — trust minimization** | Wallet/Verifier, deposit binding, anchor memos, k-of-N, permissionless relaying | ✅ (PR #8, 2026-10-05) | ⬜ endpoints, signer services, scanner |
+| **v2 — trust minimization** | Wallet/Verifier, deposit binding, anchor memos, k-of-N, permissionless relaying | ✅ core (PR #8) · ✅ services (`backend/`) | ⬜ wallet UX, UI |
 
 ---
 
@@ -469,10 +477,10 @@ Railgun/Tornado-comparable decentralization on today's XRPL, within the week. Th
 
 | Step | Done | Status |
 |---|---|---|
-| 1. Keys and proving on the client | `Wallet` / `Verifier`; the API takes a ready bundle; deposit binding via the memo hash | ✅ core + harness; ⬜ backend/FE |
-| 2. State on the ledger | anchor-memo codec, `rebuild` / `rebuild_checked`, `account_tx` scanner in the harness | ✅ core + harness; ⬜ backend scanner |
-| 3. k-of-N quorum | `endorse` in core; SignerList 2-of-3 with master disabled, multisigned anchors and payout on testnet | ✅ core + harness; ⬜ signer services |
-| 4. Permissionless relaying | any verifier accepts bundles; `export-log` / `rebuild`; `docs/NODE-OPERATOR.md` | ✅; ⬜ `GET /log` endpoint |
+| 1. Keys and proving on the client | `Wallet` / `Verifier`; the API takes a ready bundle; deposit binding via the memo hash | ✅ core + node; ⬜ FE wallet UX |
+| 2. State on the ledger | anchor-memo codec, `rebuild` / `rebuild_checked`, `account_tx` scanner in the node (`--rebuild`) | ✅ |
+| 3. k-of-N quorum | `endorse` in core; node `/endorse`, signer sidecars, coordinator; SignerList 2-of-3 with master disabled on testnet | ✅ |
+| 4. Permissionless relaying | any node accepts bundles and serves `GET /log`; `docs/NODE-OPERATOR.md` | ✅ |
 
 Ceiling without an amendment and the wording — §4.3. Audit records: `REQ/RESP-v2-trust-minimized`,
 `REQ/RESP-v2-core-impl` in `docs/audit/`.

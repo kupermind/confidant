@@ -62,13 +62,26 @@ Reference run (2026-10-05, v2): pool `rQHXk7c3XzGycM2qx651xGnbUnfocoUMxB`; `Sign
 signers endorsed every honest memo, 3/3 refused the lying one, the new node's root equals the last
 anchor.
 
-## 3. What the API-level e2e adds once `backend/` exists (API/XRPL lead)
+## 2b. Through the quorum services — `e2e/testnet/run-services.mjs` (manual)
 
-Same steps through the SPEC v2 endpoints instead of the CLI: `POST /submit/shield` with
-`{bundle, depositTxHash}` accepted only after the service validates the deposit (as the harness
-does) and refuses a bogus hash, amount or memo; `POST /submit/transfer`; `POST /submit/unshield`
-followed by the quorum's payout; `GET /log` serving the mirror a wallet syncs from and a new node
-rebuilds from; `POST /audit/reveal`. The signer side is `Verifier::endorse` behind a small
-"sign this if it is what you computed" endpoint per signer; the coordinator collects ≥ k
-signatures. The harness is written so swapping the `cli(...)` calls for HTTP calls is the only
-change.
+The same demo as a client of the **coordinator**, with real services: 4 Rust verifier nodes (the
+coordinator's and three signers'), 3 signer sidecars, 1 coordinator, launched by the harness from
+`backend/quorum/lib.mjs`. Asserted on top of §2: a bogus deposit hash is refused by the coordinator's
+node (ledger lookup); a duplicate deposit is refused; exactly one pool transaction (the anchor) during
+the private hop; a **signer sidecar refuses** a tampered memo, a re-pointed payout, an inflated payout
+amount, a transaction from another account and an anchor to another destination, and signs the honest
+set; a replay is refused by the coordinator; the unshield is anchored and paid 2-of-3; reveal through
+the coordinator; a **new Rust node started with `--rebuild --mirror`** lands on the quorum's root and
+anchored root with every deposit re-validated.
+
+```bash
+cargo build --release --example cli --bin confidant-node
+cd e2e/testnet && CLI=../../target/release/examples/cli NODE_BIN=../../target/release/confidant-node npm run e2e:services
+```
+
+## 3. What a user-facing API adds on top (API/XRPL lead)
+
+The coordinator already exposes `POST /submit/*`, `GET /log`, `GET /state` and `POST /audit/reveal`.
+What remains for the user-facing layer is the wallet side: a local wallet process (or the CLI) that
+builds bundles, the deposit Payment with memo = bundle hash sent from the user's XRPL account, and a
+UI that drives shield → transfer → unshield → reveal against the coordinator and shows the explorer.
