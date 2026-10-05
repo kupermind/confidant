@@ -20,6 +20,8 @@ NODE_BIN=../../target/release/confidant-node DIR=../../data/quorum npm run start
 #  is not what the ledger shows exits with "pool custody on the ledger is not the configured quorum")
 ```
 
-End to end through these services on testnet: `e2e/testnet/run-services.mjs` (`docs/E2E.md` §2b).
+End to end through these services on testnet: `e2e/testnet/run-services.mjs` (`docs/E2E.md` §2b). Against
+a running coordinator (deployed or local): `npm run smoke` in `backend/quorum` with `POOL` and
+`COORDINATOR_URL`. Server deployment (systemd + nginx): `backend/deploy/README.md`.
 Trust statements, what a sidecar pins, payout recovery: `SPEC.md` §6, `docs/NODE-OPERATOR.md`. Audit:
 `docs/audit/REQ-quorum-services-2026-10-05.md` → `RESP-quorum-services-2026-10-05.md` (DESIGN-PASS, C1–C5).

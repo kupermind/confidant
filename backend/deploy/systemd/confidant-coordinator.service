@@ -1,0 +1,24 @@
+# The coordinator (Node, xrpl.js): holds nothing; the UI's entry point behind nginx.
+# Env: common.env + coordinator.env (PORT, NODE_URL, NODES, SIGNERS (sidecar URLs), SINK, XRPL_WS).
+[Unit]
+Description=Confidant coordinator (k-of-N multisig, anchor then payout; holds no keys)
+After=network-online.target confidant-node@0.service
+Wants=network-online.target
+Requires=confidant-node@0.service
+PartOf=confidant.target
+
+[Service]
+User=confidant
+Group=confidant
+WorkingDirectory=/srv/confidant/repo/backend/quorum
+EnvironmentFile=/srv/confidant/env/common.env
+EnvironmentFile=/srv/confidant/env/coordinator.env
+ExecStart=/usr/bin/node /srv/confidant/repo/backend/quorum/coordinator.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+PrivateTmp=true
+
+[Install]
+WantedBy=confidant.target

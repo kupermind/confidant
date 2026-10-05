@@ -111,6 +111,15 @@ NODE_BIN=../../target/release/confidant-node DIR=../../data/quorum npm run start
 Explorer pages worth a link: the pool account `https://testnet.xrpl.org/accounts/<pool>` (every anchor is a
 1-drop Payment pool → sink with a `confidant/anchor` memo), each deposit, each `anchorTx`, each `payoutTx`.
 
+A server deployment (systemd units per node/sidecar/coordinator, nginx with CORS on one public port) is
+described in `backend/deploy/README.md`; the shared testnet instance's base URL and pool account are
+handed over out of band (never committed). `backend/quorum/smoke.mjs` is a complete client of the
+contract — shield, transfer, unshield, reveal against any running coordinator:
+
+```bash
+cd backend/quorum && POOL=<pool> COORDINATOR_URL=http://<host>:8787 CLI=../../target/release/examples/cli npm run smoke
+```
+
 ## 6. Changing the contract
 
 - **Adding** a response field is backward compatible: just ask (issue or PR comment), it lands the

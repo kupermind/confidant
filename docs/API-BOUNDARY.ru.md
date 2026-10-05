@@ -113,6 +113,15 @@ NODE_BIN=../../target/release/confidant-node DIR=../../data/quorum npm run start
 (каждый якорь — Payment на 1 дроп пул → sink с memo `confidant/anchor`), каждый депозит, каждый
 `anchorTx`, каждый `payoutTx`.
 
+Серверное развёртывание (systemd-юниты на каждый узел/сайдкар/координатор, nginx с CORS на одном
+публичном порту) описано в `backend/deploy/README.md`; базовый URL и аккаунт пула общего testnet-
+инстанса передаются вне репозитория (никогда не коммитятся). `backend/quorum/smoke.mjs` — полный
+клиент контракта: shield, transfer, unshield, reveal против любого работающего координатора:
+
+```bash
+cd backend/quorum && POOL=<pool> COORDINATOR_URL=http://<host>:8787 CLI=../../target/release/examples/cli npm run smoke
+```
+
 ## 6. Как меняется контракт
 
 - **Добавление** поля в ответ обратно совместимо: достаточно попросить (issue или комментарий к PR),
