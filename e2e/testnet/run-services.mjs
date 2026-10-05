@@ -121,8 +121,9 @@ async function main() {
     await expectRefusal("sidecar: payout re-pointed", http("POST", `${S1}/sign`, { txs: [{ kind: "anchor", tx: anchorTx }, { kind: "payout", tx: { ...payoutTx, Destination: aliceXrpl.address } }], submission: sub, memoHex: honest.memoHex }), /destination differs/);
     await expectRefusal("sidecar: payout amount inflated", http("POST", `${S1}/sign`, { txs: [{ kind: "payout", tx: { ...payoutTx, Amount: String(honest.payout.amount * 2) } }], submission: sub, memoHex: honest.memoHex }), /amount differs/);
     await expectRefusal("sidecar: tx from another account", http("POST", `${S1}/sign`, { txs: [{ kind: "anchor", tx: { ...anchorTx, Account: aliceXrpl.address } }], submission: sub, memoHex: honest.memoHex }), /not the pool/);
+    await expectRefusal("sidecar: anchor fee inflated", http("POST", `${S1}/sign`, { txs: [{ kind: "anchor", tx: { ...anchorTx, Fee: "1000000" } }], submission: sub, memoHex: honest.memoHex }), /fee missing or above/);
     await expectRefusal("sidecar: anchor to another destination", http("POST", `${S1}/sign`, { txs: [{ kind: "anchor", tx: { ...anchorTx, Destination: aliceXrpl.address } }], submission: sub, memoHex: honest.memoHex }), /not the sink/);
-    step("signer sidecar refused: tampered memo, re-pointed payout, inflated payout, foreign account, wrong anchor destination");
+    step("signer sidecar refused: tampered memo, re-pointed payout, inflated payout, foreign account, inflated fee, wrong anchor destination");
     // Note: signer1's node has now endorsed the honest unshield (idempotent) — the quorum flow below reuses it.
 
     // ---- 3. unshield through the coordinator (its node already accepted it; the coordinator path

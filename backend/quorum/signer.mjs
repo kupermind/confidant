@@ -7,12 +7,13 @@
 //     3. only then sign each tx with the multisign flag and return the blobs
 //   GET  /address
 //
-// Env: PORT, NODE_URL, POOL, SINK, KEY_FILE (JSON {address, seed}, 0600). The sidecar keeps no
+// Env: PORT, NODE_URL, POOL, SINK, KEY_FILE (JSON {address, seed}, 0600), MAX_FEE_DROPS (default 5000). The sidecar keeps no
 // verifier state; the node does. Nothing from the coordinator reaches a signature unverified.
 
 import { serve, http, refuse, checkTxShape, loadWallet } from "./lib.mjs";
 
 const { PORT, NODE_URL, POOL, SINK, KEY_FILE } = process.env;
+const MAX_FEE_DROPS = Number(process.env.MAX_FEE_DROPS ?? 5000);
 if (!PORT || !NODE_URL || !POOL || !SINK || !KEY_FILE) {
   console.error("signer: need PORT, NODE_URL, POOL, SINK, KEY_FILE");
   process.exit(2);
@@ -33,7 +34,7 @@ await serve(Number(PORT), {
       throw refuse(409, `my node refused to endorse: ${e.message}`, e.details);
     }
     // 2. the transactions must be exactly what that endorsement authorizes.
-    for (const { kind, tx } of txs) checkTxShape(kind, tx, { pool: POOL, sink: SINK, memoHex, endorse });
+    for (const { kind, tx } of txs) checkTxShape(kind, tx, { pool: POOL, sink: SINK, memoHex, endorse, maxFeeDrops: MAX_FEE_DROPS });
     // 3. sign.
     const blobs = txs.map(({ kind, tx }) => ({ kind, tx_blob: wallet.sign(tx, true).tx_blob }));
     return { signer: wallet.address, endorsedRoot: endorse.newRoot, blobs };

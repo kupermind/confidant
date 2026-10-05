@@ -67,9 +67,11 @@ export function firstMemo(txJson) {
  *   payout: Payment pool → endorse.payout.destination for exactly endorse.payout.amount drops
  * Anything else — another account, another destination, another amount, extra memos — is refused.
  */
-export function checkTxShape(kind, tx, { pool, sink, memoHex, endorse }) {
+export const DEFAULT_MAX_FEE_DROPS = 5000;
+export function checkTxShape(kind, tx, { pool, sink, memoHex, endorse, maxFeeDrops = DEFAULT_MAX_FEE_DROPS }) {
   if (tx?.TransactionType !== "Payment") throw refuse(409, `${kind}: not a Payment`);
   if (tx.Account !== pool) throw refuse(409, `${kind}: Account is not the pool`);
+  if (!/^[0-9]{1,15}$/.test(String(tx.Fee)) || Number(tx.Fee) > maxFeeDrops) throw refuse(409, `${kind}: fee missing or above ${maxFeeDrops} drops`);
   if (kind === "anchor") {
     if (tx.Destination !== sink) throw refuse(409, "anchor: destination is not the sink");
     if (tx.Amount !== "1") throw refuse(409, "anchor: amount is not 1 drop");
