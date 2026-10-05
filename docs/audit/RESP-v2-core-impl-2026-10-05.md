@@ -42,5 +42,9 @@ Net: merge the core slice. The two open items are (1) harness backing re-validat
   non-signing nodes and says so in its docs. The harness join path uses `rebuild_checked` with a
   deposits file built by validating every shield memo's deposit on-ledger, and asserts that wrong
   or missing deposit facts refuse the join. Tests + mutations added.
-- Hardening note taken: the frontier/tree root cross-check is now `assert_eq!` (fails closed in
-  release too; same posture as the `external_ctx` expect).
+- Hardening note taken: the frontier/tree root cross-check is `assert_eq!` (fails closed in
+  release too; same posture as the `external_ctx` expect). **Correction (2026-10-05, auditor's
+  post-merge review):** this was reported done in PR #8 but had NOT landed — the scripted edit
+  silently missed the rustfmt-reflowed `debug_assert_eq!` and `main @c2a041f` still carried the
+  debug-only assert at `tree.rs:103`. Fixed forward in PR #10 (`fix-tree-release-assert`), verified
+  by reading the file and by finding the assert message in the release binary.
