@@ -18,8 +18,10 @@
 //!
 //! Notes are non-custodial: only the wallet can spend them or read them. The pool account and
 //! proof verification are federated: a k-of-N quorum of verifiers re-checks every proof and every
-//! deposit before signing; collusion of k signers can drain the pool account but cannot spend
-//! anyone's notes. Hidden on ledger: sender, receiver and amount of every internal hop. Public:
+//! deposit and signs only a root it computed itself ([`Verifier::endorse`]). **Collusion of k
+//! signers can drain the pool account**; it cannot spend anyone's notes. k-of-N because today's
+//! XRPL has no on-ledger Halo 2 verifier; an amendment adding one upgrades this to on-ledger
+//! verification. Hidden on ledger: sender, receiver and amount of every internal hop. Public:
 //! shield and unshield amounts and addresses. Nothing here is "untraceable" or "trustless".
 
 pub mod error;
@@ -37,7 +39,7 @@ pub use error::Error;
 pub use memo::AnchorMemo;
 pub use sighash::OpTag;
 pub use types::*;
-pub use verifier::{Params, Verifier, VerifierSnapshot, BUNDLE_VERSION};
+pub use verifier::{Params, Submission, Verifier, VerifierSnapshot, BUNDLE_VERSION};
 pub use wallet::{Prepared, Wallet, WalletSecret};
 
 /// Re-exported so the API layer can name Orchard types without a second dependency line.

@@ -14,8 +14,8 @@ use confidant_core::orchard::Anchor;
 use confidant_core::record::{bundle_from_record, bundle_hash, record_from_bundle};
 use confidant_core::sighash::sighash;
 use confidant_core::{
-    BundleRecord, DepositRef, Direction, Error, OpTag, Verifier, VerifierSnapshot, Wallet,
-    WalletSecret,
+    BundleRecord, DepositRef, Direction, Error, OpTag, Submission, Verifier, VerifierSnapshot,
+    Wallet, WalletSecret,
 };
 use rand::rngs::OsRng;
 
@@ -778,13 +778,13 @@ fn anchor_memos_round_trip_and_rebuild_the_verifier() {
 
     // A new node rebuilds from the memos plus a mirror and lands on the same root.
     let mirror_log: Vec<BundleRecord> = v.records().to_vec();
-    let mirror = |h: &[u8; 32]| {
+    let mut mirror = |h: &[u8; 32]| {
         mirror_log
             .iter()
             .find(|r| bundle_hash(r).unwrap() == *h)
             .cloned()
     };
-    let node = Verifier::rebuild(&memos, mirror).unwrap();
+    let node = Verifier::rebuild(&memos, &mut mirror).unwrap();
     assert_eq!(node.state().root, v.state().root);
     assert_eq!(node.anchor_history(), v.anchor_history());
     assert!(node.is_deposit_consumed("D1"));
@@ -795,18 +795,17 @@ fn anchor_memos_round_trip_and_rebuild_the_verifier() {
 
     // Mirror serves nothing / a wrong bundle / a memo claims a wrong root or actions.
     assert!(matches!(
-        Verifier::rebuild(&memos, |_| None),
+        Verifier::rebuild(&memos, &mut |_| None),
         Err(Error::MirrorMissing(_))
     ));
-    let wrong = |_: &[u8; 32]| Some(mirror_log[1].clone());
     assert!(matches!(
-        Verifier::rebuild(&memos, wrong),
+        Verifier::rebuild(&memos, &mut |_| Some(mirror_log[1].clone())),
         Err(Error::BundleHashMismatch)
     ));
     let mut bad_root = memos.clone();
     bad_root[2].root[0] ^= 1;
     assert!(matches!(
-        Verifier::rebuild(&bad_root, mirror),
+        Verifier::rebuild(&bad_root, &mut mirror),
         Err(Error::MemoMismatch {
             index: 2,
             what: "root"
@@ -815,7 +814,7 @@ fn anchor_memos_round_trip_and_rebuild_the_verifier() {
     let mut bad_actions = memos.clone();
     bad_actions[1].actions.swap(0, 1);
     assert!(matches!(
-        Verifier::rebuild(&bad_actions, mirror),
+        Verifier::rebuild(&bad_actions, &mut mirror),
         Err(Error::MemoMismatch {
             index: 1,
             what: "actions"
@@ -825,7 +824,7 @@ fn anchor_memos_round_trip_and_rebuild_the_verifier() {
     let mut bad_ext = memos.clone();
     bad_ext[2].external = "rAttacker".into();
     assert!(matches!(
-        Verifier::rebuild(&bad_ext, mirror),
+        Verifier::rebuild(&bad_ext, &mut mirror),
         Err(Error::InvalidSpendAuth)
     ));
 }
@@ -1032,6 +1031,8 @@ fn accessors_defaults_and_error_messages() {
     assert!(!v.is_spent(&[0u8; 32]));
     assert!(!v.is_deposit_consumed("x"));
     assert!(matches!(v.witness(0), Err(Error::NoWitness(0))));
+    let mut tree = confidant_core::tree::CommitmentTree::default();
+    assert!(matches!(tree.append_batch(&[]), Err(Error::Tree(_))));
     let w = Wallet::default();
     assert_eq!(w.balance(), 0);
     assert_eq!(w.synced(), 0);
@@ -1112,4 +1113,195 @@ fn accessors_defaults_and_error_messages() {
     ] {
         assert!(!e.to_string().is_empty());
     }
+}
+
+// ----- signers: no blind signing (v2, audit Q-V2-5) --------------------------------------
+
+#[test]
+fn signer_endorses_only_a_root_it_computed_itself() {
+    let mut coord = Verifier::new();
+    let mut s1 = Verifier::new();
+    let mut s2 = Verifier::new();
+    let mut alice = Wallet::new();
+    let mut bob = Wallet::new();
+
+    // Shield: the coordinator accepts and proposes the memo; both signers reproduce it.
+    alice.sync(coord.records()).unwrap();
+    let p = alice.build_shield(100).unwrap();
+    let dep = deposit_for(&p, "D1", 100);
+    let acc = coord.submit_shield(&p.record, &dep).unwrap();
+    let memo0 = coord.anchor_memo(0).unwrap();
+    let sub0 = Submission::Shield {
+        record: p.record.clone(),
+        deposit: dep.clone(),
+    };
+    // The coordinator → signer message round-trips through JSON.
+    let sub0: Submission = serde_json::from_str(&serde_json::to_string(&sub0).unwrap()).unwrap();
+    let e = s1.endorse(&sub0, &memo0).unwrap();
+    assert_eq!(e.new_root, acc.new_root);
+    assert_eq!(e.bundle_hash, acc.bundle_hash);
+    s2.endorse(&sub0, &memo0).unwrap();
+    assert_eq!(s1.state().root, coord.state().root);
+    assert_eq!(s2.state().root, coord.state().root);
+    assert!(s1.is_deposit_consumed("D1"));
+
+    // Transfer: signer 1 follows, signer 2 is not told about it.
+    alice.sync(coord.records()).unwrap();
+    let t = alice
+        .build_transfer(&[out(&bob.info().address, 60)])
+        .unwrap();
+    coord.submit_transfer(&t.record).unwrap();
+    let memo1 = coord.anchor_memo(1).unwrap();
+    s1.endorse(
+        &Submission::Transfer {
+            record: t.record.clone(),
+        },
+        &memo1,
+    )
+    .unwrap();
+
+    // Unshield: a lying coordinator is refused field by field, and the signer's state is unchanged.
+    bob.sync(coord.records()).unwrap();
+    let u = bob.build_unshield(25, "rBob").unwrap();
+    coord.submit_unshield(&u.record, "rBob").unwrap();
+    let memo2 = coord.anchor_memo(2).unwrap();
+    let sub2 = Submission::Unshield {
+        record: u.record.clone(),
+        destination: "rBob".into(),
+    };
+    let before = state_json(&s1);
+    let mut lie = memo2.clone();
+    lie.root[0] ^= 1;
+    assert!(matches!(
+        s1.endorse(&sub2, &lie),
+        Err(Error::MemoMismatch {
+            index: 2,
+            what: "root"
+        })
+    ));
+    let mut lie = memo2.clone();
+    lie.bundle_hash[0] ^= 1;
+    assert!(matches!(
+        s1.endorse(&sub2, &lie),
+        Err(Error::MemoMismatch {
+            what: "bundle hash",
+            ..
+        })
+    ));
+    let mut lie = memo2.clone();
+    lie.external = "rAttacker".into();
+    assert!(matches!(
+        s1.endorse(&sub2, &lie),
+        Err(Error::MemoMismatch {
+            what: "external context",
+            ..
+        })
+    ));
+    let mut lie = memo2.clone();
+    lie.op = OpTag::Transfer;
+    assert!(matches!(
+        s1.endorse(&sub2, &lie),
+        Err(Error::MemoMismatch { what: "op", .. })
+    ));
+    let mut lie = memo2.clone();
+    lie.actions.swap(0, 1);
+    assert!(matches!(
+        s1.endorse(&sub2, &lie),
+        Err(Error::MemoMismatch {
+            what: "actions",
+            ..
+        })
+    ));
+    // A consistent memo for a re-pointed payout: the bundle's signatures do not cover it.
+    let mut repointed = memo2.clone();
+    repointed.external = "rAttacker".into();
+    assert!(matches!(
+        s1.endorse(
+            &Submission::Unshield {
+                record: u.record.clone(),
+                destination: "rAttacker".into(),
+            },
+            &repointed
+        ),
+        Err(Error::InvalidSpendAuth)
+    ));
+    assert!(matches!(
+        s1.endorse(
+            &Submission::Unshield {
+                record: u.record.clone(),
+                destination: "".into(),
+            },
+            &memo2
+        ),
+        Err(Error::Build(_))
+    ));
+    assert_eq!(state_json(&s1), before, "a refusing signer changed nothing");
+
+    // The honest memo is endorsed and the signer agrees with the coordinator.
+    let e = s1.endorse(&sub2, &memo2).unwrap();
+    assert_eq!(e.payout.unwrap().destination, "rBob");
+    assert_eq!(s1.state().root, coord.state().root);
+
+    // Signer 2 skipped the transfer: on its own state the unshield cannot be endorsed.
+    assert!(matches!(
+        s2.endorse(&sub2, &memo2),
+        Err(Error::UnknownAnchor) | Err(Error::MemoMismatch { what: "root", .. })
+    ));
+    assert_eq!(s2.state().bundle_count, 1);
+    // After catching up through the public log it agrees.
+    s2.replay(&coord.records()[1]).unwrap();
+    s2.endorse(&sub2, &memo2).unwrap();
+    assert_eq!(s2.state().root, coord.state().root);
+
+    // Shield-specific refusals through endorse: wrong memo binding, consumed deposit, replay.
+    alice.sync(coord.records()).unwrap();
+    let p2 = alice.build_shield(7).unwrap();
+    let dep2 = deposit_for(&p2, "D2", 7);
+    let mut wrong = dep2.clone();
+    wrong.memo_hash = dep.memo_hash.clone();
+    coord.submit_shield(&p2.record, &dep2).unwrap();
+    let memo3 = coord.anchor_memo(3).unwrap();
+    assert!(matches!(
+        s1.endorse(
+            &Submission::Shield {
+                record: p2.record.clone(),
+                deposit: wrong
+            },
+            &memo3
+        ),
+        Err(Error::DepositBindingMismatch)
+    ));
+    let mut reused = dep2.clone();
+    reused.tx_hash = "D1".into();
+    let mut memo_reused = memo3.clone();
+    memo_reused.external = "D1".into();
+    assert!(matches!(
+        s1.endorse(
+            &Submission::Shield {
+                record: p2.record.clone(),
+                deposit: reused
+            },
+            &memo_reused
+        ),
+        Err(Error::DepositConsumed(_))
+    ));
+    s1.endorse(
+        &Submission::Shield {
+            record: p2.record.clone(),
+            deposit: dep2.clone(),
+        },
+        &memo3,
+    )
+    .unwrap();
+    assert!(matches!(
+        s1.endorse(
+            &Submission::Shield {
+                record: p2.record.clone(),
+                deposit: dep2
+            },
+            &memo3
+        ),
+        Err(Error::DepositConsumed(_))
+    ));
+    assert_eq!(s1.state().root, coord.state().root);
 }

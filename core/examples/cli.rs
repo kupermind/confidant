@@ -285,7 +285,7 @@ fn verifier_cmd(state: PathBuf, args: &[String]) {
                 .map(|h| AnchorMemo::decode_hex(h).unwrap_or_else(|e| die(e)))
                 .collect();
             let log: Vec<BundleRecord> = read_json(Path::new(arg(a, 1, "log.json")));
-            let v = Verifier::rebuild(&memos, |h| {
+            let v = Verifier::rebuild(&memos, &mut |h| {
                 log.iter()
                     .find(|r| confidant_core::record::bundle_hash(r).ok() == Some(*h))
                     .cloned()

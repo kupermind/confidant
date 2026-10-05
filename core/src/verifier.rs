@@ -21,6 +21,18 @@ use crate::sighash::{external_ctx, sighash, OpTag};
 use crate::tree::CommitmentTree;
 use crate::types::*;
 
+/// The deposit memo must commit to exactly this bundle: `memo_hash == BLAKE2b(bundle)`.
+fn check_deposit_binding(record: &BundleRecord, deposit: &DepositRef) -> Result<(), Error> {
+    let memo: [u8; 32] = hex::decode(deposit.memo_hash.trim())
+        .map_err(|_| Error::InvalidEncoding)?
+        .try_into()
+        .map_err(|_| Error::InvalidEncoding)?;
+    if bundle_hash(record)? != memo {
+        return Err(Error::DepositBindingMismatch);
+    }
+    Ok(())
+}
+
 /// The reused circuit, fixed for this pool: Zcash Orchard under protocol version 2
 /// (`OrchardCircuitVersion::FixedPostNu6_2`), V2 notes, cross-address transfers permitted.
 pub const BUNDLE_VERSION: BundleVersion = BundleVersion::orchard_v2();
@@ -47,6 +59,24 @@ impl Params {
             })
             .clone()
     }
+}
+
+/// What a coordinator hands a signer (and what a client hands any verifier): one of the three
+/// operations with everything needed to validate it independently.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "lowercase")]
+pub enum Submission {
+    Shield {
+        record: BundleRecord,
+        deposit: DepositRef,
+    },
+    Transfer {
+        record: BundleRecord,
+    },
+    Unshield {
+        record: BundleRecord,
+        destination: String,
+    },
 }
 
 /// Public, key-free persisted state. Safe to publish; `restore` replays it through the tail.
@@ -240,6 +270,20 @@ impl Verifier {
         Ok(sh)
     }
 
+    /// Shield-only preconditions on this verifier's own state: a deposit must be named and must
+    /// not already back a shield.
+    fn check_deposit_state(&self, op: OpTag, external: &str) -> Result<(), Error> {
+        if op == OpTag::Shield {
+            if external.is_empty() {
+                return Err(Error::DepositRequired);
+            }
+            if self.consumed_deposits.contains(external) {
+                return Err(Error::DepositConsumed(external.to_owned()));
+            }
+        }
+        Ok(())
+    }
+
     /// Verifies and, only if every check passes, applies a bundle. Any error leaves the
     /// verifier unchanged. Shields must carry the deposit tx hash as `external`.
     fn accept(
@@ -250,16 +294,20 @@ impl Verifier {
         expected_amount: Option<u64>,
         timestamp: u64,
     ) -> Result<Accepted, Error> {
-        if op == OpTag::Shield {
-            if external.is_empty() {
-                return Err(Error::DepositRequired);
-            }
-            if self.consumed_deposits.contains(external) {
-                return Err(Error::DepositConsumed(external.to_owned()));
-            }
-        }
+        self.check_deposit_state(op, external)?;
         self.verify(&bundle, op, external, expected_amount)?;
+        Ok(self.apply_verified(bundle, op, external, timestamp))
+    }
 
+    /// Applies a bundle that passed `check_deposit_state` and `verify` against this exact state.
+    /// Infallible by construction: the in-memory tree cannot fail after a successful verify.
+    fn apply_verified(
+        &mut self,
+        bundle: Bundle<Authorized, i64>,
+        op: OpTag,
+        external: &str,
+        timestamp: u64,
+    ) -> Accepted {
         let nullifiers: Vec<[u8; 32]> = bundle
             .actions()
             .iter()
@@ -276,9 +324,11 @@ impl Verifier {
             .map(|a| MerkleHashOrchard::from_cmx(a.cmx()))
             .collect();
 
-        // First mutation. The in-memory tree cannot fail here after a successful verify.
         let first_leaf = self.tree.leaf_count();
-        let new_root = self.tree.append_batch(&leaves)?;
+        let new_root = self
+            .tree
+            .append_batch(&leaves)
+            .expect("a verified, non-empty bundle appends to an in-memory tree");
 
         for nf in &nullifiers {
             self.nullifiers.insert(*nf);
@@ -295,7 +345,7 @@ impl Verifier {
         });
         self.records.push(record);
         self.bundles.push(bundle);
-        Ok(Accepted {
+        Accepted {
             bundle_index,
             first_leaf,
             new_root: hex::encode(new_root.to_bytes()),
@@ -303,7 +353,7 @@ impl Verifier {
             nullifiers: nullifiers.iter().map(hex::encode).collect(),
             commitments: commitments.iter().map(hex::encode).collect(),
             payout,
-        })
+        }
     }
 
     // ----- submissions (`POST /submit/*`) -------------------------------------------------
@@ -318,19 +368,7 @@ impl Verifier {
         record: &BundleRecord,
         deposit: &DepositRef,
     ) -> Result<Accepted, Error> {
-        if deposit.tx_hash.is_empty() {
-            return Err(Error::DepositRequired);
-        }
-        if self.consumed_deposits.contains(&deposit.tx_hash) {
-            return Err(Error::DepositConsumed(deposit.tx_hash.clone()));
-        }
-        let memo: [u8; 32] = hex::decode(deposit.memo_hash.trim())
-            .map_err(|_| Error::InvalidEncoding)?
-            .try_into()
-            .map_err(|_| Error::InvalidEncoding)?;
-        if bundle_hash(record)? != memo {
-            return Err(Error::DepositBindingMismatch);
-        }
+        check_deposit_binding(record, deposit)?;
         let bundle = bundle_from_record(record, self.params.version)?;
         self.accept(
             bundle,
@@ -339,6 +377,69 @@ impl Verifier {
             Some(deposit.delivered),
             now(),
         )
+    }
+
+    /// A signer's whole duty in one call (no blind signing): validates the coordinator's
+    /// `proposed` memo against the submission and against this signer's **own** state, computes
+    /// the root the transition would produce here, and only if it equals the proposed root
+    /// applies the transition and returns what to sign. Any disagreement refuses and leaves this
+    /// signer's state unchanged.
+    pub fn endorse(
+        &mut self,
+        submission: &Submission,
+        proposed: &AnchorMemo,
+    ) -> Result<Accepted, Error> {
+        let index = self.records.len();
+        let (record, op, external, expected) = match submission {
+            Submission::Shield { record, deposit } => {
+                check_deposit_binding(record, deposit)?;
+                (
+                    record,
+                    OpTag::Shield,
+                    deposit.tx_hash.as_str(),
+                    Some(deposit.delivered),
+                )
+            }
+            Submission::Transfer { record } => (record, OpTag::Transfer, "", None),
+            Submission::Unshield {
+                record,
+                destination,
+            } => {
+                if destination.is_empty() {
+                    return Err(Error::Build("empty destination".into()));
+                }
+                (record, OpTag::Unshield, destination.as_str(), None)
+            }
+        };
+        // The proposed memo must describe exactly this submission...
+        let mismatch = |what: &'static str| Error::MemoMismatch { index, what };
+        if proposed.op != op {
+            return Err(mismatch("op"));
+        }
+        if proposed.external != external {
+            return Err(mismatch("external context"));
+        }
+        if proposed.bundle_hash != bundle_hash(record)? {
+            return Err(mismatch("bundle hash"));
+        }
+        let own_memo = AnchorMemo::from_record(record, [0u8; 32])?;
+        if proposed.actions != own_memo.actions {
+            return Err(mismatch("actions"));
+        }
+        // ...and pass every check against this signer's own state...
+        self.check_deposit_state(op, external)?;
+        let bundle = bundle_from_record(record, self.params.version)?;
+        self.verify(&bundle, op, external, expected)?;
+        // ...and produce, on this signer's own tree, the root the coordinator claims.
+        let leaves: Vec<MerkleHashOrchard> = bundle
+            .actions()
+            .iter()
+            .map(|a| MerkleHashOrchard::from_cmx(a.cmx()))
+            .collect();
+        if self.tree.root_after(&leaves).to_bytes() != proposed.root {
+            return Err(mismatch("root"));
+        }
+        Ok(self.apply_verified(bundle, op, external, now()))
     }
 
     /// Accepts a client-built private hop.
@@ -418,7 +519,7 @@ impl Verifier {
     /// particular verifier.
     pub fn rebuild(
         memos: &[AnchorMemo],
-        mut mirror: impl FnMut(&[u8; 32]) -> Option<BundleRecord>,
+        mirror: &mut dyn FnMut(&[u8; 32]) -> Option<BundleRecord>,
     ) -> Result<Self, Error> {
         let mut v = Self::new();
         for (index, memo) in memos.iter().enumerate() {

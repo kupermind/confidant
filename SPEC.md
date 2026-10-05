@@ -235,6 +235,22 @@ hash from any mirror (`GET /log`) → verify hash and proof → apply → the ro
 **Relaying.** Any client may submit to any verifier; any party may run a verifier from the ledger
 and a mirror; the coordinator can delay but cannot steal, mint or forge.
 
-**What stays weaker than Tornado/Railgun.** Proof verification is by k honest signers, not by
-consensus; collusion of k can drain the pool account. Liveness depends on k signers. Fixing that is
-the amendment above. What is better: Halo 2 needs no trusted setup.
+**The gap, stated prominently.** Proof verification is by k honest signers, not by consensus:
+**collusion of k signers can drain the pool account.** It cannot forge or spend anyone's note. This
+is the real difference from Tornado/Railgun, not a footnote. It is also dated: we verify by k-of-N
+*because today's XRPL has no on-ledger Halo 2 verifier*; an amendment adding one (§Amendment sketch)
+upgrades this design to on-ledger verification without changing the notes, proofs or memos. Liveness
+depends on k signers. What is better than Railgun: Halo 2 needs no trusted setup.
+
+**What a signer must do before signing (no blind signing).** For every submission: re-verify the
+proof on its own state; for a shield, re-validate the deposit on-ledger and its memo binding; check
+the bundle's anchor against its own tree and the nullifiers / deposit against its own sets; **apply
+the transition to its own state and sign only the root it computed itself** — a signer never signs a
+root handed to it. The core exposes this as one call (`Verifier::endorse(submission, proposed memo)`),
+which refuses and leaves the signer's state unchanged when the coordinator's memo disagrees.
+
+**What a rebuilding node trusts.** (A) the soundness of the Halo 2 circuit (no trusted setup);
+(B) the XRPL ledger, i.e. that the k-signed anchors are the real, ordered history of the pool account.
+It re-verifies every proof itself, so note validity (no forged note, no double-spend) does not rest
+on the signers at all. It may re-validate every deposit (pool backing) or defer that to the k-quorum,
+which adds no risk beyond the conceded k-collusion bound.

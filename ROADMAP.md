@@ -146,8 +146,11 @@ proof, so the ceiling is a federated k-of-N). Design: `SPEC.md` §"v2" / `SPEC.r
 Honest label after v2: notes are non-custodial (plaintext never leaves the client); the pool account
 and proof verification sit with a k-of-N quorum of independent verifiers; state is reconstructible
 from the ledger; **collusion of k signers can drain the pool account but cannot spend anyone's
-notes**. Tornado/Railgun verify by consensus; this design cannot, without the amendment in SPEC §15.
-Upside vs. Railgun: Halo 2 has no trusted setup.
+notes** — the real gap vs. Tornado/Railgun, kept prominent. Dated and upgradeable: k-of-N because
+today's XRPL has no on-ledger Halo 2 verifier; an amendment adding one upgrades this to on-ledger
+verification. Signers never blind-sign: each applies the transition to its own state and signs only
+the root it computed (`Verifier::endorse`). Upside vs. Railgun: Halo 2 has no trusted setup.
+Audit: DESIGN-PASS (conditional) 2026-10-05 — `docs/audit/RESP-v2-trust-minimized-2026-10-05.md`.
 
 ## 6. Decisions still open
 

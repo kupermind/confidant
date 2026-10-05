@@ -76,7 +76,7 @@ fn main() {
     let memos: Vec<AnchorMemo> = (0..3).map(|i| verifier.anchor_memo(i).unwrap()).collect();
     let log = verifier.records().to_vec();
     let node = step("new node: rebuild from 3 memos + mirror", || {
-        Verifier::rebuild(&memos, |h| {
+        Verifier::rebuild(&memos, &mut |h| {
             log.iter().find(|r| bundle_hash(r).unwrap() == *h).cloned()
         })
         .unwrap()
