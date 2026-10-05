@@ -165,7 +165,9 @@ async function main() {
   link("AccountSet asfDisableMaster (pool master key disabled)", dm.hash);
   const info = (await client.request({ command: "account_info", account: pool.address, signer_lists: true })).result;
   assert((info.account_data.Flags & 0x00100000) !== 0, "master key still enabled");
-  assert(info.account_data.signer_lists?.[0]?.SignerQuorum === QUORUM, "signer list not set");
+  // rippled API v2 returns signer lists at the result's top level; v1 nested them in account_data.
+  const signerList = (info.signer_lists ?? info.account_data.signer_lists ?? [])[0];
+  assert(signerList?.SignerQuorum === QUORUM && signerList.SignerEntries?.length === SIGNERS, "signer list not set");
   step("pool account is now a 2-of-3 quorum with the master key disabled");
 
   // ---- core: wallets (keys stay in the wallet files), coordinator + 3 signer verifiers

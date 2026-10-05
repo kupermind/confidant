@@ -48,9 +48,15 @@ CLI=../../target/release/examples/cli npm run e2e
 ```
 
 Env: `XRPL_WS` (default `wss://s.altnet.rippletest.net:51233`), `DEPOSIT_XRP` (default 25), `CLI`.
-Needs network access to the testnet and its faucet; a few minutes per run (three faucet calls,
+Needs network access to the testnet and its faucet; about 3½ minutes per run (three faucet calls,
 two single-signed setup transactions, one deposit, three multisigned anchors, one multisigned
 payout).
+
+Reference run (2026-10-05, v2): pool `rQHXk7c3XzGycM2qx651xGnbUnfocoUMxB`; `SignerListSet`
+`058FF483…`, `asfDisableMaster` `23FBA67C…`, deposit `69B70691…`, anchors `EB2593F4…` (260 B),
+`D3D99CD2…` (196 B), `645CE5B7…` (230 B), payout `FA8BE0AC…` — all on testnet.xrpl.org; 3/3
+signers endorsed every honest memo, 3/3 refused the lying one, the new node's root equals the last
+anchor.
 
 ## 3. What the API-level e2e adds once `backend/` exists (API/XRPL lead)
 

@@ -17,7 +17,7 @@ is the XRPL integration built on-site. Be honest about that split on stage.
 
 | Area | Status | Where |
 |---|---|---|
-| **v2 trust-minimized architecture** (client-side keys/proving, state on ledger, k-of-N SignerList, relaying) | 🟡 decided 2026-10-05, in progress — §5a | `SPEC.md` §v2, `docs/audit/` |
+| **v2 trust-minimized architecture** (client-side keys/proving, state on ledger, k-of-N SignerList, relaying) | 🟡 core + harness done 2026-10-05 (PR #8, testnet run green); backend integration left — §5a | `SPEC.md` §v2, `docs/audit/`, `docs/E2E.md` |
 | Reused circuit validated (SPEC's "critical dependency", M0 gate) | ✅ done — Zcash Orchard Action circuit via `orchard` 0.15.5, `orchard_v2` / `FixedPostNu6_2`, unchanged | `core/src/pool.rs` (`BUNDLE_VERSION`) |
 | Rust core: tree, nullifiers, shield / transfer / unshield, verify tail, auditor reveal, public bundle log, snapshot/restore | ✅ done | `core/` (`confidant-core`) |
 | Tests | ✅ 29 tests (22 integration, 7 unit); negative suite from the audit REQ; every guard mutation-tested; **100% line coverage, enforced in CI**; core-level **e2e of the demo script** | `core/tests/`, CI `coverage` job |
@@ -138,10 +138,10 @@ proof, so the ceiling is a federated k-of-N). Design: `SPEC.md` §"v2" / `SPEC.r
 
 | Step | What changes | Owner | Status |
 |---|---|---|---|
-| **1. Keys and proving on the client** | `Pool` splits into `Wallet` (keys, own notes, build/prove/sign; a local process, no WASM) and `Verifier` (tree, nullifiers, log, verify/apply). The API takes a ready bundle; `senderAuth` disappears (spend-auth signatures authorize). **Deposit binding:** the deposit Payment's memo carries the shield bundle's hash; a verifier accepts a shield only if the memo hash matches and the deposit is unconsumed | crypto lead (core), API/XRPL lead (deposit memo in FE, localhost wallet) | ⬜ core PR in progress |
-| **2. State on the ledger** | one anchor memo per op: `root ‖ bundle hash ‖ external ‖ nullifiers ‖ commitments` (≤ 1 KB); proofs mirrored off-ledger by hash; anyone rebuilds the verifier state from the pool account's transactions + a mirror | crypto lead (codec, rebuild), API/XRPL lead (scanner) | ⬜ |
-| **3. k-of-N verifiers (SignerList)** | the pool account gets a SignerList quorum, master key disabled; every signer runs its own `Verifier`, re-checks the proof and the deposit on-ledger, and signs payout/anchor only then; a coordinator assembles the multisig. XLS-56 Batch for atomic anchor + payout if enabled on testnet | API/XRPL lead (harness shows 3 signers) | ⬜ |
-| **4. Permissionless relaying** | any client submits to any verifier; `GET /log` serves the mirror; node-operator guide | both | ⬜ |
+| **1. Keys and proving on the client** | `Pool` splits into `Wallet` (keys, own notes, build/prove/sign; a local process, no WASM) and `Verifier` (tree, nullifiers, log, verify/apply). The API takes a ready bundle; `senderAuth` disappears (spend-auth signatures authorize). **Deposit binding:** the deposit Payment's memo carries the shield bundle's hash; a verifier accepts a shield only if the memo hash matches and the deposit is unconsumed | crypto lead (core), API/XRPL lead (deposit memo in FE, localhost wallet) | ✅ core (PR #8) · ✅ harness · ⬜ backend/FE |
+| **2. State on the ledger** | one anchor memo per op: `root ‖ bundle hash ‖ external ‖ nullifiers ‖ commitments` (≤ 1 KB); proofs mirrored off-ledger by hash; anyone rebuilds the verifier state from the pool account's transactions + a mirror | crypto lead (codec, rebuild), API/XRPL lead (scanner) | ✅ core codec + `rebuild` · ✅ harness scanner (`account_tx`) · ⬜ backend scanner |
+| **3. k-of-N verifiers (SignerList)** | the pool account gets a SignerList quorum, master key disabled; every signer runs its own `Verifier`, re-checks the proof and the deposit on-ledger, and signs payout/anchor only then (`Verifier::endorse`); a coordinator assembles the multisig. Anchor first, payout second (XLS-56 Batch not used) | API/XRPL lead (harness shows 3 signers) | ✅ core `endorse` · ✅ harness 2-of-3 on testnet (2026-10-05) · ⬜ signer services |
+| **4. Permissionless relaying** | any client submits to any verifier; `GET /log` serves the mirror; node-operator guide | both | ✅ core/CLI (any verifier accepts; `export-log`/`rebuild`) · ✅ `docs/NODE-OPERATOR.md` · ⬜ `GET /log` endpoint |
 
 Honest label after v2: notes are non-custodial (plaintext never leaves the client); the pool account
 and proof verification sit with a k-of-N quorum of independent verifiers; state is reconstructible
