@@ -21,6 +21,11 @@ use crate::sighash::{external_ctx, sighash, OpTag};
 use crate::tree::CommitmentTree;
 use crate::types::*;
 
+/// A source of bundle records by hash (any verifier's `GET /log`, a file, a cache).
+pub type Mirror<'a> = &'a mut dyn FnMut(&[u8; 32]) -> Option<BundleRecord>;
+/// A source of ledger facts about a deposit, by XRPL tx hash (the XRPL side's `tx` lookup).
+pub type DepositLookup<'a> = &'a mut dyn FnMut(&str) -> Option<DepositRef>;
+
 /// The deposit memo must commit to exactly this bundle: `memo_hash == BLAKE2b(bundle)`.
 fn check_deposit_binding(record: &BundleRecord, deposit: &DepositRef) -> Result<(), Error> {
     let memo: [u8; 32] = hex::decode(deposit.memo_hash.trim())
@@ -99,8 +104,17 @@ pub struct Verifier {
 }
 
 impl Default for Verifier {
+    /// An empty verifier. Builds the circuit parameters on first use in the process.
     fn default() -> Self {
-        Self::new()
+        Self {
+            params: Params::get(),
+            tree: CommitmentTree::new(),
+            nullifiers: HashSet::new(),
+            consumed_deposits: HashSet::new(),
+            bundles: Vec::new(),
+            records: Vec::new(),
+            anchored_root: None,
+        }
     }
 }
 
@@ -112,17 +126,9 @@ fn now() -> u64 {
 }
 
 impl Verifier {
-    /// An empty verifier. Builds the circuit parameters on first use in the process.
+    /// An empty verifier (same as `Default`).
     pub fn new() -> Self {
-        Self {
-            params: Params::get(),
-            tree: CommitmentTree::new(),
-            nullifiers: HashSet::new(),
-            consumed_deposits: HashSet::new(),
-            bundles: Vec::new(),
-            records: Vec::new(),
-            anchored_root: None,
-        }
+        Self::default()
     }
 
     pub fn params(&self) -> &Params {
@@ -515,11 +521,31 @@ impl Verifier {
 
     /// Builds a verifier from the anchor memos read off the ledger and a mirror that serves
     /// bundle records by hash. Each bundle is hash-checked, re-verified and applied; the root it
-    /// produces must equal the memo's. This is how a new node joins with no trust in any
-    /// particular verifier.
-    pub fn rebuild(
+    /// produces must equal the memo's. Note validity (no forged note, no double-spend) therefore
+    /// rests on nobody but this node. **Pool backing is not checked here**: the node trusts the
+    /// k-signed anchors on which deposits backed which shields. Use [`Self::rebuild_checked`] to
+    /// enforce backing too.
+    pub fn rebuild(memos: &[AnchorMemo], mirror: Mirror<'_>) -> Result<Self, Error> {
+        Self::rebuild_inner(memos, mirror, None)
+    }
+
+    /// [`Self::rebuild`] plus the backing check on every shield: `deposits` supplies the ledger
+    /// facts for a deposit tx hash (validated Payment to the pool, `delivered_amount`, memo), and
+    /// the core enforces `delivered == −valueBalance` and `memo == bundle hash`. A shield whose
+    /// deposit cannot be produced is refused (`DepositRequired`). This is the join path a signer
+    /// or any node that wants to confirm pool backing itself must use.
+    pub fn rebuild_checked(
         memos: &[AnchorMemo],
-        mirror: &mut dyn FnMut(&[u8; 32]) -> Option<BundleRecord>,
+        mirror: Mirror<'_>,
+        deposits: DepositLookup<'_>,
+    ) -> Result<Self, Error> {
+        Self::rebuild_inner(memos, mirror, Some(deposits))
+    }
+
+    fn rebuild_inner(
+        memos: &[AnchorMemo],
+        mirror: Mirror<'_>,
+        mut deposits: Option<DepositLookup<'_>>,
     ) -> Result<Self, Error> {
         let mut v = Self::new();
         for (index, memo) in memos.iter().enumerate() {
@@ -528,8 +554,19 @@ impl Verifier {
             if bundle_hash(&record)? != memo.bundle_hash {
                 return Err(Error::BundleHashMismatch);
             }
+            // Backing on join: the deposit named by the memo must exist on the ledger, deliver
+            // exactly the shielded amount, and commit to this very bundle.
+            let mut expected = None;
+            if let (OpTag::Shield, Some(lookup)) = (memo.op, deposits.as_deref_mut()) {
+                let deposit = lookup(&memo.external).ok_or(Error::DepositRequired)?;
+                if deposit.tx_hash != memo.external {
+                    return Err(Error::DepositBindingMismatch);
+                }
+                check_deposit_binding(&record, &deposit)?;
+                expected = Some(deposit.delivered);
+            }
             let bundle = bundle_from_record(&record, v.params.version)?;
-            let acc = v.accept(bundle, memo.op, &memo.external, None, record.timestamp)?;
+            let acc = v.accept(bundle, memo.op, &memo.external, expected, record.timestamp)?;
             if acc.new_root != hex::encode(memo.root) {
                 return Err(Error::MemoMismatch {
                     index,

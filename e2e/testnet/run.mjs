@@ -252,20 +252,42 @@ async function main() {
   assert(memosOnLedger.every((m, i) => m === report.anchors[i].memoHex), "memos on ledger differ from what the quorum signed");
   writeFileSync(`${DIR}/memos.json`, JSON.stringify(memosOnLedger));
   exportLog();
-  const node = verifierCli("newnode")("rebuild", `${DIR}/memos.json`, LOG);
+  // Backing on join is MANDATORY: for every shield memo on the ledger, the joining node looks the
+  // deposit up itself and hands the core the ledger facts; the core refuses any shield whose
+  // deposit is missing, delivers a different amount, or commits to another bundle.
+  const deposits = {};
+  for (const hex of memosOnLedger) {
+    const bytes = Buffer.from(hex, "hex");
+    const op = bytes[1], extLen = bytes[66], ext = bytes.subarray(67, 67 + extLen).toString("utf8");
+    if (op === 1 /* shield */) {
+      const d = await validateDeposit(client, ext, pool.address);
+      deposits[ext] = { txHash: d.txHash, delivered: d.delivered, memoHash: d.memoHash };
+    }
+  }
+  assert(Object.keys(deposits).length === 1, `expected 1 shield deposit to re-validate, got ${Object.keys(deposits).length}`);
+  writeFileSync(`${DIR}/deposits.json`, JSON.stringify(deposits));
+  const node = verifierCli("newnode")("rebuild", `${DIR}/memos.json`, LOG, `${DIR}/deposits.json`);
   const coordState = coord("state");
   assert(node.root === coordState.root && node.root === report.anchors[2].root, "rebuilt root != last anchored root");
   assert(node.bundleCount === 3 && node.consumedDeposits === 1, "rebuilt state differs");
-  // The new node also re-validates the deposit from the ledger (pool backing, not just note validity).
-  const recheck = await validateDeposit(client, deposit.hash, pool.address);
-  assert(recheck.memoHash === built.bundleHash && recheck.delivered === Number(DEPOSIT_DROPS), "deposit re-validation failed");
-  step("new node rebuilt from 3 on-ledger memos + mirror; root equals the last anchor; deposit re-validated", { bundles: node.bundleCount });
+  // Negative: a node fed a wrong deposit amount for the shield refuses to join.
+  const wrongDeposits = JSON.parse(JSON.stringify(deposits));
+  for (const k of Object.keys(wrongDeposits)) wrongDeposits[k].delivered -= 1;
+  writeFileSync(`${DIR}/deposits-wrong.json`, JSON.stringify(wrongDeposits));
+  const refused = verifierTry("newnode-wrong")("rebuild", `${DIR}/memos.json`, LOG, `${DIR}/deposits-wrong.json`);
+  assert(refused.error && /value balance mismatch/.test(refused.error), `node joined on an unbacked shield: ${JSON.stringify(refused)}`);
+  const noDeposits = verifierTry("newnode-nodep")("rebuild", `${DIR}/memos.json`, LOG, `${DIR}/empty.json`);
+  writeFileSync(`${DIR}/empty.json`, "{}");
+  const refused2 = verifierTry("newnode-nodep")("rebuild", `${DIR}/memos.json`, LOG, `${DIR}/empty.json`);
+  assert(refused2.error && /needs a deposit reference/.test(refused2.error), `node joined without deposit facts: ${JSON.stringify(refused2)}`);
+  void noDeposits;
+  step("new node rebuilt from 3 on-ledger memos + mirror with every shield deposit re-validated; wrong/missing deposit facts refused", { bundles: node.bundleCount });
 
   // ---- 6. a lagging signer (never saw the log) cannot endorse; after rebuilding it agrees
   const lagging = verifierTry("lagging");
   const lag = lagging("endorse", `${DIR}/sub-lie.json`, honestMemo.memoHex);
   assert(lag.error, "a signer with no state endorsed an unshield");
-  const caughtUp = verifierCli("lagging")("rebuild", `${DIR}/memos.json`, LOG);
+  const caughtUp = verifierCli("lagging")("rebuild", `${DIR}/memos.json`, LOG, `${DIR}/deposits.json`);
   assert(caughtUp.root === coordState.root, "lagging signer did not catch up");
   step("lagging signer refused, then caught up from the ledger");
 

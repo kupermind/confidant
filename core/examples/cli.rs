@@ -40,7 +40,8 @@ wallet:   init | info | balance | sync <log.json>
 verifier: submit-shield <bundle.json> <depositTxHash> <deliveredAmount> <memoHashHex>
           submit-transfer <bundle.json> | submit-unshield <bundle.json> <destination>
           state | export-log <log.json> | anchored <rootHex> | reveal <viewingKeyHex>
-          anchor-memo <index> | check-memo <index> <memoHex> | rebuild <memos.json> <log.json>
+          anchor-memo <index> | check-memo <index> <memoHex>
+          rebuild <memos.json> <log.json> [deposits.json]   (with deposits: backing enforced on join)
           endorse <submission.json> <memoHex>   (a signer: sign only a root it computed itself)
 files must be gitignored: *.wallet.json / *.verifier-state.json or under data/";
 
@@ -287,11 +288,24 @@ fn verifier_cmd(state: PathBuf, args: &[String]) {
                 .map(|h| AnchorMemo::decode_hex(h).unwrap_or_else(|e| die(e)))
                 .collect();
             let log: Vec<BundleRecord> = read_json(Path::new(arg(a, 1, "log.json")));
-            let v = Verifier::rebuild(&memos, &mut |h| {
+            let mut mirror = |h: &[u8; 32]| {
                 log.iter()
                     .find(|r| confidant_core::record::bundle_hash(r).ok() == Some(*h))
                     .cloned()
-            })
+            };
+            // With a deposits file (txHash → DepositRef, the ledger facts the XRPL side looked
+            // up for every shield memo) backing is enforced on join; without it the node trusts
+            // the k-signed anchors on backing and only re-verifies the cryptography.
+            let v = match a.get(2) {
+                Some(dep_file) => {
+                    let deposits: std::collections::BTreeMap<String, DepositRef> =
+                        read_json(Path::new(dep_file));
+                    Verifier::rebuild_checked(&memos, &mut mirror, &mut |tx| {
+                        deposits.get(tx).cloned()
+                    })
+                }
+                None => Verifier::rebuild(&memos, &mut mirror),
+            }
             .unwrap_or_else(|e| die(e));
             save(&v);
             out(&v.state());

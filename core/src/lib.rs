@@ -39,7 +39,9 @@ pub use error::Error;
 pub use memo::AnchorMemo;
 pub use sighash::OpTag;
 pub use types::*;
-pub use verifier::{Params, Submission, Verifier, VerifierSnapshot, BUNDLE_VERSION};
+pub use verifier::{
+    DepositLookup, Mirror, Params, Submission, Verifier, VerifierSnapshot, BUNDLE_VERSION,
+};
 pub use wallet::{Prepared, Wallet, WalletSecret};
 
 /// Re-exported so the API layer can name Orchard types without a second dependency line.

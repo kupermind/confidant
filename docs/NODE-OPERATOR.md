@@ -20,11 +20,16 @@ transactions — only for roots it computed itself.
    `confidant/anchor` in ledger order.
 2. Fetch the bundle bytes from any mirror (`GET /log` of any verifier) — they are addressed by the
    memo's bundle hash, so the mirror cannot substitute anything.
-3. `cli verifier --state data/me.verifier-state.json rebuild memos.json log.json` (or
-   `Verifier::rebuild`): each bundle is hash-checked, proof-verified and applied; your root must
-   equal the last memo's root. A mismatch means a bad mirror or a bad anchor — refuse.
-4. Optionally re-validate each shield's deposit: `tx <depositHash>` must be a validated Payment to
-   the pool with `delivered_amount == −valueBalance` and memo `confidant/shield` = bundle hash.
+3. For every shield memo, look the deposit up yourself: `tx <depositHash>` must be a validated
+   Payment to the pool account; record `delivered_amount` and the `confidant/shield` memo. Put the
+   facts in `deposits.json` (`{ "<txHash>": { "txHash", "delivered", "memoHash" } }`).
+4. `cli verifier --state data/me.verifier-state.json rebuild memos.json log.json deposits.json`
+   (`Verifier::rebuild_checked`): each bundle is hash-checked, proof-verified and applied; each
+   shield must be backed by its deposit (`delivered == −valueBalance`, memo == bundle hash, named
+   deposit present); your root must equal the last memo's root. Any mismatch — bad mirror, bad
+   anchor, unbacked shield — refuses the join. Omitting `deposits.json` (`Verifier::rebuild`)
+   re-verifies the cryptography only and trusts the k-signed anchors on backing; a signer must
+   not do that.
 
 ## Serve
 

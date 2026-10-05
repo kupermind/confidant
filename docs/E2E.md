@@ -33,7 +33,7 @@ anchored in its own memo. Everything XRPL happens in `xrpl.js`, where SPEC puts 
 | lying coordinator | — | a proposed memo with a flipped root bit is refused by **3/3 signers** (`endorse` exits non-zero, no signature) |
 | unshield | anchor memo + payout Payment pool → Bob's fresh address, both 2-of-3 multisigned | signers endorse the honest memo; the fresh account holds exactly the payout |
 | reveal | — | Bob's key on a signer's state: one incoming note, spent, balance 0 |
-| new node | reads the pool account's `account_tx`, decodes the three `confidant/anchor` memos in ledger order | `cli verifier rebuild memos.json log.json` lands on the last anchored root with the same bundle and consumed-deposit counts; it also re-validates the deposit from the ledger |
+| new node | reads the pool account's `account_tx`, decodes the three `confidant/anchor` memos in ledger order, and **looks up every shield memo's deposit itself** | `cli verifier rebuild memos.json log.json deposits.json` (`rebuild_checked`) lands on the last anchored root with the same bundle and consumed-deposit counts; a wrong deposit amount or missing deposit facts refuse the join |
 | lagging signer | — | a signer with no state cannot endorse the unshield; after `rebuild` from the ledger it agrees |
 
 Each run writes `data/e2e-<timestamp>/` (gitignored): `*.wallet.json` (spending keys, mode 0600,

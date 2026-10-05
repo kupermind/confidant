@@ -62,15 +62,16 @@ pub struct Wallet {
 }
 
 impl Default for Wallet {
+    /// A wallet with a fresh random spending key.
     fn default() -> Self {
-        Self::new()
+        Self::from_keys(OwnerKeys::random(&mut OsRng))
     }
 }
 
 impl Wallet {
-    /// A wallet with a fresh random spending key.
+    /// A wallet with a fresh random spending key (same as `Default`).
     pub fn new() -> Self {
-        Self::from_keys(OwnerKeys::random(&mut OsRng))
+        Self::default()
     }
 
     pub fn from_spending_key(sk: orchard::keys::SpendingKey) -> Self {

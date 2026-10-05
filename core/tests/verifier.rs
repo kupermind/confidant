@@ -827,6 +827,55 @@ fn anchor_memos_round_trip_and_rebuild_the_verifier() {
         Verifier::rebuild(&bad_ext, &mut mirror),
         Err(Error::InvalidSpendAuth)
     ));
+
+    // Backing on join: `rebuild_checked` enforces, for every shield memo, that the deposit the
+    // XRPL side found delivers exactly the shielded amount and commits to this bundle.
+    let mut good = |tx: &str| {
+        (tx == "D1").then(|| DepositRef {
+            tx_hash: "D1".into(),
+            delivered: 100,
+            memo_hash: hex::encode(bundle_hash(&mirror_log[0]).unwrap()),
+        })
+    };
+    let checked = Verifier::rebuild_checked(&memos, &mut mirror, &mut good).unwrap();
+    assert_eq!(checked.state().root, v.state().root);
+    assert!(checked.is_deposit_consumed("D1"));
+    // No deposit found on the ledger for the shield ⇒ refused.
+    assert!(matches!(
+        Verifier::rebuild_checked(&memos, &mut mirror, &mut |_| None),
+        Err(Error::DepositRequired)
+    ));
+    // Deposit delivered a different amount ⇒ refused (unbacked shield).
+    let mut short = |tx: &str| good(tx).map(|d| DepositRef { delivered: 99, ..d });
+    assert!(matches!(
+        Verifier::rebuild_checked(&memos, &mut mirror, &mut short),
+        Err(Error::ValueBalance {
+            expected: -99,
+            actual: -100
+        })
+    ));
+    // Deposit memo commits to another bundle ⇒ refused.
+    let mut other = |tx: &str| {
+        good(tx).map(|d| DepositRef {
+            memo_hash: hex::encode(bundle_hash(&mirror_log[1]).unwrap()),
+            ..d
+        })
+    };
+    assert!(matches!(
+        Verifier::rebuild_checked(&memos, &mut mirror, &mut other),
+        Err(Error::DepositBindingMismatch)
+    ));
+    // The lookup answered for a different tx hash than the memo names ⇒ refused.
+    let mut swapped = |tx: &str| {
+        good(tx).map(|d| DepositRef {
+            tx_hash: "D9".into(),
+            ..d
+        })
+    };
+    assert!(matches!(
+        Verifier::rebuild_checked(&memos, &mut mirror, &mut swapped),
+        Err(Error::DepositBindingMismatch)
+    ));
 }
 
 #[test]
