@@ -25,7 +25,8 @@ use std::process::exit;
 
 use confidant_core::memo::AnchorMemo;
 use confidant_core::{
-    BundleRecord, DepositRef, TransferOutput, Verifier, VerifierSnapshot, Wallet, WalletSecret,
+    BundleRecord, DepositRef, Submission, TransferOutput, Verifier, VerifierSnapshot, Wallet,
+    WalletSecret,
 };
 
 const WARNING: &str = "the wallet file holds the spending key UNENCRYPTED; test tool only, never \
@@ -40,6 +41,7 @@ verifier: submit-shield <bundle.json> <depositTxHash> <deliveredAmount> <memoHas
           submit-transfer <bundle.json> | submit-unshield <bundle.json> <destination>
           state | export-log <log.json> | anchored <rootHex> | reveal <viewingKeyHex>
           anchor-memo <index> | check-memo <index> <memoHex> | rebuild <memos.json> <log.json>
+          endorse <submission.json> <memoHex>   (a signer: sign only a root it computed itself)
 files must be gitignored: *.wallet.json / *.verifier-state.json or under data/";
 
 fn die(msg: impl std::fmt::Display) -> ! {
@@ -297,6 +299,17 @@ fn verifier_cmd(state: PathBuf, args: &[String]) {
         "reveal" => out(&load()
             .reveal(arg(a, 0, "viewingKeyHex"))
             .unwrap_or_else(|e| die(e))),
+        "endorse" => {
+            // A signer: validate the coordinator's submission + proposed memo against this
+            // verifier's OWN state; apply and print what to sign only if the root it computes
+            // itself equals the proposed one. Any disagreement exits non-zero, state untouched.
+            let mut v = load();
+            let sub: Submission = read_json(Path::new(arg(a, 0, "submission.json")));
+            let memo = AnchorMemo::decode_hex(arg(a, 1, "memoHex")).unwrap_or_else(|e| die(e));
+            let acc = v.endorse(&sub, &memo).unwrap_or_else(|e| die(e));
+            save(&v);
+            out(&acc);
+        }
         other => die(format!("unknown verifier command `{other}`")),
     }
 }

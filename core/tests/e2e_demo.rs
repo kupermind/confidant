@@ -173,7 +173,7 @@ fn demo_script_end_to_end() {
     assert!(!serde_json::to_string(&mirror_log)
         .unwrap()
         .contains("spendingKey"));
-    let node = Verifier::rebuild(&memos, |h| {
+    let node = Verifier::rebuild(&memos, &mut |h| {
         mirror_log
             .iter()
             .find(|r| bundle_hash(r).unwrap() == *h)
