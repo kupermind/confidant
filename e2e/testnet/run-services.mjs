@@ -86,11 +86,12 @@ async function main() {
     link("anchor after shield (2-of-3 multisig)", s1.anchorTx);
     assert(s1.signers.length === 2 && s1.refusals.length === 0, `expected 3/3 endorsements, got refusals ${JSON.stringify(s1.refusals)}`);
     step("shield accepted by the coordinator's node, endorsed by all signer nodes, anchored by the quorum", { root: s1.newRoot.slice(0, 16) + "…" });
-    // The same deposit again: refused.
+    // The same deposit cannot back a second shield: neither the identical bundle again (a replay)
+    // nor a fresh bundle claiming the old deposit (its memo commits to the first bundle).
+    await expectRefusal("duplicate deposit, same bundle", http("POST", `${C}/submit/shield`, { record: shieldRecord, depositTxHash: depositHash }), /already backs a shield|already spent|nullifier/);
     await syncLog(C);
-    const again = alice("build-shield", DEPOSIT_DROPS, `${DIR}/shield2.json`, LOG);
-    await expectRefusal("duplicate deposit", http("POST", `${C}/submit/shield`, { record: JSON.parse(readFileSync(`${DIR}/shield2.json`, "utf8")), depositTxHash: depositHash }), /already backs a shield/);
-    void again;
+    alice("build-shield", DEPOSIT_DROPS, `${DIR}/shield2.json`, LOG);
+    await expectRefusal("duplicate deposit, fresh bundle", http("POST", `${C}/submit/shield`, { record: JSON.parse(readFileSync(`${DIR}/shield2.json`, "utf8")), depositTxHash: depositHash }), /already backs a shield|does not commit/);
 
     // ---- 2. transfer
     await syncLog(C);

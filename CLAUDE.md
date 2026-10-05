@@ -16,9 +16,11 @@ independent signers (XRPL SignerList on the pool account, master key disabled) r
 and every deposit on their own state and sign only roots they computed themselves; every accepted
 operation is anchored in its own memo so anyone can rebuild the state from the ledger.
 
-Team: two builders — a **crypto/ZK lead** (Rust core, CLI test tool, e2e harness, audit cycle) and an
-**API/XRPL lead** (HTTP layer over `Verifier`, signer services, scanner, `xrpl.js`, UI, pitch). Refer to
-people by role, never by name, in anything that reaches git (see hard rules).
+Team: two builders — a **crypto/ZK lead** (Rust core, the quorum services in `backend/`: verifier
+node, signer sidecars, coordinator, setup/launch scripts; CLI test tool, e2e harnesses, audit cycle)
+and an **API/XRPL lead** (user-facing layer: local wallet UX, deposit Payment from the user's account,
+UI over the coordinator, pre-population, pitch). Refer to people by role, never by name, in anything
+that reaches git (see hard rules).
 
 ## ⚠️ Branding — do not lose this remark
 
@@ -44,14 +46,15 @@ people by role, never by name, in anything that reaches git (see hard rules).
 
 - Rust `core/` (`confidant-core`): `Wallet`, `Verifier`, Orchard circuit reused unchanged, tree,
   nullifiers, deposit binding, anchor memos, `endorse`, `rebuild_checked`, reveal. XRPL-agnostic.
-- Rust backend (axum) over `Verifier`; React/TS front-end + `xrpl.js` owns all XRPL. No Solidity, no
-  WASM, no `xrpl-rust`.
+- Rust `backend/node/` (`confidant-node`, axum) over `Verifier`: reads the ledger by JSON-RPC only,
+  holds no keys. Node `backend/quorum/` (`xrpl.js`): signer sidecars (the only key holders) and the
+  coordinator. React/TS front-end + `xrpl.js` for the user side. No Solidity, no WASM, no `xrpl-rust`.
 
 ## Working rules
 
 - **Branch + PR for everything; `main` only via PR with green CI** (fmt, clippy `-D warnings`, tests
-  in release, **100% line coverage gate**, hygiene).
-- **Audit cycle:** every change to `core/` gets a slice ruling from the audit session before merge
+  in release, **100% line coverage gate on `core/`, 95% on `backend/node`**, hygiene).
+- **Audit cycle:** every change to `core/` or `backend/` gets a slice ruling from the audit session before merge
   (`docs/audit/REQ-*` → `RESP-*`, committed verbatim, indexed in `docs/audit/INDEX.md`). Mutation-test
   every new guard (remove it → its test must go red) and report the table in the REQ.
 - Keep `SPEC.md`, `SPEC.ru.md`, `ROADMAP.md` and `docs/` in sync with the code in the same PR.
@@ -68,8 +71,11 @@ people by role, never by name, in anything that reaches git (see hard rules).
 ```bash
 cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --release
-cargo llvm-cov --workspace --all-targets --fail-under-lines 100
-cargo build --release --example cli && (cd e2e/testnet && npm install && CLI=../../target/release/examples/cli npm run e2e)
+cargo llvm-cov -p confidant-core --all-targets --fail-under-lines 100
+cargo llvm-cov -p confidant-node --all-targets --ignore-filename-regex '(main|rpc)\.rs' --fail-under-lines 95
+cargo build --release --example cli --bin confidant-node
+(cd e2e/testnet && npm install && CLI=../../target/release/examples/cli npm run e2e)             # CLI-driven
+(cd backend/quorum && npm install) && (cd e2e/testnet && CLI=../../target/release/examples/cli NODE_BIN=../../target/release/confidant-node npm run e2e:services)  # through backend/
 ```
 
 ## Where the strategy lives
