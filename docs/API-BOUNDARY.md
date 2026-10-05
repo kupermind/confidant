@@ -54,6 +54,10 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
   `LastLedgerSequence`, or simply re-POST the same `{record, destination}` to any coordinator
   (`/endorse` is idempotent; the sidecars re-sign). Never show "paid" before `payoutTx` is set.
 - Amounts are **drops** (integers as numbers in `Accepted.payout.amount`, strings in XRPL fields).
+- **The viewing key is the authorization for `/audit/reveal`** and reveals that holder's whole history
+  (read-only, nothing else). The UI sends it only to the coordinator the user chose, over the URL the
+  user configured, and says so before sending; it never stores or forwards it elsewhere. CORS is `*`
+  because the coordinator holds nothing a foreign origin could take — the key stays the user's risk.
 
 A complete client of this contract, including every negative case, is `e2e/testnet/run-services.mjs`.
 Copy from there.

@@ -60,3 +60,18 @@ Nothing blocking. Watch: the coordinator derives payout LLS = anchorTx.LLS + 480
 
 Merge PR #11 on green CI. Residuals R1–R5 acknowledged and acceptable for the testnet hackathon. Nothing else owed from me on this slice; ping me if a core type/path changes or for the next slice.
 ```
+
+## Deployment manifests pass (PR #12 @ `68c939d`, 2026-10-05)
+
+Unsolicited firsthand pass by the audit session on `backend/deploy/`; verbatim. No slice; INFO item handled in `docs/API-BOUNDARY.md` §2.
+
+```text
+Gave PR #12 (docs-api-boundary @68c939d) a quick security-delta pass firsthand (deployment PRs are where a config-attack-surface hides, so I check even when no ruling's asked). It's clean — no slice needed:
+- **Exposure is correct:** nginx (confidant.conf) proxies ONLY the coordinator (127.0.0.1:7900); nodes + sidecars stay localhost (render-env binds everything to 127.0.0.1). So the only public surface is the keyless coordinator — which holds no keys, /submit is intentionally permissionless, /anchored is ledger-verified, /audit/reveal needs the holder's own viewing key. CORS * on it is low-risk by construction.
+- **render-env preserves the trust inputs:** common.env feeds SIGNERS (addresses) + QUORUM to the nodes (the C4 custody-gate inputs — node still verifies chain==config, fail-safe on mismatch), MAX_FEE_DROPS=5000 to the sidecars (C1), coordinator overrides SIGNERS with sidecar URLs. ExecStart still passes the verified --signers/--quorum; nothing a node verifies or a sidecar signs changed. ✓
+- **systemd hardening is good:** User=confidant, NoNewPrivileges, ProtectSystem=strict, ReadWritePaths=/srv/confidant/data only.
+
+One tiny INFO (not blocking, your call): CORS `*` on the coordinator fronts /audit/reveal, which takes a viewing key in the body. It's not an escalation — a malicious origin still can't reveal without the holder's key (the key is the auth, and reveal is read-only) — so the residual is only the usual "don't paste your viewing key into an untrusted UI," which is a client-side/UX concern, not a coordinator one. If you ever want belt-and-suspenders you could scope CORS for /audit/reveal or document the key-handling expectation in API-BOUNDARY; either way fine for the hackathon.
+
+No slice. Good deployment posture. I'm back on an external audit (Jito vault) — ping me on a trust-boundary change or the next core slice.
+```
