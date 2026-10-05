@@ -66,6 +66,18 @@ jobs:
                }
                { prev = $0 }
                END { exit bad }' SPEC.md README.md
+      - name: Russian spec carries the same labels and no over-claims
+        run: |
+          for marker in "кастодиальн" "корреляци" "full viewing key" "предзаполн"; do
+            grep -qi -- "$marker" SPEC.ru.md || { echo "::error file=SPEC.ru.md::missing honest-label marker '$marker'"; exit 1; }
+          done
+          awk 'tolower($0) ~ /untraceable|trustless|fully anonymous|неотслеживаем|полностью анонимн|приватно от оператора/ {
+                 if ((prev " " $0) !~ /(Не говорить|не говорить|Нельзя заявлять|дорожная карта|roadmap|дефект)/) {
+                   printf "::error file=%s,line=%d::over-claim outside the do-not-say rule: %s\n", FILENAME, FNR, $0; bad = 1
+                 }
+               }
+               { prev = $0 }
+               END { exit bad }' SPEC.ru.md
 
   e2e-testnet:
     # Manual only: real XRPL testnet Payments via the faucet. Run from the Actions tab.

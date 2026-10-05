@@ -64,5 +64,5 @@ What is done and what is left, per role: [`ROADMAP.md`](./ROADMAP.md).
 
 ## Full technical task
 
-See [`SPEC.md`](./SPEC.md) — objective, architecture, API contract, data model, milestones,
+See [`SPEC.md`](./SPEC.md) (подробная русская версия: [`SPEC.ru.md`](./SPEC.ru.md)) — objective, architecture, API contract, data model, milestones,
 definition of done, demo script, and the native-amendment sketch.
