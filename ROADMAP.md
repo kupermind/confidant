@@ -8,7 +8,9 @@ services (`backend/`: verifier node, signer sidecars, coordinator, setup/launch 
 tool and the e2e harnesses; the **API/XRPL lead** (repo owner) owns the user-facing layer: local
 wallet UX, the deposit Payment from the user's account, the UI over the coordinator, pre-population,
 the demo and the pitch. (Reassigned 2026-10-05 with the owner's go: the quorum machinery is the
-security-critical part and a direct extension of `endorse`/`rebuild_checked`.)
+security-critical part and a direct extension of `endorse`/`rebuild_checked`.) The seam between the
+two — the coordinator's HTTP contract, what the UI must produce, how to run the backend — is
+`docs/API-BOUNDARY.md` (RU: `docs/API-BOUNDARY.ru.md`).
 
 Judging rule: *only what is built during the hackathon counts.* The core and the harness are
 pre-event preparation on a pre-existing library (the Zcash Orchard circuit). The judged work is the

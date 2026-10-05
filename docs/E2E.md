@@ -42,8 +42,9 @@ anchored in its own memo. Everything XRPL happens in `xrpl.js`, where SPEC puts 
 
 Each run writes `data/e2e-<timestamp>/` (gitignored): `*.wallet.json` (spending keys, mode 0600,
 loud warning), `*.verifier-state.json` (public), bundles, memos, `log.json`, `report.json` with
-explorer links. It is a test tool; the API/XRPL lead lifts the XRPL parts (deposit validation,
-memo anchoring, multisign, payout, scanner) into the backend.
+explorer links. It is a test tool; the XRPL parts it drives by hand (deposit validation, memo
+anchoring, multisign, payout, scanner) live in `backend/` as services — §2b runs the same demo
+through them.
 
 ```bash
 cargo build --release --example cli
@@ -83,7 +84,7 @@ cargo build --release --example cli --bin confidant-node
 cd e2e/testnet && CLI=../../target/release/examples/cli NODE_BIN=../../target/release/confidant-node npm run e2e:services
 ```
 
-## 3. What a user-facing API adds on top (API/XRPL lead)
+## 3. What the user-facing layer adds on top (API/XRPL lead) — see `docs/API-BOUNDARY.md`
 
 The coordinator already exposes `POST /submit/*`, `GET /log`, `GET /state` and `POST /audit/reveal`.
 What remains for the user-facing layer is the wallet side: a local wallet process (or the CLI) that

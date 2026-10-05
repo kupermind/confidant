@@ -19,8 +19,9 @@ operation is anchored in its own memo so anyone can rebuild the state from the l
 Team: two builders — a **crypto/ZK lead** (Rust core, the quorum services in `backend/`: verifier
 node, signer sidecars, coordinator, setup/launch scripts; CLI test tool, e2e harnesses, audit cycle)
 and an **API/XRPL lead** (user-facing layer: local wallet UX, deposit Payment from the user's account,
-UI over the coordinator, pre-population, pitch). Refer to people by role, never by name, in anything
-that reaches git (see hard rules).
+UI over the coordinator, pre-population, pitch). The seam is documented in `docs/API-BOUNDARY.md`
+(RU mirror `docs/API-BOUNDARY.ru.md`) — keep it in sync when an endpoint or response shape changes.
+Refer to people by role, never by name, in anything that reaches git (see hard rules).
 
 ## ⚠️ Branding — do not lose this remark
 

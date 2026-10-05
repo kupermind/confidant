@@ -43,10 +43,12 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
   (`orchard` 0.15.5, `FixedPostNu6_2`); `Wallet` (keys, notes, build/prove/sign, runs on the
   holder's machine) and `Verifier` (public state, verify-and-apply, anchor memos, rebuild, reveal;
   one per signer and for anyone else).
-- **Backend + API:** Rust (axum) over `Verifier` — `GET /log`, `POST /submit/*`, `POST /audit/reveal`,
-  signer services, memo scanner (`docs/CORE-API.md`).
-- **Front-end:** React/TypeScript + `xrpl.js` — owns all XRPL: deposit Payments with the bundle-hash
-  memo, the pool's SignerList, memo anchoring, payouts; talks to the local wallet.
+- **Quorum services (`backend/`):** a Rust verifier node (`confidant-node`, axum over `Verifier`;
+  reads the ledger, holds no keys), Node signer sidecars (the only key holders; sign only what their
+  own node endorsed) and a coordinator (k-of-N multisig, anchor then payout) — `backend/README.md`.
+- **Front-end:** React/TypeScript + `xrpl.js` — the user side only: the deposit Payment with the
+  bundle-hash memo from the user's account, calls to the coordinator, the local wallet, explorer
+  links. The contract between the two: `docs/API-BOUNDARY.md`.
 - No Solidity, no WASM, no `xrpl-rust`.
 
 ## Privacy and trust — what we claim, what we don't
@@ -70,9 +72,11 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
 
 ## Status
 
-What is done and what is left, per role: [`ROADMAP.md`](./ROADMAP.md). The v2 core is merged and
-exercised end to end on XRPL testnet with a 2-of-3 quorum; the HTTP layer, signer services and UI are
-the API/XRPL lead's work for the hackathon.
+What is done and what is left, per role: [`ROADMAP.md`](./ROADMAP.md). The v2 core and the quorum
+services (verifier node, signer sidecars, coordinator) are merged, audited and exercised end to end on
+XRPL testnet with a 2-of-3 quorum; the user-facing layer (wallet UX, deposit from the user's account,
+UI over the coordinator, demo) is the API/XRPL lead's work for the hackathon —
+[`docs/API-BOUNDARY.md`](./docs/API-BOUNDARY.md) is the hand-off.
 
 ## Full technical task
 

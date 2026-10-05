@@ -4,9 +4,9 @@
 //!
 //! ```text
 //! cli wallet   --file data/alice.wallet.json         init | info | balance | sync <log.json>
-//!                                                    build-shield <amount> <out.json>
-//!                                                    build-transfer <recipientAddrHex> <amount> <out.json>
-//!                                                    build-unshield <amount> <destination> <out.json>
+//!                                                    build-shield <amount> <out.json> [log.json]
+//!                                                    build-transfer <recipientAddrHex> <amount> <out.json> <log.json>
+//!                                                    build-unshield <amount> <destination> <out.json> <log.json>
 //! cli verifier --state data/v1.verifier-state.json   submit-shield <bundle.json> <depositTxHash> <delivered> <memoHashHex>
 //!                                                    submit-transfer <bundle.json>
 //!                                                    submit-unshield <bundle.json> <destination>
@@ -34,9 +34,9 @@ production — real key custody (threshold / TEE) is the roadmap";
 
 const USAGE: &str = "usage: cli wallet --file <*.wallet.json> <cmd> | cli verifier --state <*.verifier-state.json> <cmd>
 wallet:   init | info | balance | sync <log.json>
-          build-shield <amount> <out.json>
-          build-transfer <recipientAddressHex> <amount> <out.json>
-          build-unshield <amount> <destination> <out.json>
+          build-shield <amount> <out.json> [log.json]
+          build-transfer <recipientAddressHex> <amount> <out.json> <log.json>
+          build-unshield <amount> <destination> <out.json> <log.json>
 verifier: submit-shield <bundle.json> <depositTxHash> <deliveredAmount> <memoHashHex>
           submit-transfer <bundle.json> | submit-unshield <bundle.json> <destination>
           state | export-log <log.json> | anchored <rootHex> | reveal <viewingKeyHex>
