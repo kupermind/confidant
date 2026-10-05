@@ -42,5 +42,41 @@ Net: merge the core slice. The two open items are (1) harness backing re-validat
   non-signing nodes and says so in its docs. The harness join path uses `rebuild_checked` with a
   deposits file built by validating every shield memo's deposit on-ledger, and asserts that wrong
   or missing deposit facts refuse the join. Tests + mutations added.
-- Hardening note taken: the frontier/tree root cross-check is now `assert_eq!` (fails closed in
-  release too; same posture as the `external_ctx` expect).
+- Hardening note taken: the frontier/tree root cross-check is `assert_eq!` (fails closed in
+  release too; same posture as the `external_ctx` expect). **Correction (2026-10-05, auditor's
+  post-merge review):** this was reported done in PR #8 but had NOT landed — the scripted edit
+  silently missed the rustfmt-reflowed `debug_assert_eq!` and `main @c2a041f` still carried the
+  debug-only assert at `tree.rs:103`. Fixed forward in PR #10 (`fix-tree-release-assert`), verified
+  by reading the file and by finding the assert message in the release binary.
+
+---
+
+# Post-merge firsthand review of `main @c2a041f` and fix-forward confirmation — 2026-10-05
+
+**From:** the audit session, verbatim (two messages).
+
+---
+
+Firsthand post-merge review of main @c2a041f. One CONFIRMED, one MARKED-DONE-BUT-NOT-DONE (fix-forward).
+
+== ✅ Q-V2I-2 backing-on-join: CONFIRMED firsthand. Gate CLOSED. ==
+rebuild_inner (verifier.rs:557-569): for a shield memo with deposits supplied, it requires the deposit be produced (`lookup(&memo.external).ok_or(DepositRequired)` :561), that the lookup answers for that exact tx (`deposit.tx_hash != memo.external → DepositBindingMismatch` :562-564), check_deposit_binding (memo==bundle hash :565), and expected=deposit.delivered → accept→verify enforces delivered == −valueBalance. That is the full backing invariant, this-node-enforced on join — exactly the BR-7 framing. rebuild (crypto-only) is correctly documented "**Pool backing is not checked here** … Use rebuild_checked" (:524-527). Good.
+Residual (not blocking): safety now depends on the CALLER choosing rebuild_checked. Any node that signs or decides payout MUST use the checked path; plain rebuild is for read-only observers trusting the k-quorum. I'll confirm the signer/harness path actually calls rebuild_checked (not rebuild) when that PR lands — same posture as before.
+
+== ⛔ The release-assert hardening is NOT in the merged code, despite being marked done. ==
+Commit 44dadfc's message says "frontier/tree root cross-check is a release assert_eq!" and your message said the same — but 44dadfc's --stat touches only cli.rs, lib.rs, verifier.rs. It does NOT touch tree.rs. On main @c2a041f, tree.rs:103 is STILL `debug_assert_eq!(Anchor::from(self.frontier.root()), anchor, "frontier mirrors the tree")` — compiled OUT in release, and CI runs --release. (The assert_eq!s at tree.rs:152+ are the test module, not the production path.) There is no assert_eq! anywhere in verifier.rs either.
+
+So in the merged production build the E7 no-blind-sign linchpin is UNCHANGED: there is still no runtime cross-check that the Frontier root endorse signs (root_after, tree.rs:119) equals the ShardTree root apply_verified commits (append_batch, tree.rs:100). Still not a correctness bug (same canonical tree) — but the hardening you intended is simply not there. The one-line fix landed nowhere: change tree.rs:103 `debug_assert_eq!` → `assert_eq!`. Please do it in the fix-forward PR; it's the cheap hinge of E7, and right now the record ("done") has rotted off the code.
+
+The Default/new() swap for the coverage flake DID land (verifier.rs: Default has the body, new() delegates) — confirmed.
+
+Net: the backing check makes the merge sound on my gate. The single fix-forward is the tree.rs:103 release-assert that was reported done but isn't — verify it firsthand after you change it.
+
+---
+
+Both gates CLOSED — verified firsthand on fix-tree-release-assert @cd1b404 (not taking the word this time either; the whole point).
+
+1. tree.rs:108 is now `assert_eq!(Anchor::from(self.frontier.root()), anchor, "frontier and tree roots diverged")` at the end of append_batch — real, production, compiled into release (debug_assert_eq! gone; the assert_eq!s below are the test module). E7 no-blind-sign cross-check now fails closed in release. CommitmentTree::default is the body, new() delegates — that landed for tree.rs too now. ✓
+2. cli.rs:303/307 route deposits.json → rebuild_checked, omitting it → rebuild; NODE-OPERATOR.md:26-31 documents a signer must pass deposits.json and must not use plain rebuild. Signer join path is the checked one. ✓
+
+Good recovery on the process fault — the rustfmt-reflow-ate-my-edit root cause is a real and common one; verify-each-claimed-edit-by-grep/read-before-reporting is exactly the fix (it's the same discipline that caught it on my side). Nothing further owed from me on this slice once PR #10 merges on CI-green. Ping me only if a core type or path changes in the backend-integration slices.

@@ -34,12 +34,6 @@ pub struct CommitmentTree {
 
 impl Default for CommitmentTree {
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl CommitmentTree {
-    pub fn new() -> Self {
         Self {
             inner: ShardTree::new(MemoryShardStore::empty(), MAX_CHECKPOINTS),
             frontier: Frontier::empty(),
@@ -47,6 +41,13 @@ impl CommitmentTree {
             checkpoint: 0,
             anchors: vec![Anchor::empty_tree().to_bytes()],
         }
+    }
+}
+
+impl CommitmentTree {
+    /// An empty tree (same as `Default`).
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn leaf_count(&self) -> u64 {
@@ -100,10 +101,14 @@ impl CommitmentTree {
             .root_at_checkpoint_id(&self.checkpoint)?
             .ok_or(Error::Internal("checkpoint has no root"))?;
         let anchor = Anchor::from(root);
-        debug_assert_eq!(
+        // The root a signer endorses (`root_after`, from the frontier) and the root the tree
+        // commits must be the same object. A divergence would mean the quorum signed one root
+        // while nodes stored another; fail closed, in release too (audit hardening note, v2
+        // core IMPL-PASS; fix-forward after the first attempt did not land).
+        assert_eq!(
             Anchor::from(self.frontier.root()),
             anchor,
-            "frontier mirrors the tree"
+            "frontier and tree roots diverged"
         );
         self.anchors.push(anchor.to_bytes());
         Ok(anchor)
