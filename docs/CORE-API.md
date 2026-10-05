@@ -27,13 +27,20 @@ After every accepted bundle: `verifier.anchor_memo(acc.bundle_index)?.encode_hex
 once validated, `verifier.set_anchored_root(&acc.new_root)`. For an unshield the same batch (or the
 next transaction) carries the payout.
 
-Each signer runs its own `Verifier` and repeats the deposit lookup itself before signing; a
-coordinator just collects ≥ k signatures. A signer that refuses a bundle will not produce the
-memo and must not sign.
+Each signer runs its own `Verifier`. A signer service receives `{ submission: Submission,
+proposedMemo: hex }` from the coordinator, repeats the deposit lookup itself for shields, and calls
+`verifier.endorse(&submission, &memo)` — it checks the memo against the submission and its own state,
+predicts the root on its own tree and applies only on agreement. Only then does it sign the anchor
+(and the payout). A coordinator just collects ≥ k signatures. A signer that refuses produces no
+signature and its state is unchanged.
 
-Joining as a new node: read the pool account's transactions (`account_tx`), decode each
-`confidant/anchor` memo (`AnchorMemo::decode_hex`), fetch bundles by hash from any `GET /log`, and
-`Verifier::rebuild(&memos, mirror)`. The root must land on the last memo's root.
+Joining as a new node (or a signer starting up): read the pool account's transactions
+(`account_tx`), decode each `confidant/anchor` memo (`AnchorMemo::decode_hex`), fetch bundles by hash
+from any `GET /log`, look up every shield memo's deposit on-ledger, and
+`Verifier::rebuild_checked(&memos, &mut mirror, &mut deposits)`. The root must land on the last
+memo's root; a shield whose deposit is missing, delivered a different amount or commits to another
+bundle refuses the join. `Verifier::rebuild` (no deposit facts) re-verifies the cryptography only
+and trusts the quorum on backing — fine for a read-only mirror, not for a signer.
 
 ## Wallet side — what the local wallet process exposes to the UI
 

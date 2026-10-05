@@ -7,10 +7,14 @@ anchored roots.
 
 ## 1. Core level — `core/tests/e2e_demo.rs` (runs in CI)
 
-Against `confidant-core` alone, no network. Adds what only the core can check: the public record
-of the hop carries no sender/recipient/amount and has the same shape as every other hop; snapshot →
-restore is state-identical; a bystander's key sees only the bystander; tampered / replayed /
-re-pointed log entries are refused by the verifier.
+Against `confidant-core` alone, no network, with the v2 trust split in place: six wallets
+pre-populate the pool; Alice's wallet builds a shield and the verifier accepts it against a
+deposit reference (memo = bundle hash); a second signer replays the public log and agrees on every
+anchor memo; Alice pays Bob (the public record of the hop carries no address or amount and has the
+same shape as every other hop); Bob unshields and a signer asked to endorse a re-pointed payout
+refuses; the auditor key reveals exactly Bob (a bystander's key only the bystander); a new node
+rebuilds from the anchor memos plus a mirror and lands on the same root; tampered and replayed
+entries are refused.
 
 ```bash
 cargo test --test e2e_demo -- --nocapture      # prints a timing table
