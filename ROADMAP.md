@@ -17,6 +17,7 @@ is the XRPL integration built on-site. Be honest about that split on stage.
 
 | Area | Status | Where |
 |---|---|---|
+| **v2 trust-minimized architecture** (client-side keys/proving, state on ledger, k-of-N SignerList, relaying) | 🟡 decided 2026-10-05, in progress — §5a | `SPEC.md` §v2, `docs/audit/` |
 | Reused circuit validated (SPEC's "critical dependency", M0 gate) | ✅ done — Zcash Orchard Action circuit via `orchard` 0.15.5, `orchard_v2` / `FixedPostNu6_2`, unchanged | `core/src/pool.rs` (`BUNDLE_VERSION`) |
 | Rust core: tree, nullifiers, shield / transfer / unshield, verify tail, auditor reveal, public bundle log, snapshot/restore | ✅ done | `core/` (`confidant-core`) |
 | Tests | ✅ 29 tests (22 integration, 7 unit); negative suite from the audit REQ; every guard mutation-tested; **100% line coverage, enforced in CI**; core-level **e2e of the demo script** | `core/tests/`, CI `coverage` job |
@@ -127,6 +128,26 @@ In demo order; `docs/CORE-API.md` maps each endpoint to a core call.
 9. **Demo script + pitch** (SPEC §Demo script): rehearse the 45 seconds; keep the honest labels in
    the words (custodial today, hides the internal graph, not the endpoints; ZK first, TEE only as
    a roadmap footnote). Bonus only if time: SignerList multisig, Proof-of-Innocence.
+
+## 5a. v2 — trust-minimized architecture (decided 2026-10-05, in progress)
+
+Decision: leave the single trusted operator behind and reach decentralization comparable to
+Railgun/Tornado on today's XRPL (not better: without an amendment nobody on-ledger verifies a
+proof, so the ceiling is a federated k-of-N). Design: `SPEC.md` §"v2" / `SPEC.ru.md` §16; audit:
+`docs/audit/REQ-v2-trust-minimized-2026-10-05.md`.
+
+| Step | What changes | Owner | Status |
+|---|---|---|---|
+| **1. Keys and proving on the client** | `Pool` splits into `Wallet` (keys, own notes, build/prove/sign; a local process, no WASM) and `Verifier` (tree, nullifiers, log, verify/apply). The API takes a ready bundle; `senderAuth` disappears (spend-auth signatures authorize). **Deposit binding:** the deposit Payment's memo carries the shield bundle's hash; a verifier accepts a shield only if the memo hash matches and the deposit is unconsumed | crypto lead (core), API/XRPL lead (deposit memo in FE, localhost wallet) | ⬜ core PR in progress |
+| **2. State on the ledger** | one anchor memo per op: `root ‖ bundle hash ‖ external ‖ nullifiers ‖ commitments` (≤ 1 KB); proofs mirrored off-ledger by hash; anyone rebuilds the verifier state from the pool account's transactions + a mirror | crypto lead (codec, rebuild), API/XRPL lead (scanner) | ⬜ |
+| **3. k-of-N verifiers (SignerList)** | the pool account gets a SignerList quorum, master key disabled; every signer runs its own `Verifier`, re-checks the proof and the deposit on-ledger, and signs payout/anchor only then; a coordinator assembles the multisig. XLS-56 Batch for atomic anchor + payout if enabled on testnet | API/XRPL lead (harness shows 3 signers) | ⬜ |
+| **4. Permissionless relaying** | any client submits to any verifier; `GET /log` serves the mirror; node-operator guide | both | ⬜ |
+
+Honest label after v2: notes are non-custodial (plaintext never leaves the client); the pool account
+and proof verification sit with a k-of-N quorum of independent verifiers; state is reconstructible
+from the ledger; **collusion of k signers can drain the pool account but cannot spend anyone's
+notes**. Tornado/Railgun verify by consensus; this design cannot, without the amendment in SPEC §15.
+Upside vs. Railgun: Halo 2 has no trusted setup.
 
 ## 6. Decisions still open
 
