@@ -33,6 +33,9 @@ export function serve(port, routes) {
       send(e.status ?? 500, { error: e.message ?? String(e), ...(e.details ? { details: e.details } : {}) });
     }
   });
+  // Node closes idle keep-alive sockets after 5 s by default; a client reusing one at that instant
+  // sees ECONNRESET ("fetch failed"). Local services talk over long-lived connections: no idle cut.
+  server.keepAliveTimeout = 0;
   return new Promise((resolve) => server.listen(port, "127.0.0.1", () => resolve(server)));
 }
 
@@ -43,13 +46,23 @@ export function refuse(status, message, details) {
   return e;
 }
 
-export async function http(method, url, body) {
-  const res = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
-  const text = await res.text();
-  let json = null;
-  try { json = text ? JSON.parse(text) : null; } catch { json = { error: text }; }
-  if (!res.ok) throw refuse(res.status, json?.error ?? `HTTP ${res.status}`, json);
-  return json;
+/** JSON over HTTP. A failure *before any response* (socket reset while reusing an idle keep-alive
+ *  connection, refused connection during startup) is retried once; an HTTP error is thrown as-is. */
+export async function http(method, url, body, { retries = 1 } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    let res;
+    try {
+      res = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    } catch (e) {
+      if (attempt < retries) { await new Promise((r) => setTimeout(r, 200)); continue; }
+      throw refuse(502, `${method} ${url}: ${e.cause?.code ?? e.cause?.message ?? e.message}`);
+    }
+    const text = await res.text();
+    let json = null;
+    try { json = text ? JSON.parse(text) : null; } catch { json = { error: text }; }
+    if (!res.ok) throw refuse(res.status, json?.error ?? `HTTP ${res.status}`, json);
+    return json;
+  }
 }
 
 // ---- XRPL memo helpers -----------------------------------------------------------------------
