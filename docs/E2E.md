@@ -16,31 +16,30 @@ re-pointed log entries are refused by the verifier.
 cargo test --test e2e_demo -- --nocapture      # prints a timing table
 ```
 
-## 2. XRPL testnet level — `e2e/testnet/run.mjs` (manual, or CI `workflow_dispatch`)
+## 2. XRPL testnet level — `e2e/testnet/run.mjs` (manual, or CI `workflow_dispatch`) — v2
 
-Real Payments on XRPL **testnet**, `xrpl.js` on the XRPL side (where SPEC puts it), the core driven
-through `core/examples/cli.rs` — a test tool standing in for the backend (one `Pool`, snapshot on
-disk, the five operations as subcommands, JSON out).
-
-What happens on ledger and what is asserted:
+Real Payments on XRPL **testnet** with the v2 trust split: wallets build and prove locally
+(`cli wallet`), a coordinator and three signers each run their own `cli verifier` state, the pool
+account is a **2-of-3 SignerList with the master key disabled**, and every accepted operation is
+anchored in its own memo. Everything XRPL happens in `xrpl.js`, where SPEC puts it.
 
 | Step | On XRPL testnet | Asserted |
 |---|---|---|
-| accounts | faucet funds the pool account, Alice and an anchor sink; Bob's exit address is a fresh, unfunded wallet | — |
-| shield | Alice → pool Payment (25 XRP) | the harness **validates the deposit on-ledger** (validated, Payment, destination = pool, `delivered_amount`) before calling `cli shield` — the backend's custodial backing step |
-| anchor | pool → sink Payment, 1 drop, memo `confidant/root` = tree root | `cli anchored <root>` records it; later the memo is read back from the ledger and compared |
-| private transfer | nothing | the pool account's `Sequence` is unchanged across the hop |
-| anchor | memo Payment with the new root | as above |
-| unshield | pool → Bob's fresh address Payment for `payout.amount` | the fresh account exists with exactly that balance |
-| anchor | memo Payment with the final root | as above |
-| reveal | — | Bob's key: one incoming note, spent, balance 0; Alice's key: outgoing payment to Bob's address |
-| third party | reads the three anchor memos back from the ledger | `cli export-log` + `cli verify-log` (fresh pool, no keys) lands on the last anchored root; every memo root matches |
+| accounts | faucet funds the pool, Alice and an anchor sink; three signer keys and Bob's exit address are fresh | — |
+| quorum | `SignerListSet` (quorum 2 of 3) then `AccountSet asfDisableMaster` on the pool | `account_info`: master disabled, signer list present |
+| shield | Alice's wallet **builds first**; her deposit Payment carries memo `confidant/shield` = bundle hash | the coordinator **and every signer** validate the deposit on-ledger (validated Payment, Destination = pool, `delivered_amount`, memo = hash); the coordinator accepts; each signer `endorse`s on its own state and computes the same root; the same deposit against a fresh bundle is refused |
+| anchor | pool → sink Payment, 1 drop, memo `confidant/anchor` = the per-op memo, **multisigned by 2 of the 3 signers that endorsed** | memo bytes on ledger equal what the quorum signed |
+| private transfer | nothing | the pool account's `Sequence` is unchanged across the hop; 3/3 signers endorse |
+| lying coordinator | — | a proposed memo with a flipped root bit is refused by **3/3 signers** (`endorse` exits non-zero, no signature) |
+| unshield | anchor memo + payout Payment pool → Bob's fresh address, both 2-of-3 multisigned | signers endorse the honest memo; the fresh account holds exactly the payout |
+| reveal | — | Bob's key on a signer's state: one incoming note, spent, balance 0 |
+| new node | reads the pool account's `account_tx`, decodes the three `confidant/anchor` memos in ledger order, and **looks up every shield memo's deposit itself** | `cli verifier rebuild memos.json log.json deposits.json` (`rebuild_checked`) lands on the last anchored root with the same bundle and consumed-deposit counts; a wrong deposit amount or missing deposit facts refuse the join |
+| lagging signer | — | a signer with no state cannot endorse the unshield; after `rebuild` from the ledger it agrees |
 
-Each run writes `data/e2e-<timestamp>.{pool-state,log,report}.json` (gitignored) and prints
-explorer links for every transaction. The state file holds spending keys **unencrypted**: the CLI
-writes it with mode 0600, refuses paths outside the gitignored patterns, and prints a warning on
-every run. It is a test tool; real key custody (threshold / TEE) belongs to the backend and is a
-roadmap item — do not reuse the CLI as a backend.
+Each run writes `data/e2e-<timestamp>/` (gitignored): `*.wallet.json` (spending keys, mode 0600,
+loud warning), `*.verifier-state.json` (public), bundles, memos, `log.json`, `report.json` with
+explorer links. It is a test tool; the API/XRPL lead lifts the XRPL parts (deposit validation,
+memo anchoring, multisign, payout, scanner) into the backend.
 
 ```bash
 cargo build --release --example cli
@@ -49,21 +48,23 @@ CLI=../../target/release/examples/cli npm run e2e
 ```
 
 Env: `XRPL_WS` (default `wss://s.altnet.rippletest.net:51233`), `DEPOSIT_XRP` (default 25), `CLI`.
-Needs network access to the testnet and its faucet; ~90 s per run.
+Needs network access to the testnet and its faucet; about 3½ minutes per run (three faucet calls,
+two single-signed setup transactions, one deposit, three multisigned anchors, one multisigned
+payout).
 
-Reference run (2026-10-05): deposit `CE49EB29…`, anchors `21B3DD66…`, `8C0A4C9B…`, `6CCB0E9A…`,
-payout `5B5FF7B8…` on testnet; 3 bundles, 6 leaves, 3 anchors, replayed root = last memo root.
+Reference run (2026-10-05, v2): pool `rQHXk7c3XzGycM2qx651xGnbUnfocoUMxB`; `SignerListSet`
+`058FF483…`, `asfDisableMaster` `23FBA67C…`, deposit `69B70691…`, anchors `EB2593F4…` (260 B),
+`D3D99CD2…` (196 B), `645CE5B7…` (230 B), payout `FA8BE0AC…` — all on testnet.xrpl.org; 3/3
+signers endorsed every honest memo, 3/3 refused the lying one, the new node's root equals the last
+anchor.
 
 ## 3. What the API-level e2e adds once `backend/` exists (API/XRPL lead)
 
-Same steps through the SPEC endpoints instead of the CLI:
-
-- `POST /shield` accepted only after the deposit is found on-ledger (as the harness does); a bogus
-  `depositTxHash` or amount is refused.
-- `POST /transfer` with a wrong `senderAuth` is refused.
-- `GET /pool/state.root` equals the memo root after each anchor; `anchoredRoot` follows.
-- `POST /unshield` → pool → destination Payment for exactly `payout.amount`.
-- `POST /audit/reveal` with Bob's key returns the report above.
-- Restarting the backend between steps changes nothing (snapshot on disk).
-
-The harness is written so swapping `core(...)` (CLI calls) for HTTP calls is the only change.
+Same steps through the SPEC v2 endpoints instead of the CLI: `POST /submit/shield` with
+`{bundle, depositTxHash}` accepted only after the service validates the deposit (as the harness
+does) and refuses a bogus hash, amount or memo; `POST /submit/transfer`; `POST /submit/unshield`
+followed by the quorum's payout; `GET /log` serving the mirror a wallet syncs from and a new node
+rebuilds from; `POST /audit/reveal`. The signer side is `Verifier::endorse` behind a small
+"sign this if it is what you computed" endpoint per signer; the coordinator collects ≥ k
+signatures. The harness is written so swapping the `cli(...)` calls for HTTP calls is the only
+change.

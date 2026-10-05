@@ -1,14 +1,10 @@
 //! Error type for every fallible core operation.
 
-use crate::pool::MAX_OUTPUTS;
+use crate::wallet::MAX_OUTPUTS;
 
-/// Everything the pool can refuse to do, and why.
+/// Everything the wallet or the verifier can refuse to do, and why.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("unknown owner `{0}`")]
-    UnknownOwner(String),
-    #[error("owner `{0}` is already registered")]
-    OwnerExists(String),
     #[error("amount must be positive")]
     ZeroAmount,
     #[error("insufficient shielded balance: available {available}, requested {requested}")]
@@ -41,14 +37,34 @@ pub enum Error {
         op: crate::sighash::OpTag,
         actual: i64,
     },
-    #[error("snapshot is malformed: {0}")]
-    Snapshot(String),
+    #[error("deposit `{0}` already backs a shield")]
+    DepositConsumed(String),
+    #[error("deposit memo does not commit to this bundle")]
+    DepositBindingMismatch,
+    #[error("shield needs a deposit reference")]
+    DepositRequired,
+    #[error("anchor memo is malformed: {0}")]
+    MemoMalformed(&'static str),
+    #[error("anchor memo would be {0} bytes, over the 1 KB limit")]
+    MemoTooLarge(usize),
+    #[error("anchor memo does not match this verifier's record {index}: {what}")]
+    MemoMismatch { index: usize, what: &'static str },
+    #[error("mirror has no bundle with hash {0}")]
+    MirrorMissing(String),
+    #[error("bundle hash does not match the anchor memo")]
+    BundleHashMismatch,
+    #[error("log is not an append-only extension of what the wallet already synced")]
+    LogRewound,
+    #[error("record index {found} where {expected} was expected")]
+    RecordOutOfOrder { expected: usize, found: usize },
     #[error("commitment tree error: {0}")]
     Tree(String),
     #[error("no witness for leaf position {0}")]
     NoWitness(u64),
     #[error("invalid key or hex encoding")]
     InvalidEncoding,
+    #[error("snapshot is malformed: {0}")]
+    Snapshot(String),
     #[error("internal invariant violated: {0}")]
     Internal(&'static str),
 }

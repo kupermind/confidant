@@ -1,7 +1,11 @@
-//! Conversion between a live [`Bundle`] and its public [`BundleRecord`], both ways.
+//! Conversion between a live [`Bundle`] and its public [`BundleRecord`], both ways, plus the
+//! **bundle hash**: `BLAKE2b-256(personal "ConfidantBundle")` over the canonical bundle bytes.
 //!
-//! The record is what the pool exports; rebuilding a bundle from it is what a third party (or
-//! the pool itself after a restart) does before re-verifying proof and signatures.
+//! The record is what wallets submit and verifiers log; rebuilding a bundle from it is what a
+//! verifier (or any third party) does before re-verifying proof and signatures. The hash is what
+//! the deposit memo and the anchor memo commit to; it covers the bundle itself (anchor, flags,
+//! value balance, every action's public parts, proof, binding signature) and none of the
+//! verifier's metadata (`index`, `timestamp`, `first_leaf`, `external`).
 
 use nonempty::NonEmpty;
 use orchard::bundle::{Authorized, BundleVersion, Flags};
@@ -15,6 +19,9 @@ use crate::error::Error;
 use crate::sighash::OpTag;
 use crate::types::{ActionRecord, BundleRecord};
 
+/// BLAKE2b personalization of the bundle hash (≤ 16 bytes).
+pub const HASH_PERSONALIZATION: &[u8; 15] = b"ConfidantBundle";
+
 fn arr<const N: usize>(s: &str) -> Result<[u8; N], Error> {
     let v = hex::decode(s).map_err(|_| Error::InvalidEncoding)?;
     v.try_into().map_err(|_| Error::InvalidEncoding)
@@ -24,7 +31,8 @@ fn ct<T>(o: subtle::CtOption<T>) -> Result<T, Error> {
     o.into_option().ok_or(Error::InvalidEncoding)
 }
 
-/// Serialises an accepted bundle's public effects.
+/// Serialises a bundle's public effects. `external` is the verifier's external context
+/// (deposit tx hash / destination / empty); wallets pass what they know.
 pub fn record_from_bundle(
     bundle: &Bundle<Authorized, i64>,
     index: usize,
@@ -64,8 +72,8 @@ pub fn record_from_bundle(
     }
 }
 
-/// Rebuilds a bundle from its record. Only well-formedness is checked here; the pool's verify
-/// tail does the proof and signature checks.
+/// Rebuilds a bundle from its record. Only well-formedness is checked here; the verifier's tail
+/// does the proof and signature checks.
 pub fn bundle_from_record(
     record: &BundleRecord,
     version: BundleVersion,
@@ -102,4 +110,42 @@ pub fn bundle_from_record(
         version,
     )
     .map_err(|e| Error::Build(e.to_string()))
+}
+
+/// Canonical bytes of a record's bundle part (what the bundle hash covers):
+/// `anchor(32) ‖ flags(1) ‖ valueBalance(i64 LE) ‖ n(u32 LE) ‖ n × action ‖ proofLen(u32 LE) ‖ proof ‖ bindingSig(64)`,
+/// each action being `nf ‖ rk ‖ cmx ‖ cvNet ‖ epk ‖ enc(580) ‖ out(80) ‖ sig(64)`.
+pub fn canonical_bytes(record: &BundleRecord) -> Result<Vec<u8>, Error> {
+    let mut v = Vec::with_capacity(512 + record.actions.len() * 912 + record.proof.len() / 2);
+    v.extend_from_slice(&arr::<32>(&record.anchor)?);
+    v.push(record.flags);
+    v.extend_from_slice(&record.value_balance.to_le_bytes());
+    v.extend_from_slice(&(record.actions.len() as u32).to_le_bytes());
+    for a in &record.actions {
+        v.extend_from_slice(&arr::<32>(&a.nullifier)?);
+        v.extend_from_slice(&arr::<32>(&a.rk)?);
+        v.extend_from_slice(&arr::<32>(&a.cmx)?);
+        v.extend_from_slice(&arr::<32>(&a.cv_net)?);
+        v.extend_from_slice(&arr::<32>(&a.epk)?);
+        v.extend_from_slice(&arr::<580>(&a.enc_ciphertext)?);
+        v.extend_from_slice(&arr::<80>(&a.out_ciphertext)?);
+        v.extend_from_slice(&arr::<64>(&a.spend_auth_sig)?);
+    }
+    let proof = hex::decode(&record.proof).map_err(|_| Error::InvalidEncoding)?;
+    v.extend_from_slice(&(proof.len() as u32).to_le_bytes());
+    v.extend_from_slice(&proof);
+    v.extend_from_slice(&arr::<64>(&record.binding_signature)?);
+    Ok(v)
+}
+
+/// The bundle hash: what the deposit memo and the anchor memo commit to.
+pub fn bundle_hash(record: &BundleRecord) -> Result<[u8; 32], Error> {
+    let bytes = canonical_bytes(record)?;
+    let hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .personal(HASH_PERSONALIZATION)
+        .hash(&bytes);
+    let mut out = [0u8; 32];
+    out.copy_from_slice(hash.as_bytes());
+    Ok(out)
 }

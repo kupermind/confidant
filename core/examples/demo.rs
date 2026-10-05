@@ -1,72 +1,88 @@
-//! Offline walk-through of the demo script: shield → private transfer → unshield → auditor
-//! reveal, with timings. No XRPL involved; this is the core alone.
+//! Offline walk-through of the v2 demo script: two wallets, one verifier, no XRPL.
 //!
 //! `cargo run --release --example demo`
 
 use std::time::Instant;
 
-use confidant_core::{Pool, TransferOutput};
+use confidant_core::memo::AnchorMemo;
+use confidant_core::record::bundle_hash;
+use confidant_core::{DepositRef, TransferOutput, Verifier, Wallet};
 
 fn step<T>(label: &str, f: impl FnOnce() -> T) -> T {
     let t = Instant::now();
-    let out = f();
-    println!("{label:<34} {:>8.0?}", t.elapsed());
-    out
+    let r = f();
+    println!("{label:<44} {:>8.0?}", t.elapsed());
+    r
 }
 
 fn main() {
-    let mut pool = step("build circuit params + empty pool", Pool::new);
-    let alice = pool.register_owner("alice").unwrap();
-    let bob = pool.register_owner("bob").unwrap();
-    println!("alice address  {}", alice.address);
-    println!("bob   address  {}", bob.address);
+    let mut verifier = step("build circuit params + empty verifier", Verifier::new);
+    let mut alice = Wallet::new();
+    let mut bob = Wallet::new();
+    println!("alice address  {}", alice.info().address);
+    println!("bob   address  {}", bob.info().address);
 
-    let shield = step("shield 100 → alice", || {
-        pool.shield("alice", 100, "XRPL-DEPOSIT-TX-HASH").unwrap()
+    // 1. Shield: the wallet builds first, the deposit memo carries the bundle hash, the verifier
+    //    accepts only against that deposit.
+    let prepared = step("wallet: build + prove shield 100", || {
+        alice.build_shield(100).unwrap()
     });
-    println!("  new root {}", shield.new_root);
-
-    let transfer = step("private transfer alice → bob 60", || {
-        pool.transfer(
-            "alice",
-            &[TransferOutput {
-                recipient: "bob".into(),
-                amount: 60,
-            }],
-        )
-        .unwrap()
+    let deposit = DepositRef {
+        tx_hash: "XRPL-DEPOSIT-TX-HASH".into(),
+        delivered: 100,
+        memo_hash: prepared.hash_hex(),
+    };
+    let acc = step("verifier: accept shield (deposit-bound)", || {
+        verifier.submit_shield(&prepared.record, &deposit).unwrap()
     });
-    println!("  nullifiers {:?}", transfer.nullifiers);
-    println!("  new root   {}", transfer.new_root);
-
-    let unshield = step("unshield bob 25 → fresh XRPL address", || {
-        pool.unshield("bob", 25, "rFreshRecipientAddress").unwrap()
-    });
-    println!("  payout {:?}", unshield.payout);
-    println!("  new root {}", unshield.new_root);
-
-    let state = pool.state();
     println!(
-        "\npool state: {}",
-        serde_json::to_string_pretty(&state).unwrap()
+        "  root {}  memo {}",
+        acc.new_root,
+        verifier.anchor_memo(0).unwrap().encode_hex().unwrap().len() / 2
     );
 
+    // 2. Private transfer.
+    alice.sync(verifier.records()).unwrap();
+    let prepared = step("wallet: build + prove transfer → bob 60", || {
+        alice
+            .build_transfer(&[TransferOutput {
+                recipient: bob.info().address,
+                amount: 60,
+            }])
+            .unwrap()
+    });
+    let acc = step("verifier: accept transfer", || {
+        verifier.submit_transfer(&prepared.record).unwrap()
+    });
+    println!("  root {}", acc.new_root);
+
+    // 3. Unshield.
+    bob.sync(verifier.records()).unwrap();
+    let prepared = step("wallet(bob): build + prove unshield 25", || {
+        bob.build_unshield(25, "rFreshRecipientAddress").unwrap()
+    });
+    let acc = step("verifier: accept unshield", || {
+        verifier
+            .submit_unshield(&prepared.record, "rFreshRecipientAddress")
+            .unwrap()
+    });
+    println!("  payout {:?}", acc.payout.unwrap());
+
+    // 4. Reveal and 5. a new node rebuilding from the anchor memos + a mirror.
     let report = step("auditor reveal with bob's viewing key", || {
-        pool.reveal(&bob.viewing_key).unwrap()
+        verifier.reveal(&bob.info().viewing_key).unwrap()
     });
     println!("{}", serde_json::to_string_pretty(&report).unwrap());
-
-    let verify_all = step("third-party re-verification of the log", || {
-        let fresh = Pool::new();
-        let mut fresh_pool = fresh;
-        for record in pool.records() {
-            let bundle =
-                confidant_core::record::bundle_from_record(record, pool.params().version).unwrap();
-            fresh_pool
-                .submit(bundle, record.op, &record.external, None)
-                .unwrap();
-        }
-        fresh_pool.state().root == state.root
+    let memos: Vec<AnchorMemo> = (0..3).map(|i| verifier.anchor_memo(i).unwrap()).collect();
+    let log = verifier.records().to_vec();
+    let node = step("new node: rebuild from 3 memos + mirror", || {
+        Verifier::rebuild(&memos, &mut |h| {
+            log.iter().find(|r| bundle_hash(r).unwrap() == *h).cloned()
+        })
+        .unwrap()
     });
-    println!("  roots match: {verify_all}");
+    println!(
+        "  roots match: {}",
+        node.state().root == verifier.state().root
+    );
 }

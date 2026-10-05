@@ -4,6 +4,7 @@
 //! as Zcash does) and closes with a checkpoint. The sequence of checkpoint roots is the pool's
 //! anchor history; a bundle is accepted only against an anchor in it (REQ §3).
 
+use incrementalmerkletree::frontier::Frontier;
 use incrementalmerkletree::{Marking, Position, Retention};
 use orchard::tree::{MerkleHashOrchard, MerklePath};
 use orchard::Anchor;
@@ -22,6 +23,9 @@ type Store = MemoryShardStore<MerkleHashOrchard, u32>;
 
 pub struct CommitmentTree {
     inner: ShardTree<Store, DEPTH, SHARD_HEIGHT>,
+    /// A witness-free mirror of the same leaves: cheap to clone, so a signer can compute the root
+    /// a batch *would* produce without touching its state (`root_after`).
+    frontier: Frontier<MerkleHashOrchard, DEPTH>,
     leaf_count: u64,
     checkpoint: u32,
     /// Every root the pool has ever had, oldest first; `anchors[0]` is the empty tree.
@@ -38,6 +42,7 @@ impl CommitmentTree {
     pub fn new() -> Self {
         Self {
             inner: ShardTree::new(MemoryShardStore::empty(), MAX_CHECKPOINTS),
+            frontier: Frontier::empty(),
             leaf_count: 0,
             checkpoint: 0,
             anchors: vec![Anchor::empty_tree().to_bytes()],
@@ -86,6 +91,7 @@ impl CommitmentTree {
                 Retention::Marked
             };
             self.inner.append(*leaf, retention)?;
+            self.frontier.append(*leaf);
         }
         self.checkpoint = next_checkpoint;
         self.leaf_count += leaves.len() as u64;
@@ -94,8 +100,23 @@ impl CommitmentTree {
             .root_at_checkpoint_id(&self.checkpoint)?
             .ok_or(Error::Internal("checkpoint has no root"))?;
         let anchor = Anchor::from(root);
+        debug_assert_eq!(
+            Anchor::from(self.frontier.root()),
+            anchor,
+            "frontier mirrors the tree"
+        );
         self.anchors.push(anchor.to_bytes());
         Ok(anchor)
+    }
+
+    /// The root the tree would have after appending `leaves`, without changing anything. This is
+    /// how a signer checks a coordinator's proposed root against its own state before signing.
+    pub fn root_after(&self, leaves: &[MerkleHashOrchard]) -> Anchor {
+        let mut f = self.frontier.clone();
+        for leaf in leaves {
+            f.append(*leaf);
+        }
+        Anchor::from(f.root())
     }
 
     /// Merkle witness for the leaf at `position`, valid under [`Self::current_anchor`].
@@ -150,6 +171,25 @@ mod tests {
         assert!(t.is_known_anchor(&a1) && t.is_known_anchor(&a2));
         assert!(t.is_known_anchor(&Anchor::empty_tree()));
 
+        // `root_after` predicts exactly what a batch produces, and leaves the tree untouched.
+        let batch3: Vec<_> = (5..7).map(leaf).map(|l| l.0).collect();
+        let predicted = t.root_after(&batch3);
+        assert_eq!(t.current_anchor(), a2, "prediction did not mutate");
+        assert_eq!(
+            t.root_after(&[]),
+            a2,
+            "empty batch predicts the current root"
+        );
+        let a3 = t.append_batch(&batch3).unwrap();
+        assert_eq!(a3, predicted);
+        let mut t = CommitmentTree::new();
+        let a1 = t
+            .append_batch(&batch1.iter().map(|l| l.0).collect::<Vec<_>>())
+            .unwrap();
+        let a2 = t
+            .append_batch(&batch2.iter().map(|l| l.0).collect::<Vec<_>>())
+            .unwrap();
+        assert!(t.is_known_anchor(&a1) && t.is_known_anchor(&a2));
         // Every leaf witnesses to the current root, including ones from the older batch.
         for (pos, (_, cmx)) in batch1.iter().chain(batch2.iter()).enumerate() {
             let path = t.witness(pos as u64).unwrap();
