@@ -14,8 +14,10 @@
 //! cli --state ... state | owner <id> | export-log <file> | verify-log <file>
 //! ```
 //!
-//! The state file holds spending keys. The tool refuses any path that is not covered by the
-//! repo's `.gitignore` patterns (`*.pool-state.json` or under `data/`).
+//! The state file holds spending keys **unencrypted**. The tool refuses any path that is not
+//! covered by the repo's `.gitignore` patterns (`*.pool-state.json` or under `data/`), writes the
+//! file with mode 0600, and says so loudly on every run. Real key custody (threshold / TEE) is
+//! the backend's problem and a roadmap item — never pick this tool up as a backend.
 
 use std::path::{Path, PathBuf};
 use std::process::exit;
@@ -56,6 +58,21 @@ fn load(p: &Path) -> Pool {
     Pool::restore(&snap).unwrap_or_else(|e| die(e))
 }
 
+const WARNING: &str = "writes spending keys UNENCRYPTED to the state file; test tool only, never \
+production — the backend owns real key custody (threshold / TEE, roadmap)";
+
+const USAGE: &str = "usage: cli [--state <file>] <command> [args]
+  register <owner>                         new owner (random spending key, held in the state file)
+  owner <owner>                            address + viewing key of an owner
+  shield <owner> <amount> <depositTxHash>  mint after the XRPL deposit was validated by the caller
+  transfer <owner> <recipient> <amount>    one private hop
+  unshield <owner> <amount> <destination>  authorize a payout to an XRPL address
+  reveal <viewingKeyHex>                   selective disclosure for one holder
+  anchored <rootHex>                       record the root the caller wrote into an XRPL memo
+  state | export-log <file> | verify-log <file>
+state file: must end in .pool-state.json or live under data/ (both gitignored); written 0600";
+
+/// Writes the snapshot owner-read/write only (0600), replacing any existing file.
 fn save(p: &Path, pool: &Pool) {
     if let Some(dir) = p.parent() {
         if !dir.as_os_str().is_empty() {
@@ -63,7 +80,23 @@ fn save(p: &Path, pool: &Pool) {
         }
     }
     let text = serde_json::to_string_pretty(&pool.snapshot()).unwrap_or_else(|e| die(e));
-    std::fs::write(p, text).unwrap_or_else(|e| die(e));
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(p).unwrap_or_else(|e| die(e));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // An existing file keeps its old mode on open; force it.
+        f.set_permissions(std::fs::Permissions::from_mode(0o600))
+            .unwrap_or_else(|e| die(e));
+    }
+    use std::io::Write;
+    f.write_all(text.as_bytes()).unwrap_or_else(|e| die(e));
 }
 
 fn out<T: serde::Serialize>(v: &T) {
@@ -81,7 +114,12 @@ fn main() {
         args.drain(..2);
     }
     check_state_path(&state);
-    let cmd = arg(&args, 0, "command").to_owned();
+    let cmd = args.first().cloned().unwrap_or_else(|| "help".into());
+    if matches!(cmd.as_str(), "help" | "--help" | "-h") {
+        eprintln!("{USAGE}\n\nWARNING: {WARNING}");
+        return;
+    }
+    eprintln!("WARNING: cli {WARNING} ({})", state.display());
     let a = &args[1..];
 
     match cmd.as_str() {

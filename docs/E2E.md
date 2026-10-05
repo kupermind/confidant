@@ -36,8 +36,11 @@ What happens on ledger and what is asserted:
 | reveal | — | Bob's key: one incoming note, spent, balance 0; Alice's key: outgoing payment to Bob's address |
 | third party | reads the three anchor memos back from the ledger | `cli export-log` + `cli verify-log` (fresh pool, no keys) lands on the last anchored root; every memo root matches |
 
-Each run writes `data/e2e-<timestamp>.{pool-state,log,report}.json` (gitignored; the state file
-holds spending keys) and prints explorer links for every transaction.
+Each run writes `data/e2e-<timestamp>.{pool-state,log,report}.json` (gitignored) and prints
+explorer links for every transaction. The state file holds spending keys **unencrypted**: the CLI
+writes it with mode 0600, refuses paths outside the gitignored patterns, and prints a warning on
+every run. It is a test tool; real key custody (threshold / TEE) belongs to the backend and is a
+roadmap item — do not reuse the CLI as a backend.
 
 ```bash
 cargo build --release --example cli
