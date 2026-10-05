@@ -17,7 +17,8 @@
 //      QUORUM, POOL, SINK, XRPL_WS.
 
 import { Client, multisign } from "xrpl";
-import { DEFAULT_PAYOUT_LLS_WINDOW } from "./lib.mjs";
+import { DEFAULT_PAYOUT_LLS_WINDOW, DEFAULT_ANCHOR_LLS_WINDOW } from "./lib.mjs";
+const ANCHOR_LLS_OFFSET = Math.floor(DEFAULT_ANCHOR_LLS_WINDOW / 3); // 20 ledgers ≈ 80 s
 import { serve, http, refuse, memoOf, MEMO_ANCHOR } from "./lib.mjs";
 
 const env = process.env;
@@ -47,6 +48,9 @@ async function anchorThroughQuorum(accepted, submission) {
     TransactionType: "Payment", Account: env.POOL, Destination: env.SINK, Amount: "1",
     Memos: [memoOf(MEMO_ANCHOR, memoHex)],
   }, SIGNERS.length);
+  // Pin the anchor's validity explicitly (do not depend on autofill's default offset): well inside
+  // the sidecars' anchor window, so payout LLS below stays inside their payout window too.
+  anchorTx.LastLedgerSequence = (await client.getLedgerIndex()) + ANCHOR_LLS_OFFSET;
   txs.push({ kind: "anchor", tx: anchorTx });
   if (accepted.payout) {
     const payoutTx = await client.autofill({

@@ -31,3 +31,32 @@ The root≠last-memo check + rebuild_checked's backing + version-hard-reject cov
 == Net ==
 DESIGN-PASS with C1 (Fee ceiling + Sequence==expected + LLS present/bounded — the blocking one), C2 (deposit re-lookup required — confirmed), C3 (idempotency guards + refuse-non-hit-re-apply), C4 (startup SignerList/master + scan-completeness + mirror checks), C5 (payout LLS-generous + blob user-resubmittable + documented recovery). Negative suite is strong — add: Fee-above-ceiling refused, wrong-Sequence refused, absent/too-far LLS refused, pool-SignerList-mismatch refuses-to-serve, master-not-disabled refuses, burned-but-unpaid recovery (resubmit lands). Start the Rust node; nothing about this is architecture-breaking. One asset-model check: the REQ assumes XRP deposits (delivered_amount drops, non-XRP refused) — confirm that matches the pool's intended asset (if it's an MPT/IOU pool, the deposit + payout legs differ).
 ```
+
+## IMPL ruling (2026-10-05)
+
+From the audit session, verbatim, on branch head `2eba713`.
+
+```text
+IMPL-PASS — quorum services (backend/), branch quorum-services @2eba713. I verified all five conditions + the extra FIRSTHAND IN THE CODE (not on the mutation table / testnet summary — after this slice's earlier marked-done-but-not, I read the guards myself). Mergeable on green CI. (A backend test re-run is going on my side to corroborate; I'll flag only if it diverges.)
+
+Firsthand confirmations:
+- **C1** lib.mjs checkTxShape :102-107 — Fee integer ≤ maxFeeDrops(5000) refuse; `tx.Sequence !== expectedSequence → refuse` (:103); LLS present ∧ in (ledgerIndex, ledgerIndex+window] with 60/600 (:106-107). Fee/Seq/LLS never taken from the coordinator. The XRP-fee-drain is closed.
+- **C2** node.rs endorse :153-159 — for Shield the node drops the coordinator's DepositRef and does `self.deposit(&deposit.tx_hash)` → ledger tx → deposit_facts; submit_shield :117 the same. Coordinator deposit facts never trusted.
+- **C3** already_applied :195-205 — idempotent hit only if last.op==op ∧ last.external==external ∧ bundle_hash(last)==bundle_hash(record) ∧ check_memo ok; else falls to Verifier::endorse (refuses an applied record). A retry with a different destination/deposit is a different external ⇒ no hit. Double-anchor residual closed by C1's Sequence pin.
+- **C4** xrpl.rs check_custody_info — enforces ALL: LSF_DISABLE_MASTER set, a SignerList exists (v1/v2), SignerQuorum==quorum, every SignerWeight==1, on-ledger signer set == configured (order-free). ensure_full_history — first account_tx entry must be an AccountRoot CreatedNode for the pool, else refuse. rebuild_from_ledger wires rebuild_checked + per-shield deposit re-read + set_anchored_root(last); mirror unreachable → die before serving. This is the custody/membership projection I asked for.
+- **C5** coordinator.mjs anchorThroughQuorum — single path: submitMultisigned(anchor) is awaited FIRST (throws if not tesSUCCESS ⇒ no anchor, no payout), /anchored broadcast, THEN the payout is submitted; payout Sequence=anchor+1, payout LLS=anchor+480 (inside the 600 window); on payout failure payoutError + payoutBlob returned. Never pays before the note is burned. deposit_facts :64-98 — validated ∧ Payment ∧ Destination==pool ∧ delivered_amount parsed strict u64 drops (non-integer → error, not 0) ∧ confidant/shield memo ∧ 64-hex.
+- **Extra** node.rs anchored :224-235 — reads the anchor tx itself, anchor_fact (validated ∧ Account==pool ∧ confidant/anchor memo) ∧ memo.root==root ∧ root∈history (UnknownAnchor else). An unauthenticated /anchored can't move anchored_root to a root the ledger doesn't carry. Good beyond the REQ.
+
+The three "survived-first" mutations (M4 non-integer delivered read as 0, M12 idempotency-ignores-op, M14 idempotency-ignores-bundle-hash) are exactly the subtle ones, and I confirmed the guards they protect are present (the strict parse::<u64> in deposit_facts; op + bundle_hash in already_applied). That's a rigorous suite, honestly reported.
+
+== Q-SVC-I1 — "current" is correct, keep it. ==
+Reading `ledger_index: "current"` for the next Sequence is the right choice, and your reasoning holds: reading "validated" would make the anchor's consumption of `next` invisible while it sits in the open ledger, so the payout at next+1 would be refused on re-collection until the anchor validates. "current" lets the payout be re-collected while the anchor is still open. Residuals: a lying RPC on "current" (R3 — bounded, operators point XRPL_RPC at their own rippled) and a dropped-open-ledger anchor (benign liveness: the payout at next+1 then fails tefPAST_SEQ, resubmit). Keep "current".
+
+== Q-SVC-I2 — windows sane. ==
++60 anchor (~3–4 min) is enough for the quorum to collect ≥k sigs and submit, short enough that a signed anchor blob doesn't linger. +600 payout (~40 min) gives recovery room, and the Sequence pin makes the payout blob SINGLE-USE: once it lands (tesSUCCESS consumes anchor+1), a resubmit is tefPAST_SEQ — so the 40-min window allows resubmit-until-landed, never a double-pay. Both fine.
+
+== Q-SVC-I3 — one minor watch-item; otherwise clear. ==
+Nothing blocking. Watch: the coordinator derives payout LLS = anchorTx.LLS + 480 where anchorTx.LLS comes from xrpl.js autofill; confirm autofill's anchor LLS stays low enough (≈current+few) that anchor ≤ current+60 AND payout ≤ current+600 hold across RPC/ledger variance — else a sidecar would refuse the payout window. The testnet run passed, so it holds in practice; just keep an eye if autofill's default LLS offset changes. And a positive on the Q-SVC-4 recovery I'll put on record: because endorse is idempotent and sidecars re-sign on /sign, a REPLACEMENT coordinator (R2 — anyone may run one) can re-drive a stuck payout (idempotent accept → payout at next+1 now that the anchor consumed `next` → re-collect sigs → submit), so a dead original coordinator does not strand funds — stronger than relying only on the returned blob. Document that recovery path alongside the blob-resubmit one.
+
+Merge PR #11 on green CI. Residuals R1–R5 acknowledged and acceptable for the testnet hackathon. Nothing else owed from me on this slice; ping me if a core type/path changes or for the next slice.
+```

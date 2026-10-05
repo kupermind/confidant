@@ -307,8 +307,12 @@ creation and every memo is backed by the mirror (C4).
 
 **Payout recovery (C5).** The anchor always lands before the payout, so a failure leaves a spent note
 and an unpaid user — never a double payment. The coordinator returns the multisigned payout blob
-with its answer; anyone may resubmit it until its LastLedgerSequence (hundreds of ledgers). Atomic
-anchor + payout via XLS-56 Batch is the production fix (roadmap).
+with its answer; anyone may resubmit it until its LastLedgerSequence (hundreds of ledgers). A
+second recovery path needs no blob at all: because every node's `endorse` is idempotent and the
+sidecars sign on request, a **replacement coordinator** (anyone may run one, it holds nothing) can
+re-drive the same submission — the nodes answer with the same acceptance, the payout is prepared at
+the pool's now-next sequence, the sidecars re-sign, and the payout lands; a dead coordinator strands
+no funds. Atomic anchor + payout via XLS-56 Batch is the production fix (roadmap).
 
 ---
 
