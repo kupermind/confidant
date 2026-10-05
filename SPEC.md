@@ -47,9 +47,10 @@ against the anchored root. Keeps everything on XRPL, one environment, no EVM/Sol
 ## Easiest-path decisions
 
 - **Testnet first** (faucet accounts, no real value); mainnet only if time.
-- **Custody:** a single regular key on the pool account for the demo; "SignerList multisig /
-  FROST, fully distributed, in production" is the talking point. Add SignerList only with spare hours.
-- **Proving in the backend** (skip WASM / client-side).
+- **Custody (v2):** the pool account is controlled by an XRPL **SignerList quorum (k-of-N)** of
+  independent verifiers, master key disabled. v1 (single regular key) only as the demo fallback.
+- **Proving on the client (v2):** the user's keys and plaintext never leave the user's machine.
+  The wallet is a native local process (no WASM for the hackathon); the service only verifies.
 - **Root anchor** = a Payment memo carrying the tree root each batch.
 - **Pre-populate the pool** — a script shields from many testnet accounts so the pool has a
   believable anonymity set and unshields aren't 1:1 linkable on stage.
@@ -60,14 +61,16 @@ against the anchored root. Keeps everything on XRPL, one environment, no EVM/Sol
 - **Hidden:** sender / receiver / amount of internal hops (off-ledger; only the root anchored).
 - **Public (inherent to any pool):** shield/unshield amounts + external addresses. Privacy =
   anonymity set, simulated with pre-funded testnet accounts + fixed denominations.
-- **Trust model — custodial (headline, not footnote).** The operator holds every holder's spending
-  key: it sees every internal plaintext **and can spend or move any holder's funds**. Backing is
-  operator-enforced, not cryptographic: the pool mints a shield on the front-end's word that the XRPL
-  deposit happened, and pays an unshield the same way. What *is* cryptographic: every op is a real
-  Orchard proof, re-verifiable by anyone from the published bundle log against the anchored root.
-  The honest line: "distributable with more time, and a TEE removes the operator from the trust base
-  entirely; the trustless deposit↔mint binding is an in-enclave SPV proof, roadmap." This is the
-  **only** place TEE is mentioned — a production footnote, never in the demo mechanics.
+- **Trust model (v2, in progress — see §v2 below).** Notes are **non-custodial**: keys and plaintext
+  stay on the client, nobody else can spend a holder's notes or read them. The **pool account and
+  proof verification are federated**: a k-of-N quorum of independent verifiers, each re-checking the
+  proof and the deposit on-ledger before signing a payout or an anchor. Backing is therefore
+  federated, not cryptographic: **collusion of k signers can drain the pool account** (it still
+  cannot forge a spend of anyone's note). State is reconstructible from the ledger alone. Until v2
+  lands, v1 is **custodial** (one operator holds every key, sees everything, can spend everything,
+  vouches for backing) and must be labeled so. Consensus-level verification needs the amendment in
+  §Amendment sketch; "a TEE removes the operator from the trust base" is the **only** place TEE is
+  mentioned — a production footnote, never in the demo mechanics.
 - **Endpoint correlation (limitation, stated plainly).** The pool hides the *internal* graph. It does
   **not** hide that someone shielded X and later someone unshielded X: with a small or empty anonymity
   set, amount + timing + external address correlate a deposit to a withdrawal. An empty pool at launch
@@ -81,7 +84,23 @@ against the anchored root. Keeps everything on XRPL, one environment, no EVM/Sol
 
 ## API contract (Rust backend ↔ TS front-end)
 
-The front-end submits every XRPL transaction; the backend only mints notes, proves, and authorizes.
+v1 contract (custodial operator) is kept below for reference; **v2 replaces it with bundle
+submission**: the client builds, proves and signs every bundle; the service only verifies.
+
+| v2 method + path | Purpose | Request | Response |
+| --- | --- | --- | --- |
+| `GET /log?from=N` | public bundle log (the mirror) and current state | — | `records[]`, `root`, `anchoredRoot`, `leafCount`, `nullifierCount` |
+| `POST /submit/shield` | accept a client-built shield after the deposit is validated | `bundle` (record JSON), `depositTxHash` | `Accepted {bundleIndex, firstLeaf, newRoot}` |
+| `POST /submit/transfer` | accept a client-built private hop | `bundle` | `Accepted` |
+| `POST /submit/unshield` | accept a client-built exit; the quorum then pays `destination` | `bundle`, `destination` | `Accepted` + `payout {amount, destination}` |
+| `POST /audit/reveal` | convenience over the public log | `viewingKey` (holder's FVK) | `balance`, `notes[]` (a holder's auditor can run this locally instead) |
+
+No `owner`, no `senderAuth`: the spend-authorization signatures inside the bundle are the
+authorization. **Deposit binding:** the deposit Payment's memo (`confidant/shield`) carries the
+BLAKE2b-256 hash of the shield bundle; a verifier accepts the shield only if `delivered_amount ==
+−valueBalance`, the memo hash equals the bundle hash, and that deposit was not consumed before.
+
+v1 contract (reference):
 
 | Method + path | Purpose | Request | Response |
 | --- | --- | --- | --- |
@@ -177,3 +196,45 @@ Pool pre-funded with many testnet accounts; drive it next to the real testnet ex
 - **Open questions:** proof system cheap enough for on-ledger verification (Halo 2 vs a
   pairing-based SNARK with a verify precompile); nullifier-set storage/pruning in XRPL's object
   model; post-quantum from day one vs secp256k1 + migrate.
+
+## v2 — trust-minimized architecture (decided 2026-10-05; implementation tracked in ROADMAP §5a)
+
+Goal: decentralization comparable to Railgun/Tornado on today's XRPL — not better, because no
+on-ledger party can verify a Halo 2 proof without an amendment. The four trust functions the v1
+operator bundles are split apart:
+
+| Trust function | v1 (custodial) | v2 |
+| --- | --- | --- |
+| Who holds spending keys / sees plaintext | the operator | the holder's **Wallet** (local process); verifiers see ciphertexts, nullifiers, commitments, proofs — what the chain sees in Zcash |
+| Who controls the pool account | one regular key | XRPL **SignerList k-of-N** of independent verifiers, master key disabled |
+| Who verifies proofs and keeps state | the operator, in memory | every signer runs a **Verifier**; state is also written to the ledger per op and rebuildable by anyone |
+| Who vouches for backing | the operator | each signer validates the deposit on-ledger **and** its memo binding before signing; one deposit backs at most one shield |
+
+**Components.** `Wallet` (keys, own notes tracked by scanning the public log, build / prove / sign;
+needs the log to compute witnesses). `Verifier` (tree, nullifier set, consumed-deposit set, bundle
+log, verify-and-apply, anchor-memo codec, rebuild from memos + mirror). Coordinator (any party:
+collects ≥ k signer signatures over the multisigned anchor / payout transactions and submits them).
+
+**Flows.** *Shield:* wallet builds the shield bundle (output to its own address) → computes the
+bundle hash → sends the deposit Payment with memo `confidant/shield` = hash → submits `{bundle,
+depositTxHash}` to a verifier. Each signer: deposit validated on-ledger (Payment, Destination =
+pool, `delivered_amount == −valueBalance`), memo hash == bundle hash, deposit unconsumed, then the
+common verify tail; marks the deposit consumed; signs the anchor. *Transfer:* wallet syncs the log,
+builds spends with witnesses against a known anchor, submits the bundle; signers verify and sign
+the anchor. *Unshield:* bundle + destination; signers verify (sighash binds destination and
+amount) and sign payout + anchor (one XLS-56 Batch where enabled, else anchor first).
+
+**Per-op anchor memo** (`confidant/anchor`, ≤ 1 KB):
+`version(1) ‖ op(1) ‖ root(32) ‖ bundleHash(32) ‖ extLen(1) ‖ ext ‖ n(1) ‖ n × (nullifier(32) ‖ cmx(32))`,
+where `ext` is the 32-byte deposit tx hash for a shield, the ASCII destination for an unshield,
+empty for a transfer. `bundleHash = BLAKE2b-256(personal "ConfidantBundle")` over the canonical
+bundle bytes (anchor, flags, value balance, actions, proof, binding signature; not the metadata).
+Anyone rebuilds a verifier: read the pool account's transactions → memos → fetch each bundle by
+hash from any mirror (`GET /log`) → verify hash and proof → apply → the root must equal the memo's.
+
+**Relaying.** Any client may submit to any verifier; any party may run a verifier from the ledger
+and a mirror; the coordinator can delay but cannot steal, mint or forge.
+
+**What stays weaker than Tornado/Railgun.** Proof verification is by k honest signers, not by
+consensus; collusion of k can drain the pool account. Liveness depends on k signers. Fixing that is
+the amendment above. What is better: Halo 2 needs no trusted setup.
