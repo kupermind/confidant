@@ -7,13 +7,15 @@ import { resilientClient } from "../lib.mjs";
 
 function fake(script) {
   const calls = [];
-  let connected = true;
+  let connected = true, dirty = false; // dirty = old socket still CLOSING: xrpl.js refuses connect() until disconnect() cleaned it
   const c = {
-    on() {}, isConnected: () => connected, async connect() { connected = true; calls.push("connect"); }, async disconnect() { connected = false; },
+    on() {}, isConnected: () => connected,
+    async connect() { if (dirty) throw new Error("Websocket connection never cleaned up."); connected = true; calls.push("connect"); },
+    async disconnect() { connected = false; dirty = false; calls.push("disconnect"); },
     async request(r) { calls.push(`request:${r.command}`); return script.request(r); },
     async submitAndWait(blob) { calls.push("submitAndWait"); return script.submitAndWait(blob); },
     async autofill(tx) { calls.push("autofill"); return script.autofill ? script.autofill(tx) : { ...tx, Fee: "12", Sequence: 1 }; },
-    drop() { connected = false; },
+    drop() { connected = false; dirty = true; },
   };
   return { c, calls };
 }
@@ -26,7 +28,7 @@ test("a request that hits a closing socket reconnects and succeeds", async () =>
   const { c, calls } = fake({ request: () => { if (n++ === 0) { c.drop(); throw new DisconnectedError("WebSocket is not open: readyState 2 (CLOSING)"); } return { result: { ok: true } }; } });
   const r = await resilientClient(c, quiet).request({ command: "ledger_current" });
   assert.deepEqual(r, { result: { ok: true } });
-  assert.deepEqual(calls, ["request:ledger_current", "connect", "request:ledger_current"]);
+  assert.deepEqual(calls, ["request:ledger_current", "disconnect", "connect", "request:ledger_current"], "disconnect() cleans the closing socket before connect()");
 });
 
 test("other errors are not retried", async () => {
@@ -74,4 +76,7 @@ test("pass-through: connect/isConnected/on stay bound to the real client", async
   assert.equal(rc.isConnected(), true);
   await rc.disconnect(); assert.equal(rc.isConnected(), false);
   await rc.connect(); assert.equal(rc.isConnected(), true);
+  // A socket left CLOSING by the server: the wrapper's path works, a bare connect() would throw.
+  c.drop(); await assert.rejects(c.connect(), /never cleaned up/);
+  await rc.request({ command: "ping" }); assert.equal(rc.isConnected(), true);
 });
