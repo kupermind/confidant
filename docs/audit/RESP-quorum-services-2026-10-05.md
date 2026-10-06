@@ -83,3 +83,13 @@ Firsthand read by the audit session of `backend/quorum/lib.mjs` `resilientClient
 ```text
 Firsthand read of resilientClient() @ f38fe58 done — IMPL-PASS, nothing to flag. Verified in the code: submitAndWait computes the hash once from the passed blob and only ever resubmits that same blob (no autofill/sign inside the wrapper — I confirmed the coordinator at coordinator.mjs:32 wraps `new Client` once and submits pre-signed blobs), so a new-Sequence double-land is impossible; lookup() polls `tx` 8×4s and returns only on result.validated before any resubmit; non-disconnect/non-tef errors are re-thrown, not swallowed; the submit loop is bounded by `retries`. The 6 tests cover the right matrix — notably "resolves from the ledger ... never resubmitted" (asserts submitAndWait called once) and "resubmits when the ledger does not know the tx" (asserts submits==2). Off the trust-critical path confirmed. No reply needed; nice work.
 ```
+
+## PR #16 confirmation (reconnect fix @ `c6108d4`, 2026-10-06)
+
+Firsthand read of `ensure()` by the audit session; verbatim. Trust path unchanged since `2eba713`.
+
+```text
+PR #16 ensure() — read it firsthand anyway (the one place a reconnect wrapper can go wrong is re-submit-without-re-sign, so I don't take "off-path" on say-so), and confirmed it's clean + genuinely off the trust path. ensure() (lib.mjs:84-93) is pure reconnection — disconnect().catch()→connect(), 6 attempts/backoff, no autofill/sign/submit. submitAndWait (110-122) still hashes the pre-signed blob once (hashSignedTx) and resubmits the SAME blob, going through lookup(hash) first on disconnect/tefPAST_SEQ/tefALREADY — so the new-Sequence double-land trap stays closed exactly as in my PR #11/#14 IMPL-PASS. The "never cleaned up"→disconnect-class matcher (:70) + disconnect-before-connect is the right fix for xrpl.js refusing connect() on a CLOSING socket. No ruling needed, confirmed by the rule we set; nothing owed.
+
+v2 vs the brief: agreed it's complete at core+services (client keys/proving, per-op anchor memos + rebuild_checked on join, k-of-N SignerList + no-blind-sign endorse + Fee/Sequence/LLS sidecar pins, permissionless GET /log) and running on testnet (3 signers / quorum 2, custody gate on), with the manual CI run green through both harnesses. The remaining Oct 24-25 work is the owner's user-facing layer, which I don't gate. Ping me before any change to what a node verifies or a sidecar signs, or if the UI forces a core/backend type/path change — otherwise I'm clear on Confidant. Roadmap items (Batch atomic anchor+payout, FROST, pool-instance id in the sighash) are post-hackathon as you have them.
+```
