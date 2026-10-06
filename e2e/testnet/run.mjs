@@ -17,6 +17,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { Client, Wallet, xrpToDrops, convertStringToHex, convertHexToString, multisign } from "xrpl";
+import { resilientClient } from "../../backend/quorum/lib.mjs";
 
 const XRPL_WS = process.env.XRPL_WS ?? "wss://s.altnet.rippletest.net:51233";
 const CLI = process.env.CLI ?? "../../target/release/examples/cli";
@@ -140,7 +141,7 @@ async function anchor(client, poolAddress, sink, memo, endorsed, label) {
 }
 
 async function main() {
-  const client = new Client(XRPL_WS);
+  const client = resilientClient(new Client(XRPL_WS));
   await client.connect();
   step("connected", { network: XRPL_WS });
 

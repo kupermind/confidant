@@ -8,7 +8,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { Client, Wallet, xrpToDrops } from "xrpl";
-import { http, memoOf, MEMO_SHIELD } from "./lib.mjs";
+import { http, memoOf, MEMO_SHIELD, resilientClient } from "./lib.mjs";
 
 const C = (process.env.COORDINATOR_URL ?? "http://127.0.0.1:7200").replace(/\/$/, "");
 const CLI = process.env.CLI ?? "../../target/release/examples/cli";
@@ -26,7 +26,7 @@ const sync = async () => { const { records } = await http("GET", `${C}/log?from=
 const record = (f) => JSON.parse(readFileSync(`${DIR}/${f}`, "utf8"));
 const must = (cond, msg) => { if (!cond) throw new Error(`SMOKE FAILED: ${msg}`); };
 
-const client = new Client(XRPL_WS);
+const client = resilientClient(new Client(XRPL_WS));
 await client.connect();
 try {
   const state0 = await http("GET", `${C}/state`);

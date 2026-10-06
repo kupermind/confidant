@@ -19,7 +19,7 @@
 import { Client, multisign } from "xrpl";
 import { DEFAULT_PAYOUT_LLS_WINDOW, DEFAULT_ANCHOR_LLS_WINDOW } from "./lib.mjs";
 const ANCHOR_LLS_OFFSET = Math.floor(DEFAULT_ANCHOR_LLS_WINDOW / 3); // 20 ledgers ≈ 80 s
-import { serve, http, refuse, memoOf, MEMO_ANCHOR } from "./lib.mjs";
+import { serve, http, refuse, memoOf, MEMO_ANCHOR, resilientClient } from "./lib.mjs";
 
 const env = process.env;
 for (const k of ["PORT", "NODE_URL", "NODES", "SIGNERS", "QUORUM", "POOL", "SINK"]) {
@@ -29,7 +29,7 @@ const XRPL_WS = env.XRPL_WS ?? "wss://s.altnet.rippletest.net:51233";
 const SIGNERS = env.SIGNERS.split(",");
 const NODES = env.NODES.split(",");
 const QUORUM = Number(env.QUORUM);
-const client = new Client(XRPL_WS);
+const client = resilientClient(new Client(XRPL_WS));
 await client.connect();
 console.error(`coordinator: node ${env.NODE_URL}, ${SIGNERS.length} signers, quorum ${QUORUM}, pool ${env.POOL}, port ${env.PORT} (holds no keys)`);
 
