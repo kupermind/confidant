@@ -4,7 +4,7 @@
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync, chmodSync, existsSync, readFileSync } from "node:fs";
-import { Client, Wallet, convertStringToHex, convertHexToString } from "xrpl";
+import { Client, Wallet, convertStringToHex, convertHexToString, DisconnectedError, NotConnectedError, hashes } from "xrpl";
 
 export const MEMO_ANCHOR = "confidant/anchor";
 export const MEMO_SHIELD = "confidant/shield";
@@ -63,6 +63,60 @@ export async function http(method, url, body, { retries = 1 } = {}) {
     if (!res.ok) throw refuse(res.status, json?.error ?? `HTTP ${res.status}`, json);
     return json;
   }
+}
+
+// ---- resilient XRPL client ---------------------------------------------------------------------
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const isDisconnect = (e) => e instanceof DisconnectedError || e instanceof NotConnectedError || /not open|CLOSING|CLOSED|websocket was closed|NotConnected|Disconnected/i.test(e?.message ?? "");
+/**
+ * Wraps an xrpl.js Client so a dropped WebSocket (idle testnet connections close; slow provers leave
+ * them idle for minutes) is reconnected and the call retried instead of failing the caller. A
+ * `submitAndWait` interrupted by a disconnect first looks the transaction up by its hash — the submit
+ * may have gone through — and resubmits only when the ledger does not know it. Everything else on
+ * the client is passed through unchanged.
+ */
+export function resilientClient(client, { log = (m) => console.error(`[xrpl] ${m}`), retries = 3 } = {}) {
+  client.on("error", (...a) => log(`connection error: ${a.map(String).join(" ")}`));
+  client.on("disconnected", (code) => { if (code !== 1000) log(`disconnected (${code}); reconnecting on the next call`); }); // 1000 = our own disconnect()
+  const ensure = async () => { if (!client.isConnected()) { log("reconnecting"); await client.connect(); } };
+  const call = async (fn) => {
+    for (let attempt = 0; ; attempt++) {
+      try { await ensure(); return await fn(); } catch (e) {
+        if (!isDisconnect(e) || attempt >= retries) throw e;
+        log(`${e.message} — retry ${attempt + 1}/${retries}`); await sleep(1000 * (attempt + 1));
+      }
+    }
+  };
+  const lookup = async (hash, tries) => {
+    for (let i = 0; i < tries; i++) {
+      try { await ensure(); const r = await client.request({ command: "tx", transaction: hash }); if (r.result?.validated) return { result: { ...r.result, hash } }; }
+      catch (e) { if (!/txnNotFound/.test(e?.message ?? "") && !isDisconnect(e)) throw e; }
+      await sleep(4000);
+    }
+    return null;
+  };
+  const submitAndWait = async (blob, opts) => {
+    const hash = hashes.hashSignedTx(blob);
+    for (let attempt = 0; ; attempt++) {
+      try { await ensure(); return await client.submitAndWait(blob, opts); } catch (e) {
+        if (attempt >= retries) throw e;
+        if (isDisconnect(e)) log(`${e.message} during submitAndWait(${hash.slice(0, 8)}) — checking the ledger before resubmitting`);
+        else if (/tefPAST_SEQ|tefALREADY/.test(e?.message ?? "")) log(`resubmit answered ${e.message.match(/tef\w+/)?.[0]} — checking whether the first submit landed`);
+        else throw e;
+        const found = await lookup(hash, 8);
+        if (found) return found;
+      }
+    }
+  };
+  const wrapped = new Set(["request", "autofill", "fundWallet", "getLedgerIndex", "getXrpBalance"]);
+  return new Proxy(client, {
+    get(target, prop) {
+      if (prop === "submitAndWait") return submitAndWait;
+      if (wrapped.has(prop)) return (...args) => call(() => target[prop](...args));
+      const v = Reflect.get(target, prop, target);
+      return typeof v === "function" ? v.bind(target) : v;
+    },
+  });
 }
 
 // ---- XRPL memo helpers -----------------------------------------------------------------------

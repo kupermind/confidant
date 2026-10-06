@@ -21,7 +21,7 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { Client, Wallet, xrpToDrops, convertHexToString, decode } from "xrpl";
-import { setupPool, launchQuorum, http, memoOf, MEMO_SHIELD, MEMO_ANCHOR } from "../../backend/quorum/lib.mjs";
+import { setupPool, launchQuorum, http, memoOf, MEMO_SHIELD, MEMO_ANCHOR, resilientClient } from "../../backend/quorum/lib.mjs";
 
 const XRPL_WS = process.env.XRPL_WS ?? "wss://s.altnet.rippletest.net:51233";
 const XRPL_RPC = process.env.XRPL_RPC ?? "https://s.altnet.rippletest.net:51234";
@@ -61,7 +61,7 @@ async function syncLog(coordinatorUrl) {
 }
 
 async function main() {
-  const client = new Client(XRPL_WS);
+  const client = resilientClient(new Client(XRPL_WS));
   await client.connect();
   step("connected", { network: XRPL_WS });
 
