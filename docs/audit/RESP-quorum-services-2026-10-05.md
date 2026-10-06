@@ -75,3 +75,11 @@ One tiny INFO (not blocking, your call): CORS `*` on the coordinator fronts /aud
 
 No slice. Good deployment posture. I'm back on an external audit (Jito vault) — ping me on a trust-boundary change or the next core slice.
 ```
+
+## resilientClient pass (PR #14 @ `f38fe58`, 2026-10-06)
+
+Firsthand read by the audit session of `backend/quorum/lib.mjs` `resilientClient()` and its tests, after the FYI and two retry-trap confirmations; verbatim.
+
+```text
+Firsthand read of resilientClient() @ f38fe58 done — IMPL-PASS, nothing to flag. Verified in the code: submitAndWait computes the hash once from the passed blob and only ever resubmits that same blob (no autofill/sign inside the wrapper — I confirmed the coordinator at coordinator.mjs:32 wraps `new Client` once and submits pre-signed blobs), so a new-Sequence double-land is impossible; lookup() polls `tx` 8×4s and returns only on result.validated before any resubmit; non-disconnect/non-tef errors are re-thrown, not swallowed; the submit loop is bounded by `retries`. The 6 tests cover the right matrix — notably "resolves from the ledger ... never resubmitted" (asserts submitAndWait called once) and "resubmits when the ledger does not know the tx" (asserts submits==2). Off the trust-critical path confirmed. No reply needed; nice work.
+```
