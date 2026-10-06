@@ -67,7 +67,7 @@ export async function http(method, url, body, { retries = 1 } = {}) {
 
 // ---- resilient XRPL client ---------------------------------------------------------------------
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const isDisconnect = (e) => e instanceof DisconnectedError || e instanceof NotConnectedError || /not open|CLOSING|CLOSED|websocket was closed|NotConnected|Disconnected/i.test(e?.message ?? "");
+const isDisconnect = (e) => e instanceof DisconnectedError || e instanceof NotConnectedError || /not open|CLOSING|CLOSED|websocket was closed|never cleaned up|NotConnected|Disconnected/i.test(e?.message ?? "");
 /**
  * Wraps an xrpl.js Client so a dropped WebSocket (idle testnet connections close; slow provers leave
  * them idle for minutes) is reconnected and the call retried instead of failing the caller. A
@@ -78,7 +78,19 @@ const isDisconnect = (e) => e instanceof DisconnectedError || e instanceof NotCo
 export function resilientClient(client, { log = (m) => console.error(`[xrpl] ${m}`), retries = 3 } = {}) {
   client.on("error", (...a) => log(`connection error: ${a.map(String).join(" ")}`));
   client.on("disconnected", (code) => { if (code !== 1000) log(`disconnected (${code}); reconnecting on the next call`); }); // 1000 = our own disconnect()
-  const ensure = async () => { if (!client.isConnected()) { log("reconnecting"); await client.connect(); } };
+  // xrpl.js refuses connect() while the old socket is still CLOSING ("Websocket connection never
+  // cleaned up"): disconnect() first — it waits for the close, clears the socket and cancels xrpl.js's
+  // own reconnect timer — then connect; a few attempts with backoff.
+  const ensure = async () => {
+    if (client.isConnected()) return;
+    log("reconnecting");
+    for (let i = 0; ; i++) {
+      try { await client.disconnect().catch(() => {}); await client.connect(); return; } catch (e) {
+        if (i >= 5) throw e;
+        await sleep(1000 * (i + 1));
+      }
+    }
+  };
   const call = async (fn) => {
     for (let attempt = 0; ; attempt++) {
       try { await ensure(); return await fn(); } catch (e) {
