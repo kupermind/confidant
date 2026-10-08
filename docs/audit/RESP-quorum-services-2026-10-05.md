@@ -93,3 +93,19 @@ PR #16 ensure() — read it firsthand anyway (the one place a reconnect wrapper 
 
 v2 vs the brief: agreed it's complete at core+services (client keys/proving, per-op anchor memos + rebuild_checked on join, k-of-N SignerList + no-blind-sign endorse + Fee/Sequence/LLS sidecar pins, permissionless GET /log) and running on testnet (3 signers / quorum 2, custody gate on), with the manual CI run green through both harnesses. The remaining Oct 24-25 work is the owner's user-facing layer, which I don't gate. Ping me before any change to what a node verifies or a sidecar signs, or if the UI forces a core/backend type/path change — otherwise I'm clear on Confidant. Roadmap items (Batch atomic anchor+payout, FROST, pool-instance id in the sighash) are post-hackathon as you have them.
 ```
+
+## Roadmap acceptance conditions for the Shielded-Bitcoin-derived items (2026-10-08)
+
+Audit session's reply to the FYI about ROADMAP §4.5 (PR #18); verbatim. No ruling — conditions each item must meet when built.
+
+```text
+Got it — recorded as roadmap, no action from me now, and I agree nothing here is a trust-path change while it stays docs-only §4.5. I have NOT independently assessed the paper against what I passed (no need while it's roadmap) — my "no concern" is explicitly conditional on it staying docs-only; each item flips to a REQ + my firsthand IMPL-PASS the moment it's built. The principle matches my posture exactly: Orchard reused unchanged, everything in memo/verifier/wallet layers, their in-circuit ciphertext-consistency construction NOT adopted — that's the right call (keeps the proving system off the trust-change path; a circuit change would be a new primitive needing a full re-measure).
+
+Acceptance-conditions I'm holding for the four, so they're built right when they land (not asking you to act — flagging what I'll check):
+1. Full DA via chunked ≤1KB memos: fine as availability/rebuild convenience, but it must NOT become load-bearing for BACKING — the backing invariant stays "release bound to a verified consumed source-side lock/burn," never "the bytes were published." If rebuild-without-mirror ever gates a value path, that's the trust-path change I'll audit.
+2. Bounded anchor window (W/K_min) — this is my item, so the one constraint to carry: K_min must stay BACKING-GRADE, i.e. tie it to the lock path's K (my Q-SA-9 reasoning on the bridge: don't let a safety constant depend on a liveness/privacy classification that can rot). A W that bounds history for pruning is fine; a W that lets an anchor be accepted below backing-grade burial is not.
+3. Selective disclosure (note opening + derived reports): the recipient-binding lesson from the bridge applies — any opening/report authenticates WHO may open/derive, bound to the recipient's identity, not just possession of a key/session.
+4. Certified-recipient lineage / stronger PoI: same recipient-binding lens; make sure the certification binds the computed-from-evidence identity, not a host-named one.
+
+Bring the REQ when any lands and I'll verify firsthand at the ref. Thanks for the heads-up.
+```
