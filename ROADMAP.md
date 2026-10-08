@@ -122,8 +122,11 @@ XRPL integration built on-site. Say so on stage.
    XLS-56 Batch for atomic anchor + payout; FROST for the signer keys.
 5. **Roadmap items from the "Shielded Bitcoin" paper** ([alloc] init, 2026-09,
    https://www.allocinit.xyz/uploads/shielded-bitcoin.pdf — the same shape as our v2: the ledger
-   only orders envelopes, indexers replay them, custody lives only at the entry/exit boundary). Not
-   for the hackathon unless marked; in order of value:
+   only orders envelopes, indexers replay them, custody lives only at the entry/exit boundary).
+   **Principle (decided 2026-10-08): no migration of the proving system.** The Orchard circuit stays
+   reused unchanged — audited, in production in Zcash since 2022, Halo 2 with no trusted setup — and
+   every item below lives in the memo / verifier / wallet layers on top of it (item 4 is an add-on
+   proof, not a replacement). Not for the hackathon unless marked; in order of value:
    1. **Full data availability on the ledger.** Today `rebuild` takes the anchor memo from the
       ledger and the bundle bytes (proof included) from a mirror, checked by hash. XRPL fees are
       ~10 drops per transaction, so the whole bundle (a few KB) can be published as ≤ 1 KB memo
