@@ -120,6 +120,49 @@ XRPL integration built on-site. Say so on stage.
 4. **Roadmap items from the audit (not for the hackathon):** pool-instance id in the sighash
    personalization; `external_ctx` taking the unshield amount as `u64`; bounded anchor history;
    XLS-56 Batch for atomic anchor + payout; FROST for the signer keys.
+5. **Roadmap items from the "Shielded Bitcoin" paper** ([alloc] init, 2026-09,
+   https://www.allocinit.xyz/uploads/shielded-bitcoin.pdf — the same shape as our v2: the ledger
+   only orders envelopes, indexers replay them, custody lives only at the entry/exit boundary).
+   **Principle (decided 2026-10-08): no migration of the proving system.** The Orchard circuit stays
+   reused unchanged — audited, in production in Zcash since 2022, Halo 2 with no trusted setup — and
+   every item below lives in the memo / verifier / wallet layers on top of it (item 4 is an add-on
+   proof, not a replacement). Not for the hackathon unless marked; in order of value:
+   1. **Full data availability on the ledger.** Today `rebuild` takes the anchor memo from the
+      ledger and the bundle bytes (proof included) from a mirror, checked by hash. XRPL fees are
+      ~10 drops per transaction, so the whole bundle (a few KB) can be published as ≤ 1 KB memo
+      chunks across several Payments for a fraction of a cent, making any node rebuildable from
+      the ledger alone with no mirror (the paper's assumption A2). Design: `confidant/bundle` memo
+      type with `bundle hash ‖ chunk index ‖ count ‖ bytes`, anchored by the existing bundle hash;
+      `rebuild_checked` reassembles and hash-checks before use. *Audit condition:* availability
+      only — backing stays "release bound to a verified consumed deposit", never "the bytes were
+      published"; the moment rebuild-without-mirror gates a value path it is a trust-path slice.
+   2. **Bounded anchor window** (the audit's "bounded anchor history", now with a concrete rule).
+      Record the root per validated ledger index; accept a bundle's anchor only inside
+      `L − W ≤ ledger(anchor) ≤ L − K_min` (paper profile W = 100 blocks ≈ 16 h, K_min = 1; for
+      XRPL's ~4 s ledgers choose W in ledgers to match the intended publication window). Bounds
+      verifier memory and makes anchor age a public, uniform value instead of a fingerprint.
+      *Audit condition:* `K_min` must stay backing-grade (tied to the deposit path's finality, not
+      to a liveness/privacy constant); `W` may prune history but never admit an anchor below
+      backing-grade burial.
+   3. **Selective disclosure beyond the full viewing key.** Add a note-opening report (value,
+      `rho`, `rseed`, recipient of one note; the auditor recomputes `cmx` against the log) and a
+      derived report (inflows / outflows / balance at a log height with the supporting openings),
+      so a holder can disclose one payment or one period instead of their whole history. The full
+      viewing key stays the broad option. Core-only, small; a candidate for the demo if time allows
+      ("disclose one payment, not the history"). *Audit condition:* every opening/report
+      authenticates who may open or derive it, bound to the recipient's identity, not to mere
+      possession of a key or session.
+   4. **Certified-recipient lineage** (paper Appendix D): an opt-in, encrypted, recursively-proved
+      claim carried inside a note that every ancestor note descends from an authority-certified
+      deposit and every transfer along the way went to a certified address; dummy payload of the
+      same length otherwise, so the chain cannot tell. A stronger form of the Proof-of-Innocence
+      item for the compliant-pool story; needs a lineage circuit and an attestation format — a
+      separate design + audit cycle. *Audit condition:* the certification binds the identity
+      computed from evidence, never a host-named one.
+   Each item becomes a REQ + firsthand IMPL-PASS when built (audit session, 2026-10-08, recorded in
+   `docs/audit/RESP-quorum-services-2026-10-05.md`). Not adopted: proving ciphertext/plaintext consistency in-circuit (their ciphertext-derived note
+   leaf; fixes the "sender burns a recipient's output with a garbage ciphertext" limitation we
+   inherit from Orchard) — requires a different circuit, out of our reuse-Orchard-unchanged scope.
 
 ## 5. To do — API/XRPL lead (user-facing layer, pitch)
 
