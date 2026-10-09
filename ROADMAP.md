@@ -163,6 +163,31 @@ XRPL integration built on-site. Say so on stage.
    `docs/audit/RESP-quorum-services-2026-10-05.md`). Not adopted: proving ciphertext/plaintext consistency in-circuit (their ciphertext-derived note
    leaf; fixes the "sender burns a recipient's output with a garbage ciphertext" limitation we
    inherit from Orchard) — requires a different circuit, out of our reuse-Orchard-unchanged scope.
+6. **From Zakura's "Transparent PIR and address rotation"** (2026,
+   https://zakura.com/engineering/transparent-pir-rotating-addresses/). The "lookup leak": a wallet
+   that asks an RPC server for the history of addresses A, B, C tells that server they belong to
+   one user even when the chain never links them. Their fix: rotate addresses on every use and
+   fetch history by private information retrieval over sharded activity, with small public
+   per-range filters (≈ 15 KB per 10,000 scripts) so the wallet only queries ranges that may
+   contain its activity. What it means here (recorded 2026-10-09):
+   1. **Keep wallet sync lookup-free — an invariant, not a feature.** A Confidant wallet syncs by
+      downloading the whole public log (`GET /log?from=N`) and trial-decrypting locally, so no node
+      ever learns which notes belong to whom. Never add a "which of these are mine" endpoint. When
+      the log outgrows full download, the acceptable successors are per-range public filters + PIR
+      (their design) or detection-key schemes — never per-note queries. (post-hackathon)
+   2. **Rotate the XRPL endpoints.** Shield and unshield addresses are the pool's public endpoints
+      (§7 endpoint correlation). The UI should default to a fresh XRPL destination per unshield
+      (the harnesses already do) and encourage deposits from a fresh account, so chain analysis
+      cannot cluster one user's boundary events — guidance added to `docs/API-BOUNDARY.md` §3.
+      (cheap; hackathon)
+   3. **The transparent lookup leak moves to the user's rippled.** A UI that checks balances or
+      history of its rotating XRPL addresses at a public rippled reveals to that server that they
+      belong to one client. Guidance: use the user's own or a trusted rippled; PIR over
+      `account_tx` does not exist on XRPL today and would mean running a sharded directory + filters
+      ourselves, as in the article. (post-hackathon, only if we operate such an index)
+   4. **Post-quantum note, for honesty:** their hash-based (WOTS) spending escape hatch is specific
+      to Zcash transparent scripts; XRPL has no such opcode and Orchard notes are not post-quantum
+      either. Out of scope.
 
 ## 5. To do — API/XRPL lead (user-facing layer, pitch)
 
