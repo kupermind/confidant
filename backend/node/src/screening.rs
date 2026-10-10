@@ -37,6 +37,9 @@ pub enum ScreenError {
 pub struct Screening {
     blocked: HashSet<String>,
     standby_ledgers: u64,
+    /// Entries that did not decode as an XRPL address: kept (they match only themselves) but
+    /// inert against any real account, so the operator must be told about them at startup.
+    undecodable: usize,
 }
 
 impl Screening {
@@ -45,13 +48,22 @@ impl Screening {
     }
 
     pub fn new(blocked: impl IntoIterator<Item = String>, standby_ledgers: u64) -> Self {
+        let mut set = HashSet::new();
+        let mut undecodable = 0;
+        for raw in blocked {
+            let t = raw.trim();
+            if t.is_empty() {
+                continue;
+            }
+            if canonical(t).is_none() {
+                undecodable += 1;
+            }
+            set.insert(canon(t));
+        }
         Self {
-            blocked: blocked
-                .into_iter()
-                .map(|s| canon(&s))
-                .filter(|s| !s.is_empty())
-                .collect(),
+            blocked: set,
             standby_ledgers,
+            undecodable,
         }
     }
 
@@ -74,6 +86,11 @@ impl Screening {
 
     pub fn listed_count(&self) -> usize {
         self.blocked.len()
+    }
+
+    /// Entries that are not valid XRPL addresses and therefore block nobody.
+    pub fn undecodable_count(&self) -> usize {
+        self.undecodable
     }
 
     pub fn standby_ledgers(&self) -> u64 {

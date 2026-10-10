@@ -1118,6 +1118,12 @@ fn screening_canonicalizes_classic_and_x_addresses() {
     let mixed = Screening::from_file(&dir.join("mixed.txt"), 0).unwrap();
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(mixed.listed_count(), 2);
+    assert_eq!(
+        mixed.undecodable_count(),
+        1,
+        "the inert entry is counted so startup can warn"
+    );
     assert!(mixed.is_listed("rnXyVQzgxZe7TR1EPzTkGj2jxH4LMJYh66"));
     assert!(mixed.is_listed("not-an-address") && !mixed.is_listed("not-an-addres"));
+    assert_eq!(listed_classic.undecodable_count(), 0);
 }

@@ -54,10 +54,18 @@ async fn main() {
     };
     if screening.is_active() {
         eprintln!(
-            "screening: {} listed addresses, standby {} ledgers (shields from listed or too-fresh deposits and unshields to listed addresses are refused with 403)",
+            "screening: {} listed addresses ({} canonical, {} undecodable and inert), standby {} ledgers (shields from listed or too-fresh deposits and unshields to listed addresses are refused with 403)",
             screening.listed_count(),
+            screening.listed_count() - screening.undecodable_count(),
+            screening.undecodable_count(),
             screening.standby_ledgers()
         );
+        if screening.undecodable_count() > 0 {
+            eprintln!(
+                "WARNING: screening list has {} entries that are not XRPL addresses — they block nobody; check the list file",
+                screening.undecodable_count()
+            );
+        }
     } else {
         eprintln!("screening: OFF (no --screening-list, no standby)");
     }
