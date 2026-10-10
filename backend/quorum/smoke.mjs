@@ -43,7 +43,13 @@ try {
   const dep = await client.submitAndWait(signed.tx_blob);
   must(dep.result.meta?.TransactionResult === "tesSUCCESS", `deposit failed: ${dep.result.meta?.TransactionResult}`);
   log(`deposit ${EXPLORER}/${signed.hash}`);
-  const s1 = await http("POST", `${C}/submit/shield`, { record: record("shield.json"), depositTxHash: signed.hash });
+  // A screening standby answers 403 "standby … retry at ledger N" until the deposit is old enough.
+  let s1 = null;
+  for (let t = 0; t < 45 && !s1; t++) {
+    try { s1 = await http("POST", `${C}/submit/shield`, { record: record("shield.json"), depositTxHash: signed.hash }); }
+    catch (e) { if (!(e.status === 403 && /standby/.test(e.message))) throw e; if (t === 0) log("standby: deposit too fresh, retrying"); await new Promise((r) => setTimeout(r, 2000)); }
+  }
+  must(s1, "shield still refused by the standby after 90 s");
   must(s1.bundleIndex === state0.bundleCount && s1.anchorTx, `shield not anchored: ${JSON.stringify(s1)}`);
   log(`shield accepted by ${s1.signers.length} signers, anchor ${EXPLORER}/${s1.anchorTx}`);
 
