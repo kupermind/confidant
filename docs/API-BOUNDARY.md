@@ -137,11 +137,14 @@ cd backend/quorum && POOL=<pool> COORDINATOR_URL=http://<host>:8787 CLI=../../ta
 ## 6a. The prototype (2026-10-10)
 
 `frontend/index.html` is a working first version for the FE team to start from: one static page, no
-build step, same-origin `/api/` (coordinator) and `/wallet/` (demo wallet service, `backend/wallet`:
-`POST /wallets`, `GET /wallets/{id}`, `POST /wallets/{id}/{shield|transfer|unshield}` → `{record,
-bundleHash}`), `xrpl.js` in the browser for the faucet and the deposit. The demo wallet service holds
-the demo wallets' spending keys on the demo host — label it so; the browser-side (WASM) wallet that
-removes it is in progress. **Testnet demo only, and it must not carry over to real value:** a custodial wallet service is never the path for a mainnet or real-XRP pool; the browser (WASM) wallet is the production path and the service does not graduate with it. `?demo=1` renders the page on simulated data. nginx site:
+build step. The wallet is **in the browser**: `frontend/wasm` (confidant-core behind wasm-bindgen,
+built with `wasm-pack build frontend/wasm --target web --out-dir ../pkg`) runs in
+`frontend/wallet-worker.js`; the page keeps the `WalletSecret` JSON in `localStorage`, syncs from
+`GET /api/log`, and the worker builds `{record, bundleHash}` for `POST /api/submit/*`. `xrpl.js` in
+the browser does the faucet and the deposit. Fallback when WebAssembly is unavailable: the demo
+wallet service (`backend/wallet`: `POST /wallets`, `GET /wallets/{id}`, `POST
+/wallets/{id}/{shield|transfer|unshield}`), which holds the demo wallets' spending keys on the demo
+host — label it so. **Testnet demo only, and it must not carry over to real value:** a custodial wallet service is never the path for a mainnet or real-XRP pool; the browser (WASM) wallet is the production path and the service does not graduate with it. `?demo=1` renders the page on simulated data. nginx site:
 `backend/deploy/nginx/confidant-ui.conf` (port 80). Smoke of the exact UI path without a browser:
 `npm run smoke-ui` in `backend/quorum`.
 

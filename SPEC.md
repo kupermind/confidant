@@ -374,7 +374,7 @@ e2e/testnet/ XRPL testnet harnesses (xrpl.js): run.mjs (CLI-driven), run-service
 docs/audit/  REQ/RESP of every round, INDEX.md
 docs/CORE-API.md, docs/E2E.md, docs/NODE-OPERATOR.md
 .github/workflows/check.yml  CI: fmt / clippy / tests (release) / 100% line coverage / hygiene / manual e2e
-frontend/      index.html — the UI prototype (static, xrpl.js in the browser; talks to /api → coordinator, /wallet → demo wallet service)
+frontend/      index.html + wallet-worker.js — the UI prototype (static); wasm/ = the core behind wasm-bindgen (keys and proofs in the browser)
 backend/wallet/ confidant-wallet: demo wallet service (HTTP over Wallet; holds demo spending keys on its host;
                TESTNET DEMO ONLY — never the path for a real-value pool; the browser WASM wallet is the production path)
 scripts/       — pre-population (API/XRPL lead, not started)

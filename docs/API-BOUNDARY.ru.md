@@ -140,11 +140,13 @@ cd backend/quorum && POOL=<pool> COORDINATOR_URL=http://<host>:8787 CLI=../../ta
 ## 6a. Прототип (2026-10-10)
 
 `frontend/index.html` — рабочая первая версия, от которой стартует FE-команда: одна статическая
-страница без сборки, same-origin `/api/` (координатор) и `/wallet/` (демо-сервис кошелька,
-`backend/wallet`: `POST /wallets`, `GET /wallets/{id}`, `POST /wallets/{id}/{shield|transfer|unshield}`
-→ `{record, bundleHash}`), `xrpl.js` в браузере для faucet и депозита. Демо-сервис кошелька хранит
-ключи трат демо-кошельков на демо-хосте — так и говорить; браузерный (WASM) кошелёк, который его
-уберёт, в работе. **Только для testnet-демо, и это не должно перейти на реальную ценность:**
+страница без сборки. Кошелёк **в браузере**: `frontend/wasm` (confidant-core за wasm-bindgen, сборка
+`wasm-pack build frontend/wasm --target web --out-dir ../pkg`) работает в `frontend/wallet-worker.js`;
+страница хранит JSON `WalletSecret` в `localStorage`, синхронизируется из `GET /api/log`, воркер
+собирает `{record, bundleHash}` для `POST /api/submit/*`. `xrpl.js` в браузере делает faucet и
+депозит. Запасной вариант без WebAssembly: демо-сервис кошелька (`backend/wallet`: `POST /wallets`,
+`GET /wallets/{id}`, `POST /wallets/{id}/{shield|transfer|unshield}`), который хранит ключи трат
+демо-кошельков на демо-хосте — так и говорить. **Только для testnet-демо, и это не должно перейти на реальную ценность:**
 кастодиальный сервис кошелька никогда не путь для пула на mainnet или с реальным XRP; браузерный
 (WASM) кошелёк — production-путь, сервис с ним не «взрослеет». `?demo=1` показывает страницу на имитированных данных. Сайт nginx:
 `backend/deploy/nginx/confidant-ui.conf` (порт 80). Смоук пути UI без браузера: `npm run smoke-ui`

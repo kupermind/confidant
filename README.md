@@ -46,12 +46,13 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
 - **Quorum services (`backend/`):** a Rust verifier node (`confidant-node`, axum over `Verifier`;
   reads the ledger, holds no keys), Node signer sidecars (the only key holders; sign only what their
   own node endorsed) and a coordinator (k-of-N multisig, anchor then payout) — `backend/README.md`.
-- **Front-end (prototype, `frontend/index.html`):** one static page, no build step, `xrpl.js` in the
-  browser for the faucet and the deposit Payment with the bundle-hash memo; calls the coordinator
-  through `/api/`. Its wallet is the **demo wallet service** (`backend/wallet`, Rust over `Wallet`)
-  behind `/wallet/` — it holds the demo wallets' spending keys on the demo host, a custodial
-  convenience for the hackathon; in production the wallet runs on the holder's machine (a WASM
-  build of the same core for the browser is in progress). The contract: `docs/API-BOUNDARY.md`.
+- **Front-end (prototype, `frontend/`):** one static page, no build step. The wallet is the core
+  itself compiled to **WebAssembly** (`frontend/wasm`, wasm-bindgen) running in a Web Worker: the
+  spending key, the notes, proving and signing never leave the browser (≈ 25 s to build the proving
+  keys once per session, ≈ 20 s per proof, single-threaded). `xrpl.js` in the browser does the
+  faucet and the deposit Payment with the bundle-hash memo; the coordinator is called through
+  `/api/`. Only if WebAssembly is unavailable does the page fall back to the **demo wallet service**
+  (`backend/wallet`, holds demo keys on the host). The contract: `docs/API-BOUNDARY.md`.
 - No Solidity, no WASM, no `xrpl-rust`.
 
 ## Privacy and trust — what we claim, what we don't
