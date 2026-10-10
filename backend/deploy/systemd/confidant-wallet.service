@@ -1,0 +1,24 @@
+# The demo wallet service behind the UI prototype (Rust). Holds the DEMO wallets' spending keys in
+# /srv/confidant/data/wallets — a custodial convenience on the demo host; production runs this on the
+# holder's own machine. Env: wallet.env (LISTEN, DIR, COORDINATOR_URL).
+[Unit]
+Description=Confidant demo wallet service (holds demo spending keys; UI prototype)
+After=network-online.target confidant-coordinator.service
+Wants=network-online.target
+PartOf=confidant.target
+
+[Service]
+User=confidant
+Group=confidant
+WorkingDirectory=/srv/confidant
+EnvironmentFile=/srv/confidant/env/wallet.env
+ExecStart=/srv/confidant/bin/confidant-wallet --listen ${LISTEN} --dir ${DIR} --coordinator ${COORDINATOR_URL}
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/confidant/data
+PrivateTmp=true
+
+[Install]
+WantedBy=confidant.target

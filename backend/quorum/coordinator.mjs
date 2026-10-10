@@ -10,6 +10,7 @@
 //     3. fan {txs, submission, memoHex} out to every signer sidecar; keep the ones that signed
 //     4. with ≥ QUORUM signatures: multisign + submit the anchor, then the payout
 //     5. tell every node POST /anchored { root, anchorTxHash } (each verifies the tx on the ledger)
+//   GET /config — public facts the UI needs (network, explorer, pool account, k-of-N).
 //   The signed payout blob is returned to the client too: if the payout fails after the anchor
 //   landed (note spent, user unpaid), anyone may resubmit it until its LastLedgerSequence.
 //
@@ -79,6 +80,8 @@ async function anchorThroughQuorum(accepted, submission) {
 }
 
 await serve(Number(env.PORT), {
+  // READ-ONLY and PUBLIC FACTS ONLY (pool, sink, k-of-N, ws, explorer): nothing node-internal or secret may ever be added here.
+  "GET /config": async () => ({ network: env.NETWORK ?? "testnet", explorer: env.EXPLORER ?? "https://testnet.xrpl.org", xrplWs: XRPL_WS, pool: env.POOL, sink: env.SINK, quorum: QUORUM, signers: SIGNERS.length }),
   "GET /state": async () => http("GET", `${env.NODE_URL}/state`),
   "GET /log": async (_b, url) => http("GET", `${env.NODE_URL}/log?from=${url.searchParams.get("from") ?? 0}`),
   "POST /audit/reveal": async (body) => http("POST", `${env.NODE_URL}/audit/reveal`, body),

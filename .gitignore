@@ -61,3 +61,5 @@ desktop.ini
 *.wallet.json
 *.verifier-state.json
 *.key.json
+# wasm-pack output of frontend/wasm (built at deploy time)
+frontend/pkg/

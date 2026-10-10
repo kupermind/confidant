@@ -376,7 +376,10 @@ e2e/testnet/ харнесы на XRPL testnet (xrpl.js): run.mjs (через CLI
 docs/audit/  REQ/RESP всех раундов, INDEX.md
 docs/CORE-API.md, docs/E2E.md, docs/NODE-OPERATOR.md
 .github/workflows/check.yml  CI: fmt / clippy / тесты (release) / покрытие 100% / hygiene / ручной e2e
-frontend/, scripts/   — зона API/XRPL-лида (не начаты)
+frontend/      index.html + wallet-worker.js — прототип UI (статика); wasm/ = ядро за wasm-bindgen (ключи и доказательства в браузере)
+backend/wallet/ confidant-wallet: демо-сервис кошелька (HTTP над Wallet; хранит демо-ключи трат на своём хосте;
+               ТОЛЬКО ДЛЯ TESTNET-ДЕМО — никогда не путь для пула с реальной ценностью; браузерный WASM-кошелёк — production-путь)
+scripts/       — предзаполнение (API/XRPL-лид, не начато)
 README.md, SPEC.md, SPEC.ru.md, ROADMAP.md, CLAUDE.md
 ```
 

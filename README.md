@@ -46,9 +46,13 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
 - **Quorum services (`backend/`):** a Rust verifier node (`confidant-node`, axum over `Verifier`;
   reads the ledger, holds no keys), Node signer sidecars (the only key holders; sign only what their
   own node endorsed) and a coordinator (k-of-N multisig, anchor then payout) — `backend/README.md`.
-- **Front-end:** React/TypeScript + `xrpl.js` — the user side only: the deposit Payment with the
-  bundle-hash memo from the user's account, calls to the coordinator, the local wallet, explorer
-  links. The contract between the two: `docs/API-BOUNDARY.md`.
+- **Front-end (prototype, `frontend/`):** one static page, no build step. The wallet is the core
+  itself compiled to **WebAssembly** (`frontend/wasm`, wasm-bindgen) running in a Web Worker: the
+  spending key, the notes, proving and signing never leave the browser (≈ 25 s to build the proving
+  keys once per session, ≈ 20 s per proof, single-threaded). `xrpl.js` in the browser does the
+  faucet and the deposit Payment with the bundle-hash memo; the coordinator is called through
+  `/api/`. Only if WebAssembly is unavailable does the page fall back to the **demo wallet service**
+  (`backend/wallet`, holds demo keys on the host). The contract: `docs/API-BOUNDARY.md`.
 - No Solidity, no WASM, no `xrpl-rust`.
 
 ## Privacy and trust — what we claim, what we don't
@@ -68,6 +72,9 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
 - **Auditor key = the holder's full viewing key:** it reveals that holder's complete activity
   (receipts, change, spends, and the recipients/amounts of their outgoing transfers) and balance,
   nothing about transactions they were not a party to.
+- **Demo wallets are hosted:** the prototype's wallet service keeps the demo spending keys on the
+  demo host — say so; the non-custodial claim holds for a wallet running on the holder's machine.
+  **Testnet demo only, and it must not carry over to real value:** a custodial wallet service is never the path for a mainnet or real-XRP pool; the browser (WASM) wallet is the production path and the service does not graduate with it.
 - **Boundary screening** (optional, per node): shields from listed depositors or too-fresh deposits
   and unshields to listed addresses are refused on public data (e.g. OFAC's XRP entries). It is
   gatekeeping at the pool's public boundary, not a per-note proof of innocence; lists can be wrong

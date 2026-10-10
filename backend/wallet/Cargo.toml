@@ -1,0 +1,23 @@
+[package]
+name = "confidant-wallet"
+version = "0.0.1"
+description = "Confidant demo wallet service: HTTP over confidant-core's Wallet for the UI prototype — holds the demo wallets' spending keys on the host it runs on (production: run it on the holder's machine)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+confidant-core = { path = "../../core" }
+axum.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

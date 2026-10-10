@@ -137,6 +137,21 @@ cd backend/quorum && POOL=<pool> COORDINATOR_URL=http://<host>:8787 CLI=../../ta
   по срезу; чистое изменение формы API — однострочное FYI аудитору.
 - Контракт выше заморожен до конца хакатона, если оба лида не договорятся об ином в PR.
 
+## 6a. Прототип (2026-10-10)
+
+`frontend/index.html` — рабочая первая версия, от которой стартует FE-команда: одна статическая
+страница без сборки. Кошелёк **в браузере**: `frontend/wasm` (confidant-core за wasm-bindgen, сборка
+`wasm-pack build frontend/wasm --target web --out-dir ../pkg`) работает в `frontend/wallet-worker.js`;
+страница хранит JSON `WalletSecret` в `localStorage`, синхронизируется из `GET /api/log`, воркер
+собирает `{record, bundleHash}` для `POST /api/submit/*`. `xrpl.js` в браузере делает faucet и
+депозит. Запасной вариант без WebAssembly: демо-сервис кошелька (`backend/wallet`: `POST /wallets`,
+`GET /wallets/{id}`, `POST /wallets/{id}/{shield|transfer|unshield}`), который хранит ключи трат
+демо-кошельков на демо-хосте — так и говорить. **Только для testnet-демо, и это не должно перейти на реальную ценность:**
+кастодиальный сервис кошелька никогда не путь для пула на mainnet или с реальным XRP; браузерный
+(WASM) кошелёк — production-путь, сервис с ним не «взрослеет». `?demo=1` показывает страницу на имитированных данных. Сайт nginx:
+`backend/deploy/nginx/confidant-ui.conf` (порт 80). Смоук пути UI без браузера: `npm run smoke-ui`
+в `backend/quorum`.
+
 ## 7. Ссылки
 
 `backend/README.md` (сервисы в одном взгляде), `docs/CORE-API.md` (соответствие ядро ↔ HTTP),

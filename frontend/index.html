@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Confidant</title>
+<!--
+  Confidant UI prototype (static, no build step). Talks to:
+    /api/    the coordinator (public, holds nothing): config, state, submit/*, audit/reveal
+    ./pkg/   the browser wallet: confidant-core compiled to WebAssembly, run in a Web Worker
+             (wallet-worker.js) — keys, notes, proving and signing stay in this browser (primary)
+    /wallet/ the demo wallet service — fallback only when WebAssembly is unavailable (holds demo
+             keys on the demo host; testnet demo only, never for real value)
+    XRPL testnet directly from the browser (xrpl.js): faucet, the deposit Payment with the memo.
+  ?demo=1 or a claude.ai host runs it on simulated data for design review.
+-->
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #F5F7F9; --surface: #FFFFFF; --surface-2: #EEF2F5; --line: #D9E0E7;
+    --text: #0E1419; --muted: #5C6B7A; --accent: #0FA86A; --accent-ink: #063D27;
+    --link: #1F6FEB; --warn: #B7791F; --danger: #D23C3C; --shadow: 0 1px 2px rgba(14,20,25,.06);
+    --radius: 12px; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0B0F14; --surface: #121922; --surface-2: #19222D; --line: #243040;
+    --text: #E8EEF4; --muted: #8A98A8; --accent: #32E685; --accent-ink: #052A17;
+    --link: #6EA8FF; --warn: #FFB454; --danger: #FF6B6B; --shadow: none;
+  } }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0B0F14; --surface: #121922; --surface-2: #19222D; --line: #243040;
+    --text: #E8EEF4; --muted: #8A98A8; --accent: #32E685; --accent-ink: #052A17;
+    --link: #6EA8FF; --warn: #FFB454; --danger: #FF6B6B; --shadow: none;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  a { color: var(--link); text-decoration: none; } a:hover { text-decoration: underline; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 20px 16px 48px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .brand { display: flex; align-items: baseline; gap: 12px; }
+  .wordmark { font-weight: 700; font-size: 22px; letter-spacing: .02em; }
+  .tagline { color: var(--muted); font-size: 14px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--muted); background: var(--surface); }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .pill.off .dot { background: var(--danger); }
+  .grid { display: grid; grid-template-columns: 1fr 1.3fr; gap: 16px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .grid > *, .card { min-width: 0; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); }
+  .card h2 { margin: 0 0 12px; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .balance { font-size: 34px; font-weight: 700; letter-spacing: -.01em; margin: 2px 0 2px; }
+  .balance small { font-size: 15px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .row:first-of-type { border-top: 0; }
+  .row .k { color: var(--muted); font-size: 13px; min-width: 110px; }
+  .row .v { font-family: var(--mono); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; text-align: right; }
+  .mono { font-family: var(--mono); font-size: 12.5px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); border-radius: 9px; padding: 8px 14px; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; padding: 11px 18px; }
+  button.ghost { background: transparent; }
+  button.small { padding: 5px 10px; font-size: 12.5px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: -4px 0 16px; }
+  .tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 8px 12px; color: var(--muted); }
+  .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 6px; }
+  input, select { width: 100%; font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--text); }
+  input.mono { font-family: var(--mono); font-size: 13px; }
+  .hint { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; }
+  .step { padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; font-size: 13px; color: var(--muted); background: var(--surface-2); }
+  .step b { display: block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 4px; }
+  .step.on { border-color: var(--accent); color: var(--text); }
+  .step.done { color: var(--text); }
+  .step.done b::after { content: " ✓"; color: var(--accent); }
+  .msg { margin-top: 14px; padding: 10px 12px; border-radius: 9px; font-size: 13.5px; background: var(--surface-2); border: 1px solid var(--line); }
+  .msg.err { border-color: var(--danger); color: var(--danger); }
+  .msg.warn { border-color: var(--warn); }
+  .msg.ok { border-color: var(--accent); }
+  .activity { margin-top: 16px; }
+  .act { display: grid; grid-template-columns: 90px 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+  .act:first-child { border-top: 0; }
+  .act .type { font-weight: 600; text-transform: capitalize; }
+  .act .links a { margin-left: 10px; font-size: 12.5px; }
+  .act .when { color: var(--muted); font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+  th, td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.mono { font-size: 12px; }
+  footer { margin-top: 24px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+  footer .status { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+  .empty { color: var(--muted); font-size: 13.5px; padding: 8px 0; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: r .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes r { to { transform: rotate(360deg); } }
+  .copy { font-size: 12px; }
+  #keys-mode { white-space: normal; line-height: 1.3; }
+  @media (max-width: 520px) { .steps { grid-template-columns: 1fr; } .row .k { min-width: 90px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="wordmark">C0nf!d@nt</div>
+      <div class="tagline">shielded pool on the XRP Ledger · testnet</div>
+    </div>
+    <div class="pill" id="netpill"><span class="dot"></span><span id="nettext">connecting…</span></div>
+  </header>
+
+  <div class="grid">
+    <section class="card" id="walletcard">
+      <h2>Wallet</h2>
+      <div id="nowallet">
+        <p class="empty">No wallet yet. Creating one generates an Orchard spending key in this browser (never sent anywhere) and a faucet-funded XRPL testnet account for deposits.</p>
+        <div class="actions"><button class="primary" id="btn-create">Create wallet</button></div>
+        <div id="create-progress"></div>
+      </div>
+      <div id="haswallet" hidden>
+        <div class="balance"><span id="priv-balance">0</span><small>XRP private</small></div>
+        <div class="hint" id="sync-hint">synced 0 of 0 bundles</div>
+        <div class="row"><span class="k">Keys</span><span class="v" id="keys-mode" style="font-family:inherit"></span></div>
+        <div class="row"><span class="k">Orchard address</span><span class="v" id="orchard-addr"></span><button class="small ghost copy" data-copy="orchard-addr">copy</button></div>
+        <div class="row"><span class="k">Viewing key</span><span class="v" id="viewing-key">••••••••</span><button class="small ghost copy" id="btn-vk">show</button></div>
+        <div class="row"><span class="k">XRPL account</span><span class="v" id="xrpl-addr"></span><button class="small ghost copy" data-copy="xrpl-addr">copy</button></div>
+        <div class="row"><span class="k">XRPL balance</span><span class="v" id="xrpl-balance">—</span><button class="small" id="btn-fund">fund (faucet)</button></div>
+        <div class="actions"><button class="small" id="btn-sync">Sync</button><button class="small ghost" id="btn-forget">Forget wallet</button></div>
+        <div id="wallet-progress"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-tab="shield">Shield</button>
+        <button role="tab" aria-selected="false" data-tab="transfer">Transfer</button>
+        <button role="tab" aria-selected="false" data-tab="unshield">Unshield</button>
+        <button role="tab" aria-selected="false" data-tab="audit">Audit</button>
+      </div>
+
+      <div id="tab-shield">
+        <label for="shield-amount">Amount (XRP) to move into the pool</label>
+        <input id="shield-amount" inputmode="decimal" placeholder="25">
+        <p class="hint">Your XRPL account pays the pool account; the memo commits to the bundle built first. Inside the pool the amount becomes a private note.</p>
+        <div class="actions"><button class="primary" id="btn-shield">Shield</button></div>
+        <div class="steps" id="steps-shield">
+          <div class="step"><b>1 · prove</b>build the bundle (~20 s in the browser)</div>
+          <div class="step"><b>2 · deposit</b>Payment with memo</div>
+          <div class="step"><b>3 · anchor</b>quorum signs 2-of-3</div>
+        </div>
+        <div id="msg-shield"></div>
+      </div>
+
+      <div id="tab-transfer" hidden>
+        <label for="transfer-to">Recipient's Orchard address</label>
+        <input id="transfer-to" class="mono" placeholder="43-byte address, hex">
+        <label for="transfer-amount">Amount (XRP)</label>
+        <input id="transfer-amount" inputmode="decimal" placeholder="10">
+        <p class="hint">Nothing about this transfer reaches the ledger except the pool's anchor memo. The recipient sees it after syncing.</p>
+        <div class="actions"><button class="primary" id="btn-transfer">Send privately</button></div>
+        <div class="steps" id="steps-transfer">
+          <div class="step"><b>1 · prove</b>build the bundle</div>
+          <div class="step"><b>2 · verify</b>quorum re-verifies</div>
+          <div class="step"><b>3 · anchor</b>memo on the ledger</div>
+        </div>
+        <div id="msg-transfer"></div>
+      </div>
+
+      <div id="tab-unshield" hidden>
+        <label for="unshield-amount">Amount (XRP) to withdraw</label>
+        <input id="unshield-amount" inputmode="decimal" placeholder="10">
+        <label for="unshield-to">Destination XRPL address</label>
+        <input id="unshield-to" class="mono" placeholder="r…">
+        <div class="actions" style="margin-top:8px">
+          <button class="small" id="btn-fresh">use a fresh address</button>
+          <button class="small ghost" id="btn-own">use my XRPL account</button>
+        </div>
+        <p class="hint">The quorum anchors the spend first, then pays the destination from the pool account. A fresh address breaks the link to your deposit; a new account needs at least the reserve (1 XRP).</p>
+        <div class="actions"><button class="primary" id="btn-unshield">Unshield</button></div>
+        <div class="steps" id="steps-unshield">
+          <div class="step"><b>1 · prove</b>build the bundle</div>
+          <div class="step"><b>2 · anchor</b>note marked spent</div>
+          <div class="step"><b>3 · payout</b>2-of-3 Payment</div>
+        </div>
+        <div id="msg-unshield"></div>
+      </div>
+
+      <div id="tab-audit" hidden>
+        <label for="audit-vk">Viewing key to reveal</label>
+        <input id="audit-vk" class="mono" placeholder="96-byte full viewing key, hex">
+        <p class="hint">A viewing key reveals that holder's whole history — receipts, change, spends, recipients — and nothing about anyone else. Share it only with an auditor you trust. Read-only: it cannot spend.</p>
+        <div class="actions"><button class="primary" id="btn-reveal">Reveal</button><button class="small ghost" id="btn-myvk">use my key</button></div>
+        <div id="msg-audit"></div>
+        <div id="audit-table"></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="card activity">
+    <h2>Activity</h2>
+    <div id="activity"><p class="empty">Nothing yet.</p></div>
+  </section>
+
+  <footer>
+    <div class="status">
+      <span>pool: <b id="st-bundles">—</b> bundles</span>
+      <span>anchored root: <span class="mono" id="st-root">—</span></span>
+      <span>quorum: <b id="st-quorum">—</b></span>
+      <span><a id="st-pool-link" href="#" target="_blank" rel="noopener">pool account on the explorer</a></span>
+    </div>
+    <div>Notes are non-custodial: this wallet's spending key never reaches the pool. The pool account is held by a k-of-N quorum of independent verifiers; collusion of k can drain the pool account but cannot spend anyone's notes. Shield and unshield amounts and addresses are public by nature; the transfer graph inside the pool is not. Your wallet runs in this browser (WebAssembly): the spending key, your notes and the proofs never leave it. Only if WebAssembly is unavailable does the page fall back to the demo wallet service on the demo host — testnet demo only, never for real value.</div>
+  </footer>
+</div>
+
+<script src="https://unpkg.com/xrpl@4.3.0/build/xrpl-latest-min.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const DEMO = new URLSearchParams(location.search).has("demo") || /claude\.ai$/.test(location.hostname);
+  const API = "/api", WALLET = "/wallet";
+  const DROPS = 1_000_000;
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("confidant." + k); return v ? JSON.parse(v) : d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("confidant." + k, JSON.stringify(v)); } catch {} },
+    del(k) { try { localStorage.removeItem("confidant." + k); } catch {} },
+  };
+  const fmt = (drops) => (Number(drops) / DROPS).toLocaleString("en-US", { maximumFractionDigits: 6 });
+  const toDrops = (s) => { const n = Number(String(s).trim()); if (!Number.isFinite(n) || n <= 0) throw new Error("enter a positive amount"); return String(Math.round(n * DROPS)); };
+  const short = (h) => h ? h.slice(0, 10) + "…" + h.slice(-6) : "—";
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---- backends -------------------------------------------------------------------------
+  async function http(method, url, body) {
+    const res = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    const text = await res.text();
+    let json = null; try { json = text ? JSON.parse(text) : null; } catch { json = { error: text }; }
+    if (!res.ok) { const e = new Error(json?.error ?? `HTTP ${res.status}`); e.status = res.status; e.details = json; throw e; }
+    return json;
+  }
+  const real = {
+    config: () => http("GET", `${API}/config`),
+    state: () => http("GET", `${API}/state`),
+    createWallet: () => http("POST", `${WALLET}/wallets`),
+    wallet: (id) => http("GET", `${WALLET}/wallets/${id}`),
+    build: (id, op, body) => http("POST", `${WALLET}/wallets/${id}/${op}`, body),
+    submit: (op, body) => http("POST", `${API}/submit/${op}`, body),
+    reveal: (viewingKey) => http("POST", `${API}/audit/reveal`, { viewingKey }),
+  };
+  // Simulated backend for design review (no network).
+  const fakeHex = (n) => Array.from({ length: n }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
+  const mock = (() => {
+    let bundles = 12, balance = 0, notes = [];
+    return {
+      config: async () => ({ network: "testnet (demo data)", explorer: "https://testnet.xrpl.org", xrplWs: null, pool: "r45VYa4BuuKYFTbiLzomvLWTLjpg15bJcH", quorum: 2, signers: 3 }),
+      state: async () => ({ bundleCount: bundles, anchoredRoot: fakeHex(64) }),
+      createWallet: async () => ({ id: fakeHex(32), address: fakeHex(86), viewingKey: fakeHex(192), balance: 0, synced: bundles }),
+      wallet: async () => ({ balance, synced: bundles }),
+      build: async (_id, op, body) => { await sleep(900); return { record: { op, _amount: body.amount }, bundleHash: fakeHex(64) }; },
+      submit: async (op, body) => { await sleep(1400); bundles++; const amt = Number(body.record?._amount ?? 0); if (op === "shield") { balance += amt; notes.push({ direction: "incoming", amount: amt, spent: false }); } if (op === "transfer" || op === "unshield") { balance -= amt; } return { newRoot: fakeHex(64), anchorTx: fakeHex(64).toUpperCase(), payoutTx: op === "unshield" ? fakeHex(64).toUpperCase() : null, signers: ["rA", "rB"] }; },
+      reveal: async () => ({ balance, notes }),
+    };
+  })();
+  const be = DEMO ? mock : real;
+
+  // ---- wallet backends: the browser (WebAssembly in a worker) first, the demo service as fallback
+  const serviceBackend = {
+    mode: "service", label: "demo wallet service on the host — testnet only",
+    async create() { const w = await be.createWallet(); return { mode: "service", id: w.id, address: w.address, viewingKey: w.viewingKey }; },
+    async restore(w) { return w; },
+    async summary(w) { return be.wallet(w.id); },
+    async build(w, op, body) { return be.build(w.id, op, body); },
+    async forget() {},
+  };
+  const browserBackend = (() => {
+    let worker = null, seq = 0; const pending = new Map();
+    const call = (op, args) => new Promise((res, rej) => { const id = ++seq; pending.set(id, { res, rej }); worker.postMessage({ id, op, args }); });
+    function start() {
+      if (worker) return;
+      worker = new Worker("./wallet-worker.js", { type: "module" });
+      worker.onmessage = ({ data }) => { const p = pending.get(data.id); if (!p) return; pending.delete(data.id); data.error ? p.rej(new Error(data.error)) : p.res(data.result); };
+      worker.onerror = (e) => { for (const p of pending.values()) p.rej(new Error("browser wallet failed to load: " + (e.message ?? "unknown"))); pending.clear(); worker = null; };
+    }
+    async function syncNow() { const { records } = await http("GET", `${API}/log?from=0`); return call("sync", { records }); }
+    return {
+      mode: "browser", label: "in this browser (WebAssembly) — never sent anywhere",
+      async create() { start(); const s = await call("create"); return { mode: "browser", secret: s.secret, address: s.address, viewingKey: s.viewingKey }; },
+      async restore(w) { start(); await call("restore", { secret: w.secret }); return w; },
+      async summary() { return syncNow(); },
+      async build(w, op, body) { await syncNow(); return call(op, body); },
+      async forget() { if (worker) await call("forget"); },
+    };
+  })();
+  const wbFor = (w) => (DEMO || w?.mode === "service" ? serviceBackend : browserBackend);
+  let walletReady = false;
+
+  // ---- XRPL side (browser only) ----------------------------------------------------------
+  let cfg = null, xrplClient = null;
+  async function xrpl_() {
+    if (DEMO) return null;
+    if (xrplClient?.isConnected()) return xrplClient;
+    xrplClient = new xrpl.Client(cfg.xrplWs);
+    await xrplClient.connect();
+    return xrplClient;
+  }
+  function xrplWallet() { const w = store.get("xrpl"); return w ? xrpl.Wallet.fromSeed(w.seed) : null; }
+  async function xrplBalance() {
+    const w = xrplWallet(); if (!w) return null;
+    if (DEMO) return "100000000";
+    const c = await xrpl_();
+    try { const r = await c.request({ command: "account_info", account: w.address, ledger_index: "validated" }); return r.result.account_data.Balance; }
+    catch { return "0"; }
+  }
+  async function fund() {
+    if (DEMO) { const w = xrpl.Wallet.generate(); store.set("xrpl", { seed: w.seed, address: w.address }); return; }
+    const c = await xrpl_();
+    const existing = xrplWallet();
+    const { wallet } = await c.fundWallet(existing ?? undefined);
+    store.set("xrpl", { seed: wallet.seed, address: wallet.address });
+  }
+  async function deposit(drops, bundleHash) {
+    if (DEMO) { await sleep(1200); return fakeHex(64).toUpperCase(); }
+    const c = await xrpl_(); const w = xrplWallet();
+    const tx = await c.autofill({ TransactionType: "Payment", Account: w.address, Destination: cfg.pool, Amount: drops,
+      Memos: [{ Memo: { MemoType: xrpl.convertStringToHex("confidant/shield"), MemoData: bundleHash.toUpperCase() } }] });
+    const signed = w.sign(tx);
+    const res = await c.submitAndWait(signed.tx_blob);
+    const code = res.result.meta?.TransactionResult;
+    if (code !== "tesSUCCESS") throw new Error(`deposit failed on the ledger: ${code}`);
+    return signed.hash;
+  }
+
+  // ---- UI state ---------------------------------------------------------------------------
+  const wallet = () => store.get("wallet");
+  function setMsg(id, text, kind) { const el = $(id); el.innerHTML = text ? `<div class="msg ${kind ?? ""}">${text}</div>` : ""; }
+  function setSteps(id, n, done) { [...$(id).children].forEach((s, i) => { s.classList.toggle("on", i === n && !done); s.classList.toggle("done", i < n || (done && i <= n)); }); }
+  function busy(btn, on) { btn.disabled = on; btn.innerHTML = on ? `<span class="spin"></span>${btn.dataset.label ?? btn.textContent}` : (btn.dataset.label ?? btn.textContent); }
+  function link(label, hash) { return hash ? `<a href="${cfg.explorer}/transactions/${hash}" target="_blank" rel="noopener">${label}</a>` : ""; }
+  function addActivity(a) { const list = store.get("activity", []); list.unshift({ ...a, when: new Date().toISOString() }); store.set("activity", list.slice(0, 50)); renderActivity(); }
+  function renderActivity() {
+    const list = store.get("activity", []);
+    $("activity").innerHTML = list.length ? list.map((a) => `<div class="act"><span class="type">${a.type}</span><span>${a.text}<div class="when">${new Date(a.when).toLocaleString()}</div></span><span class="links">${a.links.map(([l, h]) => link(l, h)).join("")}</span></div>`).join("") : `<p class="empty">Nothing yet.</p>`;
+  }
+  async function refreshWallet() {
+    const w = wallet();
+    $("nowallet").hidden = !!w; $("haswallet").hidden = !w;
+    if (!w) return;
+    $("orchard-addr").textContent = w.address;
+    $("keys-mode").textContent = wbFor(w).label;
+    if (!walletReady) { $("sync-hint").textContent = "preparing…"; }
+    else {
+      try { const s = await wbFor(w).summary(w); $("priv-balance").textContent = fmt(s.balance); $("sync-hint").textContent = `synced ${s.synced} bundle${s.synced === 1 ? "" : "s"}`; }
+      catch (e) { $("sync-hint").textContent = `sync failed: ${e.message}`; }
+    }
+    const x = store.get("xrpl");
+    $("xrpl-addr").textContent = x ? x.address : "not funded yet";
+    $("xrpl-balance").textContent = x ? `${fmt(await xrplBalance() ?? 0)} XRP` : "—";
+    $("audit-vk").value ||= w.viewingKey;
+  }
+  async function refreshStatus() {
+    try {
+      const s = await be.state();
+      $("st-bundles").textContent = s.bundleCount; $("st-root").textContent = short(s.anchoredRoot ?? s.root);
+      $("netpill").classList.remove("off"); $("nettext").textContent = DEMO ? "demo data" : "coordinator online";
+    } catch (e) { $("netpill").classList.add("off"); $("nettext").textContent = "backend unreachable"; }
+  }
+
+  // ---- flows ------------------------------------------------------------------------------
+  async function submitWithStandby(op, body, onWait) {
+    for (let t = 0; t < 60; t++) {
+      try { return await be.submit(op, body); }
+      catch (e) {
+        if (e.status === 403 && /standby/.test(e.message)) { onWait(e.message); await sleep(4000); continue; }
+        throw e;
+      }
+    }
+    throw new Error("the deposit is still in the screening standby; try again later");
+  }
+  async function doShield() {
+    const btn = $("btn-shield"); const w = wallet();
+    try {
+      if (!w) throw new Error("create a wallet first");
+      if (!walletReady) throw new Error("the wallet is still preparing");
+      if (!store.get("xrpl")) throw new Error("fund your XRPL account first (faucet)");
+      const drops = toDrops($("shield-amount").value);
+      busy(btn, true); setMsg("msg-shield", "");
+      setSteps("steps-shield", 0); const built = await wbFor(w).build(w, "shield", { amount: Number(drops) });
+      setSteps("steps-shield", 1); const depositTxHash = await deposit(drops, built.bundleHash);
+      setSteps("steps-shield", 2);
+      const acc = await submitWithStandby("shield", { record: built.record, depositTxHash }, (m) => setMsg("msg-shield", `<span class="spin"></span>${m} — waiting`, "warn"));
+      setSteps("steps-shield", 2, true);
+      setMsg("msg-shield", `Shielded ${fmt(drops)} XRP. ${link("deposit", depositTxHash)} · ${link("anchor", acc.anchorTx)} · signed by ${acc.signers?.length ?? "k"} of ${cfg.signers}`, "ok");
+      addActivity({ type: "shield", text: `${fmt(drops)} XRP into the pool`, links: [["deposit", depositTxHash], ["anchor", acc.anchorTx]] });
+    } catch (e) { setMsg("msg-shield", e.message, "err"); }
+    finally { busy(btn, false); refreshWallet(); refreshStatus(); }
+  }
+  async function doTransfer() {
+    const btn = $("btn-transfer"); const w = wallet();
+    try {
+      if (!w) throw new Error("create a wallet first");
+      if (!walletReady) throw new Error("the wallet is still preparing");
+      const recipient = $("transfer-to").value.trim(); if (!/^[0-9a-fA-F]{86}$/.test(recipient)) throw new Error("recipient must be a 43-byte Orchard address in hex");
+      const drops = toDrops($("transfer-amount").value);
+      busy(btn, true); setMsg("msg-transfer", "");
+      setSteps("steps-transfer", 0); const built = await wbFor(w).build(w, "transfer", { recipient, amount: Number(drops) });
+      setSteps("steps-transfer", 1); const acc = await be.submit("transfer", { record: built.record });
+      setSteps("steps-transfer", 2, true);
+      setMsg("msg-transfer", `Sent ${fmt(drops)} XRP privately. ${link("anchor", acc.anchorTx)}`, "ok");
+      addActivity({ type: "transfer", text: `${fmt(drops)} XRP to ${short(recipient)}`, links: [["anchor", acc.anchorTx]] });
+    } catch (e) { setMsg("msg-transfer", e.message, "err"); }
+    finally { busy(btn, false); refreshWallet(); refreshStatus(); }
+  }
+  async function doUnshield() {
+    const btn = $("btn-unshield"); const w = wallet();
+    try {
+      if (!w) throw new Error("create a wallet first");
+      if (!walletReady) throw new Error("the wallet is still preparing");
+      const destination = $("unshield-to").value.trim(); if (!/^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(destination)) throw new Error("destination must be a classic XRPL address");
+      const drops = toDrops($("unshield-amount").value);
+      busy(btn, true); setMsg("msg-unshield", "");
+      setSteps("steps-unshield", 0); const built = await wbFor(w).build(w, "unshield", { amount: Number(drops), destination });
+      setSteps("steps-unshield", 1); const acc = await be.submit("unshield", { record: built.record, destination });
+      setSteps("steps-unshield", 2, !!acc.payoutTx);
+      if (acc.payoutError) setMsg("msg-unshield", `Anchored, but the payout failed on the ledger: ${acc.payoutError}. The signed payout can be resubmitted; the note is already spent.`, "warn");
+      else setMsg("msg-unshield", `Withdrew ${fmt(drops)} XRP to ${destination}. ${link("anchor", acc.anchorTx)} · ${link("payout", acc.payoutTx)}`, "ok");
+      addActivity({ type: "unshield", text: `${fmt(drops)} XRP to ${destination}`, links: [["anchor", acc.anchorTx], ["payout", acc.payoutTx]] });
+    } catch (e) { setMsg("msg-unshield", e.message, "err"); }
+    finally { busy(btn, false); refreshWallet(); refreshStatus(); }
+  }
+  async function doReveal() {
+    const btn = $("btn-reveal");
+    try {
+      const vk = $("audit-vk").value.trim(); if (!/^[0-9a-fA-F]{192}$/.test(vk)) throw new Error("a full viewing key is 96 bytes in hex");
+      busy(btn, true); setMsg("msg-audit", "");
+      const r = await be.reveal(vk);
+      $("audit-table").innerHTML = `<table><tr><th>direction</th><th>amount</th><th>status</th><th>recipient</th></tr>${(r.notes ?? []).map((n) => `<tr><td>${n.direction}</td><td>${fmt(n.amount)} XRP</td><td>${n.direction === "incoming" ? (n.spent ? "spent" : "unspent") : "sent"}</td><td class="mono">${n.recipient ? short(n.recipient) : ""}</td></tr>`).join("")}</table>`;
+      setMsg("msg-audit", `Balance for this key: <b>${fmt(r.balance)} XRP</b> across ${r.notes?.length ?? 0} note${r.notes?.length === 1 ? "" : "s"}. This is read-only evidence computed by the coordinator's node from the public log.`, "ok");
+    } catch (e) { setMsg("msg-audit", e.message, "err"); $("audit-table").innerHTML = ""; }
+    finally { busy(btn, false); }
+  }
+
+  // ---- wiring -----------------------------------------------------------------------------
+  document.querySelectorAll(".tabs [role=tab]").forEach((t) => t.addEventListener("click", () => {
+    document.querySelectorAll(".tabs [role=tab]").forEach((x) => x.setAttribute("aria-selected", x === t));
+    ["shield", "transfer", "unshield", "audit"].forEach((n) => { $("tab-" + n).hidden = n !== t.dataset.tab; });
+  }));
+  // Clipboard: the async API needs a secure context (https / localhost); on plain http fall back to execCommand.
+  async function copyText(t) {
+    try { if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(t); return true; } } catch {}
+    try { const ta = document.createElement("textarea"); ta.value = t; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select(); const ok = document.execCommand("copy"); ta.remove(); return ok; } catch { return false; }
+  }
+  const flash = (b, ok) => { const was = b.dataset.idle ?? b.textContent; b.dataset.idle = was; b.textContent = ok ? "copied" : "copy failed"; setTimeout(() => (b.textContent = b.dataset.idle), 1200); };
+  document.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => flash(b, await copyText($(b.dataset.copy).textContent))));
+  $("btn-vk").addEventListener("click", async () => { const w = wallet(); if (!w) return; const el = $("viewing-key"); if (el.textContent.startsWith("•")) { el.textContent = w.viewingKey; $("btn-vk").textContent = "copy"; $("btn-vk").dataset.idle = "copy"; } else { flash($("btn-vk"), await copyText(w.viewingKey)); } });
+  $("btn-create").addEventListener("click", async () => {
+    const btn = $("btn-create"); busy(btn, true);
+    try {
+      let w;
+      if (!DEMO && typeof WebAssembly === "object") {
+        setMsg("create-progress", `<span class="spin"></span>Generating your key and building the proving keys in this browser (~25 s, once per session)…`, "warn");
+        try { w = await browserBackend.create(); }
+        catch (e) { setMsg("create-progress", `Browser wallet unavailable (${e.message}); using the demo wallet service instead.`, "warn"); w = await serviceBackend.create(); }
+      } else { w = await serviceBackend.create(); }
+      store.set("wallet", w); walletReady = true;
+      setMsg("create-progress", `<span class="spin"></span>Funding an XRPL testnet account from the faucet…`, "warn");
+      await fund();
+      setMsg("create-progress", "");
+    } catch (e) { setMsg("create-progress", e.message, "err"); }
+    finally { busy(btn, false); refreshWallet(); }
+  });
+  $("btn-fund").addEventListener("click", async () => { const b = $("btn-fund"); busy(b, true); try { await fund(); } catch (e) { alert(e.message); } finally { busy(b, false); refreshWallet(); } });
+  $("btn-sync").addEventListener("click", refreshWallet);
+  $("btn-forget").addEventListener("click", async () => { const w = wallet(); if (!w) return; if (confirm(w.mode === "browser" ? "Forget this wallet? Its spending key exists only in this browser — any private balance is lost for good." : "Forget this demo wallet in this browser? Its key stays only in the demo wallet service.")) { await wbFor(w).forget(); store.del("wallet"); store.del("xrpl"); store.del("activity"); walletReady = false; $("viewing-key").textContent = "••••••••"; $("btn-vk").textContent = "show"; refreshWallet(); renderActivity(); } });
+  $("btn-shield").addEventListener("click", doShield);
+  $("btn-transfer").addEventListener("click", doTransfer);
+  $("btn-unshield").addEventListener("click", doUnshield);
+  $("btn-reveal").addEventListener("click", doReveal);
+  $("btn-fresh").addEventListener("click", () => { $("unshield-to").value = xrpl.Wallet.generate().classicAddress; });
+  $("btn-own").addEventListener("click", () => { const x = store.get("xrpl"); $("unshield-to").value = x ? x.address : ""; });
+  $("btn-myvk").addEventListener("click", () => { const w = wallet(); if (w) $("audit-vk").value = w.viewingKey; });
+  document.querySelectorAll("button.primary, #btn-fund, #btn-create").forEach((b) => (b.dataset.label = b.textContent));
+
+  (async () => {
+    try { cfg = await be.config(); } catch (e) { cfg = { explorer: "https://testnet.xrpl.org", signers: "?", quorum: "?" }; }
+    $("st-quorum").textContent = `${cfg.quorum} of ${cfg.signers}`;
+    $("st-pool-link").href = cfg.pool ? `${cfg.explorer}/accounts/${cfg.pool}` : "#";
+    renderActivity(); await refreshStatus();
+    const w = wallet();
+    if (w) {
+      await refreshWallet();
+      try {
+        if (w.mode === "browser") setMsg("wallet-progress", `<span class="spin"></span>Restoring your wallet: building the proving keys in this browser (~25 s)…`, "warn");
+        await wbFor(w).restore(w); walletReady = true; setMsg("wallet-progress", "");
+      } catch (e) { setMsg("wallet-progress", `could not restore the wallet: ${e.message}`, "err"); }
+    }
+    await refreshWallet();
+    setInterval(refreshStatus, 20000);
+  })();
+})();
+</script>
+</body>
+</html>

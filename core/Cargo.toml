@@ -20,3 +20,8 @@ hex.workspace = true
 thiserror.workspace = true
 nonempty.workspace = true
 subtle.workspace = true
+
+[features]
+# Native builds prove on all cores; the browser (wasm32) build turns this off (no threads there).
+default = ["multicore"]
+multicore = ["orchard/multicore"]

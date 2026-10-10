@@ -134,6 +134,20 @@ cd backend/quorum && POOL=<pool> COORDINATOR_URL=http://<host>:8787 CLI=../../ta
   ruling first; a pure API-shape change gets a one-line FYI to the auditor.
 - The contract above is frozen for the hackathon unless both leads agree in a PR.
 
+## 6a. The prototype (2026-10-10)
+
+`frontend/index.html` is a working first version for the FE team to start from: one static page, no
+build step. The wallet is **in the browser**: `frontend/wasm` (confidant-core behind wasm-bindgen,
+built with `wasm-pack build frontend/wasm --target web --out-dir ../pkg`) runs in
+`frontend/wallet-worker.js`; the page keeps the `WalletSecret` JSON in `localStorage`, syncs from
+`GET /api/log`, and the worker builds `{record, bundleHash}` for `POST /api/submit/*`. `xrpl.js` in
+the browser does the faucet and the deposit. Fallback when WebAssembly is unavailable: the demo
+wallet service (`backend/wallet`: `POST /wallets`, `GET /wallets/{id}`, `POST
+/wallets/{id}/{shield|transfer|unshield}`), which holds the demo wallets' spending keys on the demo
+host — label it so. **Testnet demo only, and it must not carry over to real value:** a custodial wallet service is never the path for a mainnet or real-XRP pool; the browser (WASM) wallet is the production path and the service does not graduate with it. `?demo=1` renders the page on simulated data. nginx site:
+`backend/deploy/nginx/confidant-ui.conf` (port 80). Smoke of the exact UI path without a browser:
+`npm run smoke-ui` in `backend/quorum`.
+
 ## 7. Pointers
 
 `backend/README.md` (services at a glance), `docs/CORE-API.md` (core ↔ HTTP mapping), `docs/E2E.md` §2b

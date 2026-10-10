@@ -1,0 +1,20 @@
+[package]
+name = "confidant-wasm"
+version = "0.0.1"
+description = "Confidant wallet for the browser: confidant-core's Wallet behind wasm-bindgen — keys, notes, proving and signing never leave the page"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+confidant-core = { path = "../../core", default-features = false }
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+serde.workspace = true
+serde_json.workspace = true
+getrandom = { version = "0.2", features = ["js"] }
+console_error_panic_hook = "0.1"
