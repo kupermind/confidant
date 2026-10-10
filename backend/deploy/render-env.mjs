@@ -29,4 +29,6 @@ for (let i = 0; i <= n; i++) write(`node-${i}.env`, { LISTEN: `127.0.0.1:${baseP
 for (let i = 1; i <= n; i++) write(`signer-${i}.env`, { PORT: basePort + 100 + i, NODE_URL: nodeUrl(i), KEY_FILE: config.signers[i - 1].keyFile, MAX_FEE_DROPS: 5000 });
 // The coordinator's SIGNERS are sidecar URLs (it overrides common.env's SIGNERS, which the nodes use as addresses).
 write("coordinator.env", { PORT: basePort + 200, NODE_URL: nodeUrl(0), NODES: Array.from({ length: n + 1 }, (_, i) => nodeUrl(i)).join(","), SIGNERS: Array.from({ length: n }, (_, i) => signerUrl(i + 1)).join(","), XRPL_WS: xrplWs });
-console.log(`rendered ${envDir}: common.env, node-0..${n}.env, signer-1..${n}.env, coordinator.env (coordinator on 127.0.0.1:${basePort + 200})`);
+// The demo wallet service behind the UI prototype (port basePort+250), syncing from the coordinator.
+write("wallet.env", { LISTEN: `127.0.0.1:${basePort + 250}`, DIR: `${dataDir.replace(/\/quorum$/, "")}/wallets`, COORDINATOR_URL: `http://127.0.0.1:${basePort + 200}` });
+console.log(`rendered ${envDir}: common.env, node-0..${n}.env, signer-1..${n}.env, coordinator.env (coordinator on 127.0.0.1:${basePort + 200}), wallet.env (demo wallet service on 127.0.0.1:${basePort + 250})`);

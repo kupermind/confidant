@@ -46,9 +46,12 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
 - **Quorum services (`backend/`):** a Rust verifier node (`confidant-node`, axum over `Verifier`;
   reads the ledger, holds no keys), Node signer sidecars (the only key holders; sign only what their
   own node endorsed) and a coordinator (k-of-N multisig, anchor then payout) — `backend/README.md`.
-- **Front-end:** React/TypeScript + `xrpl.js` — the user side only: the deposit Payment with the
-  bundle-hash memo from the user's account, calls to the coordinator, the local wallet, explorer
-  links. The contract between the two: `docs/API-BOUNDARY.md`.
+- **Front-end (prototype, `frontend/index.html`):** one static page, no build step, `xrpl.js` in the
+  browser for the faucet and the deposit Payment with the bundle-hash memo; calls the coordinator
+  through `/api/`. Its wallet is the **demo wallet service** (`backend/wallet`, Rust over `Wallet`)
+  behind `/wallet/` — it holds the demo wallets' spending keys on the demo host, a custodial
+  convenience for the hackathon; in production the wallet runs on the holder's machine (a WASM
+  build of the same core for the browser is in progress). The contract: `docs/API-BOUNDARY.md`.
 - No Solidity, no WASM, no `xrpl-rust`.
 
 ## Privacy and trust — what we claim, what we don't
@@ -68,6 +71,8 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
 - **Auditor key = the holder's full viewing key:** it reveals that holder's complete activity
   (receipts, change, spends, and the recipients/amounts of their outgoing transfers) and balance,
   nothing about transactions they were not a party to.
+- **Demo wallets are hosted:** the prototype's wallet service keeps the demo spending keys on the
+  demo host — say so; the non-custodial claim holds for a wallet running on the holder's machine.
 - **Boundary screening** (optional, per node): shields from listed depositors or too-fresh deposits
   and unshields to listed addresses are refused on public data (e.g. OFAC's XRP entries). It is
   gatekeeping at the pool's public boundary, not a per-note proof of innocence; lists can be wrong

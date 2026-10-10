@@ -137,6 +137,17 @@ cd backend/quorum && POOL=<pool> COORDINATOR_URL=http://<host>:8787 CLI=../../ta
   по срезу; чистое изменение формы API — однострочное FYI аудитору.
 - Контракт выше заморожен до конца хакатона, если оба лида не договорятся об ином в PR.
 
+## 6a. Прототип (2026-10-10)
+
+`frontend/index.html` — рабочая первая версия, от которой стартует FE-команда: одна статическая
+страница без сборки, same-origin `/api/` (координатор) и `/wallet/` (демо-сервис кошелька,
+`backend/wallet`: `POST /wallets`, `GET /wallets/{id}`, `POST /wallets/{id}/{shield|transfer|unshield}`
+→ `{record, bundleHash}`), `xrpl.js` в браузере для faucet и депозита. Демо-сервис кошелька хранит
+ключи трат демо-кошельков на демо-хосте — так и говорить; браузерный (WASM) кошелёк, который его
+уберёт, в работе. `?demo=1` показывает страницу на имитированных данных. Сайт nginx:
+`backend/deploy/nginx/confidant-ui.conf` (порт 80). Смоук пути UI без браузера: `npm run smoke-ui`
+в `backend/quorum`.
+
 ## 7. Ссылки
 
 `backend/README.md` (сервисы в одном взгляде), `docs/CORE-API.md` (соответствие ядро ↔ HTTP),

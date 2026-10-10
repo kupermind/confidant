@@ -33,6 +33,13 @@ Every node logs `pool custody verified on the ledger: k-of-N SignerList, master 
 (the custody gate). Logs: `journalctl -u 'confidant-*' -f`. Restart everything:
 `systemctl restart confidant.target`. The UI's base URL is `http://<host>:8787` (`docs/API-BOUNDARY.md`).
 
+**UI prototype** (`frontend/index.html`, static) + **demo wallet service** (`confidant-wallet`, holds the
+demo wallets' spending keys under `data/wallets/` — a custodial convenience on the demo host, see
+`README.md`): `cargo build --release --bin confidant-wallet`, install the binary next to the node,
+`systemctl enable --now confidant-wallet`, then the nginx site `nginx/confidant-ui.conf` on port 80
+(static page, `/api/` → coordinator, `/wallet/` → wallet service) and `ufw allow 80/tcp`. The UI needs
+no configuration: it reads `/api/config` for the pool account and the explorer.
+
 Smoke test from any machine with the CLI built (`backend/quorum/smoke.mjs`):
 
 ```bash

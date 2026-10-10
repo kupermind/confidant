@@ -374,7 +374,9 @@ e2e/testnet/ XRPL testnet harnesses (xrpl.js): run.mjs (CLI-driven), run-service
 docs/audit/  REQ/RESP of every round, INDEX.md
 docs/CORE-API.md, docs/E2E.md, docs/NODE-OPERATOR.md
 .github/workflows/check.yml  CI: fmt / clippy / tests (release) / 100% line coverage / hygiene / manual e2e
-frontend/, scripts/   — the API/XRPL lead's area (not started)
+frontend/      index.html — the UI prototype (static, xrpl.js in the browser; talks to /api → coordinator, /wallet → demo wallet service)
+backend/wallet/ confidant-wallet: demo wallet service (HTTP over Wallet; holds demo spending keys on its host)
+scripts/       — pre-population (API/XRPL lead, not started)
 README.md, SPEC.md, SPEC.ru.md, ROADMAP.md, CLAUDE.md
 ```
 

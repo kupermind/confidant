@@ -134,6 +134,17 @@ cd backend/quorum && POOL=<pool> COORDINATOR_URL=http://<host>:8787 CLI=../../ta
   ruling first; a pure API-shape change gets a one-line FYI to the auditor.
 - The contract above is frozen for the hackathon unless both leads agree in a PR.
 
+## 6a. The prototype (2026-10-10)
+
+`frontend/index.html` is a working first version for the FE team to start from: one static page, no
+build step, same-origin `/api/` (coordinator) and `/wallet/` (demo wallet service, `backend/wallet`:
+`POST /wallets`, `GET /wallets/{id}`, `POST /wallets/{id}/{shield|transfer|unshield}` → `{record,
+bundleHash}`), `xrpl.js` in the browser for the faucet and the deposit. The demo wallet service holds
+the demo wallets' spending keys on the demo host — label it so; the browser-side (WASM) wallet that
+removes it is in progress. `?demo=1` renders the page on simulated data. nginx site:
+`backend/deploy/nginx/confidant-ui.conf` (port 80). Smoke of the exact UI path without a browser:
+`npm run smoke-ui` in `backend/quorum`.
+
 ## 7. Pointers
 
 `backend/README.md` (services at a glance), `docs/CORE-API.md` (core ↔ HTTP mapping), `docs/E2E.md` §2b
