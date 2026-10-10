@@ -47,6 +47,8 @@
   .pill.off .dot { background: var(--danger); }
   .grid { display: grid; grid-template-columns: 1fr 1.3fr; gap: 16px; }
   @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  @media (max-width: 520px) { .steps { grid-template-columns: 1fr; } .row .k { min-width: 90px; } }
+  .grid > *, .card { min-width: 0; }
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); }
   .card h2 { margin: 0 0 12px; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
   .balance { font-size: 34px; font-weight: 700; letter-spacing: -.01em; margin: 2px 0 2px; }
