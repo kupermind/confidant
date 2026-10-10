@@ -21,4 +21,9 @@ fn constructors_build_equivalent_wallets() {
     assert_eq!(a.info().viewing_key, d.info().viewing_key);
     assert_eq!(d.balance(), 0);
     assert_eq!(d.synced(), 0);
+    assert_eq!(
+        d.replica().state().bundle_count,
+        0,
+        "a fresh wallet's replica is empty"
+    );
 }

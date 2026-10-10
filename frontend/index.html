@@ -257,7 +257,7 @@
       state: async () => ({ bundleCount: bundles, anchoredRoot: fakeHex(64) }),
       createWallet: async () => ({ id: fakeHex(32), address: fakeHex(86), viewingKey: fakeHex(192), balance: 0, synced: bundles }),
       wallet: async () => ({ balance, synced: bundles }),
-      build: async (_id, op, body) => { await sleep(900); return { record: { op }, bundleHash: fakeHex(64), _amount: body.amount }; },
+      build: async (_id, op, body) => { await sleep(900); return { record: { op, _amount: body.amount }, bundleHash: fakeHex(64) }; },
       submit: async (op, body) => { await sleep(1400); bundles++; const amt = Number(body.record?._amount ?? 0); if (op === "shield") { balance += amt; notes.push({ direction: "incoming", amount: amt, spent: false }); } if (op === "transfer" || op === "unshield") { balance -= amt; } return { newRoot: fakeHex(64), anchorTx: fakeHex(64).toUpperCase(), payoutTx: op === "unshield" ? fakeHex(64).toUpperCase() : null, signers: ["rA", "rB"] }; },
       reveal: async () => ({ balance, notes }),
     };
@@ -313,7 +313,7 @@
     catch { return "0"; }
   }
   async function fund() {
-    if (DEMO) { store.set("xrpl", { seed: "sDEMO", address: "rDEMOxrplAccountForDesignReview" }); return; }
+    if (DEMO) { const w = xrpl.Wallet.generate(); store.set("xrpl", { seed: w.seed, address: w.address }); return; }
     const c = await xrpl_();
     const existing = xrplWallet();
     const { wallet } = await c.fundWallet(existing ?? undefined);
@@ -445,8 +445,14 @@
     document.querySelectorAll(".tabs [role=tab]").forEach((x) => x.setAttribute("aria-selected", x === t));
     ["shield", "transfer", "unshield", "audit"].forEach((n) => { $("tab-" + n).hidden = n !== t.dataset.tab; });
   }));
-  document.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => { try { await navigator.clipboard.writeText($(b.dataset.copy).textContent); b.textContent = "copied"; setTimeout(() => (b.textContent = "copy"), 1200); } catch {} }));
-  $("btn-vk").addEventListener("click", async () => { const w = wallet(); if (!w) return; const el = $("viewing-key"); if (el.textContent.startsWith("•")) { el.textContent = w.viewingKey; $("btn-vk").textContent = "copy"; } else { try { await navigator.clipboard.writeText(w.viewingKey); $("btn-vk").textContent = "copied"; setTimeout(() => ($("btn-vk").textContent = "copy"), 1200); } catch {} } });
+  // Clipboard: the async API needs a secure context (https / localhost); on plain http fall back to execCommand.
+  async function copyText(t) {
+    try { if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(t); return true; } } catch {}
+    try { const ta = document.createElement("textarea"); ta.value = t; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select(); const ok = document.execCommand("copy"); ta.remove(); return ok; } catch { return false; }
+  }
+  const flash = (b, ok) => { const was = b.dataset.idle ?? b.textContent; b.dataset.idle = was; b.textContent = ok ? "copied" : "copy failed"; setTimeout(() => (b.textContent = b.dataset.idle), 1200); };
+  document.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => flash(b, await copyText($(b.dataset.copy).textContent))));
+  $("btn-vk").addEventListener("click", async () => { const w = wallet(); if (!w) return; const el = $("viewing-key"); if (el.textContent.startsWith("•")) { el.textContent = w.viewingKey; $("btn-vk").textContent = "copy"; $("btn-vk").dataset.idle = "copy"; } else { flash($("btn-vk"), await copyText(w.viewingKey)); } });
   $("btn-create").addEventListener("click", async () => {
     const btn = $("btn-create"); busy(btn, true);
     try {
@@ -470,7 +476,7 @@
   $("btn-transfer").addEventListener("click", doTransfer);
   $("btn-unshield").addEventListener("click", doUnshield);
   $("btn-reveal").addEventListener("click", doReveal);
-  $("btn-fresh").addEventListener("click", () => { $("unshield-to").value = DEMO ? "rFRESHdemoAddressGeneratedInBrowser" : xrpl.Wallet.generate().classicAddress; });
+  $("btn-fresh").addEventListener("click", () => { $("unshield-to").value = xrpl.Wallet.generate().classicAddress; });
   $("btn-own").addEventListener("click", () => { const x = store.get("xrpl"); $("unshield-to").value = x ? x.address : ""; });
   $("btn-myvk").addEventListener("click", () => { const w = wallet(); if (w) $("audit-vk").value = w.viewingKey; });
   document.querySelectorAll("button.primary, #btn-fund, #btn-create").forEach((b) => (b.dataset.label = b.textContent));
