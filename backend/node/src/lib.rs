@@ -13,6 +13,10 @@
 //! - `POST /anchored {root, anchorTxHash}` — the node reads the anchor Payment from the ledger and
 //!   checks its memo carries the root before marking it anchored; `POST /audit/reveal`.
 //!
+//! Boundary screening (optional, `--screening-list`, `--screening-standby-ledgers`): every node
+//! refuses, on its own list and fail-closed, a shield whose depositor is listed or whose deposit is
+//! younger than the standby, and an unshield whose destination is listed (HTTP 403).
+//!
 //! On startup the node refuses to serve unless the pool account's on-ledger custody is the
 //! configured k-of-N SignerList with the master key disabled, and (with `--rebuild`) unless the
 //! `account_tx` scan starts at the pool's creation and every anchor memo is backed by the mirror
@@ -24,11 +28,13 @@
 pub mod http;
 pub mod node;
 pub mod rpc;
+pub mod screening;
 pub mod xrpl;
 
 pub use node::{AcceptedWithMemo, Node, NodeError};
 pub use rpc::JsonRpc;
+pub use screening::{ScreenError, Screening};
 pub use xrpl::{
-    anchor_fact, anchor_memos, check_custody_info, deposit_facts, ensure_full_history, Ledger,
-    LedgerError, LSF_DISABLE_MASTER, MEMO_SHIELD,
+    anchor_fact, anchor_memos, check_custody_info, deposit_facts, deposit_source,
+    ensure_full_history, Ledger, LedgerError, LSF_DISABLE_MASTER, MEMO_SHIELD,
 };

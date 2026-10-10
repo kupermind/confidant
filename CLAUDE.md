@@ -37,6 +37,8 @@ Refer to people by role, never by name, in anything that reaches git (see hard r
   pool account but cannot spend anyone's notes**; quorum because today's XRPL has no on-ledger Halo 2
   verifier. **Never** claim "fully anonymous / untraceable / trustless today / private from the
   operator." Shield/unshield amounts + addresses are public (inherent); an empty pool has no privacy.
+  Boundary screening (optional, per node) is gatekeeping on public lists at the public boundary, not a
+  per-note proof of innocence — say so.
   CI checks the label markers in `SPEC.md`, `README.md`, `SPEC.ru.md`.
 - **TEE is a production footnote only** — never in the demo mechanics, never the lead.
 - **"Only what you build during the hackathon counts."** The core, the reused Orchard circuit and

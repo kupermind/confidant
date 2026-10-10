@@ -60,6 +60,22 @@ impl Ledger for JsonRpc {
         .await
     }
 
+    async fn validated_ledger_index(&self) -> Result<u64, LedgerError> {
+        let r = self
+            .call("ledger", json!({ "ledger_index": "validated" }))
+            .await?;
+        // API v2: `ledger_index` (number) at the top level; v1: a string under `ledger`.
+        r.get("ledger_index")
+            .and_then(Value::as_u64)
+            .or_else(|| {
+                r.get("ledger")
+                    .and_then(|l| l.get("ledger_index"))
+                    .and_then(Value::as_str)
+                    .and_then(|s| s.parse().ok())
+            })
+            .ok_or_else(|| LedgerError::Rpc("ledger: no ledger_index".into()))
+    }
+
     async fn account_tx(&self, account: &str) -> Result<Vec<Value>, LedgerError> {
         let mut out = Vec::new();
         let mut marker: Option<Value> = None;

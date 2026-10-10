@@ -315,6 +315,22 @@ re-drive the same submission — the nodes answer with the same acceptance, the 
 the pool's now-next sequence, the sidecars re-sign, and the payout lands; a dead coordinator strands
 no funds. Atomic anchor + payout via XLS-56 Batch is the production fix (roadmap).
 
+**Boundary screening (optional policy; every node enforces its own).** A node started with
+`--screening-list FILE` (one XRPL address per line or a JSON array — e.g. OFAC's "Digital Currency
+Address - XRP" entries via `backend/quorum/screening/fetch-ofac.mjs`) and
+`--screening-standby-ledgers N` refuses, with HTTP 403 and before the verifier sees the bundle: a
+shield whose deposit was sent by a listed account; a shield whose deposit is younger than N
+validated ledgers, so list providers have time to publish (Railgun's "unshield-only standby" is
+1 h ≈ 900 XRPL ledgers; the demo runs 2); an unshield whose destination is listed. The check runs at
+`/submit/*` and at `/endorse` alike, so a coordinator cannot route around a signer's policy, and the
+sender account and the deposit's ledger are read from the ledger by the node itself. With the gate
+on since a pool's genesis, no note in that pool descends from a listed address, and anyone can
+re-check that from the public log and the ledger (`backend/quorum/screening/audit.mjs`). Honest
+label: this is gatekeeping on public data at the pool's public boundary, not a per-note proof of
+innocence (ROADMAP §4.5.4); lists can be wrong or late; a refused deposit stays in the pool
+account until the quorum refunds it (manual today); replay (`--rebuild`) does not re-screen
+history, by design.
+
 ---
 
 ## 7. The XRPL side (API/XRPL lead)

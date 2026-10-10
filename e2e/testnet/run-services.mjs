@@ -70,9 +70,14 @@ async function main() {
   link("AccountSet asfDisableMaster", config.setupTx.disableMaster);
   step("pool set up on testnet: 2-of-3 SignerList, master disabled", { pool: config.pool, sink: config.sink, signers: config.signers.map((s) => s.address) });
 
-  const q = await launchQuorum({ config, dir: DIR, nodeBin: NODE_BIN, xrplRpc: XRPL_RPC, xrplWs: XRPL_WS, basePort: 7300 });
+  // Boundary screening: every node gets the same demo list (eve's account) and a 2-ledger standby.
+  const { wallet: eveXrpl } = await client.fundWallet();
+  const SCREENING_LIST = `${DIR}/screening-list.txt`;
+  writeFileSync(SCREENING_LIST, `# demo screening list\n${eveXrpl.address}  # eve\n`);
+  const STANDBY = 2;
+  const q = await launchQuorum({ config, dir: DIR, nodeBin: NODE_BIN, xrplRpc: XRPL_RPC, xrplWs: XRPL_WS, basePort: 7300, screeningList: SCREENING_LIST, screeningStandbyLedgers: STANDBY });
   const C = q.coordinatorUrl;
-  step("quorum services up: 4 verifier nodes, 3 signer sidecars, 1 coordinator", { coordinator: C });
+  step("quorum services up: 4 verifier nodes, 3 signer sidecars, 1 coordinator; screening on (1 listed address, standby 2 ledgers)", { coordinator: C });
   try {
     const { wallet: aliceXrpl } = await client.fundWallet();
     const bobFresh = Wallet.generate();
@@ -86,7 +91,15 @@ async function main() {
     const shieldRecord = JSON.parse(readFileSync(`${DIR}/shield.json`, "utf8"));
     // A bogus deposit hash is refused by the coordinator's node (ledger lookup), nothing is anchored.
     await expectRefusal("shield with a bogus deposit", http("POST", `${C}/submit/shield`, { record: shieldRecord, depositTxHash: "0".repeat(64) }), /ledger rpc|txnNotFound|not found/i);
-    const s1 = await http("POST", `${C}/submit/shield`, { record: shieldRecord, depositTxHash: depositHash });
+    // Standby: the deposit just validated, so every node refuses the shield until the validated
+    // ledger is 2 past it; the same request is accepted once the ledger caught up.
+    await expectRefusal("shield before the standby elapsed", http("POST", `${C}/submit/shield`, { record: shieldRecord, depositTxHash: depositHash }), /standby/);
+    let s1 = null;
+    for (let t = 0; t < 30 && !s1; t++) {
+      try { s1 = await http("POST", `${C}/submit/shield`, { record: shieldRecord, depositTxHash: depositHash }); }
+      catch (e) { if (!/standby/.test(e.message)) throw e; await new Promise((r) => setTimeout(r, 2000)); }
+    }
+    assert(s1, "shield still refused 60 s after the deposit");
     link("anchor after shield (2-of-3 multisig)", s1.anchorTx);
     assert(s1.signers.length === 2 && s1.refusals.length === 0, `expected 3/3 endorsements, got refusals ${JSON.stringify(s1.refusals)}`);
     step("shield accepted by the coordinator's node, endorsed by all signer nodes, anchored by the quorum", { root: s1.newRoot.slice(0, 16) + "…" });
@@ -96,6 +109,18 @@ async function main() {
     await syncLog(C);
     alice("build-shield", DEPOSIT_DROPS, `${DIR}/shield2.json`, LOG);
     await expectRefusal("duplicate deposit, fresh bundle", http("POST", `${C}/submit/shield`, { record: JSON.parse(readFileSync(`${DIR}/shield2.json`, "utf8")), depositTxHash: depositHash }), /already backs a shield|does not commit/);
+
+    // A listed depositor: eve's deposit is valid on the ledger, but every node refuses the shield
+    // (403) — the coordinator's node first, so nothing reaches the sidecars.
+    await syncLog(C);
+    const eve = wallet("eve"); eve("init");
+    const eveShield = eve("build-shield", DEPOSIT_DROPS, `${DIR}/eve-shield.json`, LOG);
+    const eveBuilt = JSON.parse(readFileSync(`${DIR}/eve-shield.json`, "utf8"));
+    const eveDeposit = await pay(client, eveXrpl, { TransactionType: "Payment", Destination: config.pool, Amount: DEPOSIT_DROPS, Memos: [memoOf(MEMO_SHIELD, eveShield.bundleHash)] });
+    link("deposit eve (listed) → pool", eveDeposit);
+    await new Promise((r) => setTimeout(r, 9000)); // past the standby, so the refusal is the list, not the clock
+    await expectRefusal("shield from a listed depositor", http("POST", `${C}/submit/shield`, { record: eveBuilt, depositTxHash: eveDeposit }), /screening list/);
+    step("listed depositor refused by the quorum (deposit stays in the pool account for a manual refund)");
 
     // ---- 2. transfer
     await syncLog(C);
@@ -112,6 +137,10 @@ async function main() {
     //      anchor landed (note spent, user unpaid) — the documented recovery path.
     await syncLog(C);
     const UNSHIELD_1 = xrpToDrops(10), UNSHIELD_2 = String(Number(DEPOSIT_DROPS) - Number(UNSHIELD_1));
+    // A listed destination: refused by every node before the verifier even looks at the bundle.
+    bob("build-unshield", UNSHIELD_1, eveXrpl.address, `${DIR}/unshield-eve.json`, LOG);
+    await expectRefusal("unshield to a listed address", http("POST", `${C}/submit/unshield`, { record: JSON.parse(readFileSync(`${DIR}/unshield-eve.json`, "utf8")), destination: eveXrpl.address }), /screening list/);
+    await syncLog(C);
     bob("build-unshield", UNSHIELD_1, bobFresh.address, `${DIR}/unshield1.json`, LOG);
     const s3 = await http("POST", `${C}/submit/unshield`, { record: JSON.parse(readFileSync(`${DIR}/unshield1.json`, "utf8")), destination: bobFresh.address });
     link("anchor after unshield #1 (coordinator, 2-of-3)", s3.anchorTx);
@@ -147,8 +176,9 @@ async function main() {
     await expectRefusal("sidecar: future sequence", http("POST", `${S1}/sign`, { txs: [{ kind: "anchor", tx: { ...anchorTx, Sequence: anchorTx.Sequence + 1 } }], submission: sub, memoHex: honest.memoHex }), /not the pool account's next sequence/);
     await expectRefusal("sidecar: no LastLedgerSequence", http("POST", `${S1}/sign`, { txs: [{ kind: "anchor", tx: { ...anchorTx, LastLedgerSequence: undefined } }], submission: sub, memoHex: honest.memoHex }), /LastLedgerSequence .* missing or outside/);
     await expectRefusal("sidecar: LastLedgerSequence too far", http("POST", `${S1}/sign`, { txs: [{ kind: "anchor", tx: { ...anchorTx, LastLedgerSequence: anchorTx.LastLedgerSequence + 1000 } }], submission: sub, memoHex: honest.memoHex }), /missing or outside/);
+    await expectRefusal("sidecar: unshield to a listed destination", http("POST", `${S1}/sign`, { txs: [{ kind: "anchor", tx: anchorTx }], submission: { ...sub, destination: eveXrpl.address }, memoHex: honest.memoHex }), /screening list|refused to endorse/);
     await expectRefusal("sidecar: payout before anchor", http("POST", `${S1}/sign`, { txs: [{ kind: "payout", tx: payoutTx }, { kind: "anchor", tx: anchorTx }], submission: sub, memoHex: honest.memoHex }), /in that order/);
-    step("signer sidecar refused: tampered memo, re-pointed payout, inflated payout, foreign account, inflated fee, wrong anchor destination, future sequence, missing/far LastLedgerSequence, payout before anchor");
+    step("signer sidecar refused: tampered memo, re-pointed payout, inflated payout, foreign account, inflated fee, wrong anchor destination, future sequence, missing/far LastLedgerSequence, payout before anchor, listed destination");
     // Note: signer1's node has now endorsed the honest unshield (idempotent) — the quorum flow below reuses it.
 
     // ---- unshield #2 via the sidecars directly (the coordinator's node already accepted it above;
@@ -189,7 +219,7 @@ async function main() {
     const stranger = spawnSync(NODE_BIN, ["--listen", "127.0.0.1:7398", "--state", `${DIR}/wrong.verifier-state.json`, "--xrpl-rpc", XRPL_RPC, "--pool", config.pool, "--signers", `${aliceXrpl.address},${config.signers[1].address},${config.signers[2].address}`, "--quorum", "2"], { encoding: "utf8", timeout: 60000 });
     assert(stranger.status !== 0 && /differ from the configured/.test(stranger.stderr), `node with a foreign signer set must refuse to start: ${stranger.stderr}`);
     step("custody gate: nodes configured for another quorum or signer set refuse to start");
-    const newNode = spawn(NODE_BIN, ["--listen", "127.0.0.1:7399", "--state", `${DIR}/newnode.verifier-state.json`, "--xrpl-rpc", XRPL_RPC, "--pool", config.pool, "--signers", signerAddrs, "--quorum", String(config.quorum), "--mirror", `${q.nodeUrl(0)}/log`, "--rebuild"], { stdio: ["ignore", "ignore", "pipe"] });
+    const newNode = spawn(NODE_BIN, ["--listen", "127.0.0.1:7399", "--state", `${DIR}/newnode.verifier-state.json`, "--xrpl-rpc", XRPL_RPC, "--pool", config.pool, "--signers", signerAddrs, "--quorum", String(config.quorum), "--screening-list", SCREENING_LIST, "--screening-standby-ledgers", String(STANDBY), "--mirror", `${q.nodeUrl(0)}/log`, "--rebuild"], { stdio: ["ignore", "ignore", "pipe"] });
     let newNodeErr = ""; newNode.stderr.on("data", (d) => { newNodeErr += d.toString(); });
     let st = null;
     for (let t = 0; t < 150 && !st; t++) { try { st = await http("GET", "http://127.0.0.1:7399/state"); } catch { await new Promise((r) => setTimeout(r, 200)); } }
@@ -198,6 +228,10 @@ async function main() {
     assert(st.root === coordState.root && st.bundleCount === 4 && st.consumedDeposits === 1 && st.anchoredRoot === coordState.root, `new node state differs: ${JSON.stringify(st)} vs ${JSON.stringify(coordState)}`);
     newNode.kill("SIGTERM");
     step("new node rebuilt from account_tx anchor memos + mirror with every deposit re-validated; root equals the quorum's", { bundles: st.bundleCount });
+    // ---- 6. the replayable screening audit: from the public log + ledger, no listed party inside.
+    const audit = spawnSync(process.execPath, [new URL("../../backend/quorum/screening/audit.mjs", import.meta.url).pathname, "--list", SCREENING_LIST, "--log", `${C}/log`, "--xrpl-rpc", XRPL_RPC], { encoding: "utf8", timeout: 120000 });
+    assert(audit.status === 0 && /clean/.test(audit.stdout), `screening audit: ${audit.status} ${audit.stdout} ${audit.stderr}`);
+    step("screening audit over the public log: clean", { bundles: st.bundleCount });
 
     report.final = { state: coordState, pool: `${EXPLORER}/accounts/${config.pool}` };
     writeFileSync(`${DIR}/report.json`, JSON.stringify(report, null, 2));

@@ -43,6 +43,8 @@ pub trait Ledger: Send + Sync {
         &self,
         account: &str,
     ) -> impl Future<Output = Result<Value, LedgerError>> + Send;
+    /// Index of the latest validated ledger (for the screening standby).
+    fn validated_ledger_index(&self) -> impl Future<Output = Result<u64, LedgerError>> + Send;
 }
 
 fn tx_json(tx: &Value) -> &Value {
@@ -95,6 +97,21 @@ pub fn deposit_facts(tx: &Value, tx_hash: &str, pool: &str) -> Result<DepositRef
         delivered,
         memo_hash,
     })
+}
+
+/// The screening facts of a deposit, read from the same `tx` answer: who sent it and in which
+/// ledger it validated. Nothing here comes from the client or the coordinator.
+pub fn deposit_source(tx: &Value) -> Result<(String, u64), LedgerError> {
+    let account = tx_json(tx)
+        .get("Account")
+        .and_then(Value::as_str)
+        .ok_or(LedgerError::Deposit("no sender account"))?
+        .to_owned();
+    let ledger_index = tx
+        .get("ledger_index")
+        .and_then(Value::as_u64)
+        .ok_or(LedgerError::Deposit("no ledger index"))?;
+    Ok((account, ledger_index))
 }
 
 /// Turns a `tx` result for a pool anchor Payment into its memo: validated, sent by the pool,

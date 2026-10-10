@@ -1,15 +1,15 @@
-//! `confidant-node --listen 127.0.0.1:7001 --state data/n1.verifier-state.json --xrpl-rpc URL --pool rPOOL --signers r1,r2,r3 --quorum 2 [--mirror http://host/log] [--rebuild]`
+//! `confidant-node --listen 127.0.0.1:7001 --state data/n1.verifier-state.json --xrpl-rpc URL --pool rPOOL --signers r1,r2,r3 --quorum 2 [--screening-list FILE] [--screening-standby-ledgers N] [--mirror http://host/log] [--rebuild]`
 //!
 //! Holds no keys. Refuses to start unless the pool account's on-ledger SignerList is exactly
 //! `--signers` with `SignerQuorum == --quorum` and the master key disabled. With `--rebuild` the node ignores its state file and rebuilds from the pool
 //! account's anchor memos on the ledger plus the mirror's log, re-validating every shield's
 //! deposit (`rebuild_checked`); otherwise it restores its state file (or starts empty).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use confidant_core::{BundleRecord, Verifier, VerifierSnapshot};
-use confidant_node::{http, JsonRpc, Node};
+use confidant_node::{http, JsonRpc, Node, Screening};
 
 fn arg(args: &[String], name: &str) -> Option<String> {
     args.iter()
@@ -41,6 +41,26 @@ async fn main() {
         .unwrap_or_else(|| die("--quorum <k> is required"));
     let mirror = arg(&args, "--mirror");
     let rebuild = args.iter().any(|a| a == "--rebuild");
+    let standby: u64 = arg(&args, "--screening-standby-ledgers")
+        .map(|n| {
+            n.parse()
+                .unwrap_or_else(|_| die("--screening-standby-ledgers must be a number"))
+        })
+        .unwrap_or(0);
+    let screening = match arg(&args, "--screening-list") {
+        Some(p) => Screening::from_file(Path::new(&p), standby)
+            .unwrap_or_else(|e| die(format!("--screening-list {p}: {e}"))),
+        None => Screening::new(Vec::<String>::new(), standby),
+    };
+    if screening.is_active() {
+        eprintln!(
+            "screening: {} listed addresses, standby {} ledgers (shields from listed or too-fresh deposits and unshields to listed addresses are refused with 403)",
+            screening.listed_count(),
+            screening.standby_ledgers()
+        );
+    } else {
+        eprintln!("screening: OFF (no --screening-list, no standby)");
+    }
 
     if let Some(p) = &state {
         let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -91,7 +111,7 @@ async fn main() {
         &verifier.state().root[..16]
     );
 
-    let node = Arc::new(Node::new(verifier, ledger, pool, state));
+    let node = Arc::new(Node::new(verifier, ledger, pool, state).with_screening(screening));
     let listener = tokio::net::TcpListener::bind(&listen)
         .await
         .unwrap_or_else(|e| die(e));

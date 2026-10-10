@@ -25,6 +25,7 @@
 | 400 | кривой запрос или лимит ядра | нулевая сумма, слишком много выходов, плохой hex, нет полей |
 | 409 | отказ верификаторов | nullifier уже потрачен (повтор / двойная трата), несовпадение memo, неизвестный якорь, `only 1/3 signers endorsed (quorum 2)` |
 | 422 | леджер не подтверждает утверждение | депозит не validated / не в пул / не та сумма / нет memo `confidant/shield`; анкорная транзакция не несёт этот корень |
+| 403 | отказ политики скрининга узла (необязательная, у каждого узла своя) | `account r… is on the screening list` (окончательно); `deposit … younger than the standby … retry at ledger N` (повторить позже) |
 | 502 | недоступен RPC леджера или узел | `txnNotFound <hash>` для выдуманного хеша депозита, `fetch failed` |
 
 ### Эндпоинты
@@ -80,7 +81,7 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
 | Сценарий | Шаги |
 |---|---|
 | **Синхронизация** | `GET /log?from=0` → записать `records` в `log.json`. Его принимает каждая сборка ниже. |
-| **Shield** | 1. `cli wallet --file u.wallet.json build-shield <drops> shield.json log.json` → печатает `{ bundleHash, file }`. 2. XRPL-аккаунт пользователя отправляет `Payment` ровно на `<drops>` на аккаунт пула с одним memo `{ MemoType: hex("confidant/shield"), MemoData: <bundleHash hex> }`; дождаться валидации. 3. `POST /submit/shield { record: <shield.json>, depositTxHash }`. **Сначала сборка, потом депозит** — memo должно коммитить бандл; сумма должна совпасть с `delivered_amount`. |
+| **Shield** | 1. `cli wallet --file u.wallet.json build-shield <drops> shield.json log.json` → печатает `{ bundleHash, file }`. 2. XRPL-аккаунт пользователя отправляет `Payment` ровно на `<drops>` на аккаунт пула с одним memo `{ MemoType: hex("confidant/shield"), MemoData: <bundleHash hex> }`; дождаться валидации. 3. `POST /submit/shield { record: <shield.json>, depositTxHash }`. **Сначала сборка, потом депозит** — memo должно коммитить бандл; сумма должна совпасть с `delivered_amount`. 403 с упоминанием standby означает «слишком свежий депозит»: повторить после названного леджера (демо-кворум ждёт 2 леджера ≈ 8 с); 403 со ссылкой на список — окончательный, депозит остаётся на аккаунте пула до возврата операторами. |
 | **Transfer** | синхронизация → `cli wallet --file u.wallet.json build-transfer <recipientAddressHex> <drops> transfer.json log.json` → `POST /submit/transfer`. В леджер попадает только анкор. |
 | **Unshield** | синхронизация → `cli wallet --file u.wallet.json build-unshield <drops> <rDestination> unshield.json log.json` → `POST /submit/unshield` **с тем же destination** (его связывает подпись внутри бандла; другой адрес будет отклонён). По умолчанию — **свежий XRPL-адрес на каждый unshield** и совет вносить депозит со свежего аккаунта: адреса входа и выхода пула публичны, и их повторное использование позволяет анализу цепочки связать граничные события одного пользователя (ROADMAP §4.6). |
 | **Раскрытие** | `cli wallet --file u.wallet.json info` → `viewingKey` → `POST /audit/reveal`. Показывает всю активность этого держателя и ничего более. |

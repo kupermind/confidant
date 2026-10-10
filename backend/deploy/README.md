@@ -16,7 +16,8 @@ in this directory; the pool, signers and ports come from `config.json` and the e
 ```bash
 # once per pool (testnet faucet): keys 0600 under data/quorum, config.json next to them
 sudo -u confidant -H bash -c 'cd /srv/confidant/repo/backend/quorum && SIGNERS=3 QUORUM=2 DIR=/srv/confidant/data/quorum node setup-pool.mjs'
-# env files for the units (ports: nodes 7700+i, sidecars 7800+i, coordinator 7900, all on 127.0.0.1)
+# env files for the units (ports: nodes 7700+i, sidecars 7800+i, coordinator 7900, all on 127.0.0.1);
+# optional boundary screening for every node: SCREENING_LIST=/srv/confidant/data/screening/ofac-xrp.txt SCREENING_STANDBY_LEDGERS=2
 sudo -u confidant -H node /srv/confidant/repo/backend/deploy/render-env.mjs /srv/confidant/data/quorum/config.json /srv/confidant/env /srv/confidant/data/quorum 7700
 # units
 sudo install -m 0644 /srv/confidant/repo/backend/deploy/systemd/* /etc/systemd/system/ && sudo systemctl daemon-reload

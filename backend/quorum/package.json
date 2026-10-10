@@ -5,6 +5,8 @@
   "description": "Confidant quorum services: signer sidecars (hold the XRPL keys, sign only after their own verifier node endorsed) and the coordinator (fans out, assembles k-of-N multisig, submits anchors and payouts). xrpl.js owns every XRPL transaction; the Rust node only reads the ledger.",
   "scripts": {
     "smoke": "node smoke.mjs",
+    "screening:fetch-ofac": "node screening/fetch-ofac.mjs",
+    "screening:audit": "node screening/audit.mjs",
     "test": "node --test \"test/**/*.test.mjs\"",
     "signer": "node signer.mjs",
     "coordinator": "node coordinator.mjs",
