@@ -26,3 +26,29 @@ Q-SCR-1 Enforcing at /endorse (each signer's own list) as the binding point — 
 Q-SCR-2 Standby measured in validated ledgers from the node's own RPC (no wall clock) — acceptable?
 Q-SCR-3 Anything to add before IMPL-PASS? Merge on PASS + green CI; then the deployed quorum gets the OFAC XRP list + a demo list and standby 2.
 ```
+
+## Supplement — must-fix applied (2026-10-10)
+
+Sent after the auditor's CONDITIONAL PASS (destination canonicalization), verbatim.
+
+```text
+REQ supplement — must-fix applied (PR #20, branch screening-gate, latest commit): destination screening now compares addresses in one canonical form.
+
+== Fix ==
+backend/node/src/address.rs: base58check with the XRPL alphabet and the double-SHA-256 checksum verified on decode; a classic address (0x00 ‖ AccountID) and an X-address (prefix 0x0544 mainnet / 0x0493 testnet ‖ AccountID ‖ tag flag ≤ 1 ‖ 8-byte tag) both decode to the 20-byte AccountID; canonical() re-encodes the classic address with the tag dropped; anything else (bad checksum, wrong length, foreign alphabet, foreign prefix, unknown tag flag) → None. screening.rs: canon() is applied at list load (Screening::new / from_file) AND at every lookup (is_listed, used by check_deposit and check_destination), so list entries, the ledger-read sender and the client-supplied destination are compared in the same form; an undecodable list entry matches only itself. New dependency: sha2 0.10 (RustCrypto); no new I/O.
+
+== Your precondition question: live or latent? ==
+Latent, by accident, not by the gate's doing: xrpl.js autofill converts an X-address Destination to classic + DestinationTag, and the sidecar's shape rule compares the converted tx.Destination with its own node's raw payout.destination (the X string) → "destination differs" → refused. The gate did not own that reject; now it does (and the sidecar's string compare stays as a second, independent layer).
+
+== Minor confirm: main.rs propagates from_file errors ==
+Yes — `Screening::from_file(...).unwrap_or_else(|e| die(...))`, parsed before the ledger is even opened: `confidant-node … --screening-list /nonexistent/list.txt` prints `error: --screening-list /nonexistent/list.txt: No such file or directory (os error 2)` and exits 1; a bad JSON array exits the same way. Never a silently empty list.
+
+== Tests ==
+screening_canonicalizes_classic_and_x_addresses: 3 AccountIDs × (classic, X mainnet, X mainnet + tag 12345, T testnet, T testnet + tag 4294967295) vectors generated with xrpl.js classicAddressToXAddress, classic round-trips; malformed spellings refused; valid-checksum payloads with a foreign prefix 0x0545 or tag flag 2 refused while the same AccountID under 0x0544 canonicalizes; a classic list entry catches every spelling (is_listed, check_destination, check_deposit), an X list entry catches the classic; from_file with mixed spellings. Coverage: node lib 98.17% lines (address.rs 98.6%, screening.rs 100%), gate 95; core untouched. Clippy -D warnings and fmt clean.
+Mutations (run alone, isolated target dir): G12 is_listed compares the raw string → killed; G13 list entries stored raw → killed; G14 base58check checksum not verified → killed; G15 X-address prefix/flag not checked → SURVIVED first (my only vector had a broken checksum), two valid-checksum vectors added (foreign prefix, flag 2) → killed. Table now 15/15.
+
+== Testnet (run 2026-10-10T11-41-03-421Z, through the services, demo list + standby 2) ==
+Green: everything from the previous run plus "unshield to the listed address as an X-address" — eve's account spelled as a testnet X-address with tag 7, bound into the bundle and submitted → 403 "on the screening list" at the coordinator; audit over the public log clean (4 bundles, 0 hits).
+
+Docs updated: SPEC §6 (EN/RU) and NODE-OPERATOR state the canonical form. Ready for IMPL-PASS; merging on PASS + green CI, then deploying with the OFAC XRP list (1 entry today) + a demo list and standby 2.
+```
