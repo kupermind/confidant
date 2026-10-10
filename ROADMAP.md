@@ -32,6 +32,7 @@ XRPL integration built on-site. Say so on stage.
 | XRPL testnet e2e | ✅ CLI-driven (`run.mjs`): 2-of-3 SignerList, deposit binding, lying coordinator refused, new node rebuilt with deposit re-validation; ✅ through the services (`run-services.mjs`): coordinator flow, sidecar refusals (memo, payout, fee, sequence, LLS, order), custody gate, payout blob, new node `--rebuild`; ✅ smoke client against the deployed quorum | `e2e/testnet/`, `backend/quorum/smoke.mjs`, `docs/E2E.md` |
 | Core ↔ API contract, node-operator guide, **UI ↔ backend boundary** | ✅ | `docs/CORE-API.md`, `docs/NODE-OPERATOR.md`, `docs/API-BOUNDARY.md` (+ RU) |
 | **Quorum services**: Rust verifier node (`/submit/*`, `/endorse` idempotent, ledger-verified `/anchored`, `/log`, custody gate + scanner + `rebuild_checked` on start), Node signer sidecars (sign only what their own node endorsed; Fee/Sequence/LastLedgerSequence pinned from their own ledger reads), coordinator (k-of-N multisig, anchor then payout, payout blob returned) | ✅ built, audited and merged 2026-10-05 (PR #11); ✅ **deployed** the same night on a testnet host as systemd units behind nginx (`backend/deploy/`), 3 signers / quorum 2, smoke cycle green over the public address | `backend/`, `backend/deploy/README.md`, `docs/E2E.md` §2b |
+| **Boundary screening** (optional per-node policy): listed depositors / destinations and too-fresh deposits refused at submit and endorse (403); OFAC XRP list fetcher; replayable audit over the public log | ✅ built 2026-10-10 (crypto lead); in the services harness; audit slice — see PR | `backend/node/src/screening.rs`, `backend/quorum/screening/`, `SPEC.md` §6 |
 | Front-end: local wallet UX, deposit memo from the user's account, UI over the coordinator, explorer links; pre-population script; demo + pitch | ⬜ not started — the contract and a working reference client are ready (`docs/API-BOUNDARY.md`, `backend/quorum/smoke.mjs`) | `frontend/`, `scripts/` (API/XRPL lead) |
 
 ---
@@ -117,6 +118,9 @@ XRPL integration built on-site. Say so on stage.
    binaries, `systemctl restart confidant.target`), watch the journal, rehearse the restart path on
    stage; help pre-populate the pool when the owner's script exists.
 3. **Keep the docs in sync** with every change (SPEC, SPEC.ru, CORE-API, E2E, API-BOUNDARY, this file).
+   3a. **Refund path for refused deposits:** a quorum-signed Payment back to the depositor of a
+   shield the gate refused (sidecar shape rule: destination = the deposit's sender, amount = the
+   delivered amount, deposit unconsumed) — a small trust-path slice; manual today.
 4. **Roadmap items from the audit (not for the hackathon):** pool-instance id in the sighash
    personalization; `external_ctx` taking the unshield amount as `u64`; bounded anchor history;
    XLS-56 Batch for atomic anchor + payout; FROST for the signer keys.
@@ -152,12 +156,19 @@ XRPL integration built on-site. Say so on stage.
       ("disclose one payment, not the history"). *Audit condition:* every opening/report
       authenticates who may open or derive it, bound to the recipient's identity, not to mere
       possession of a key or session.
-   4. **Certified-recipient lineage** (paper Appendix D): an opt-in, encrypted, recursively-proved
-      claim carried inside a note that every ancestor note descends from an authority-certified
-      deposit and every transfer along the way went to a certified address; dummy payload of the
-      same length otherwise, so the chain cannot tell. A stronger form of the Proof-of-Innocence
-      item for the compliant-pool story; needs a lineage circuit and an attestation format — a
-      separate design + audit cycle. *Audit condition:* the certification binds the identity
+   4. **Certified-recipient lineage / per-note proof of innocence** (paper Appendix D; Railgun
+      PPOI assessed 2026-10-10): an opt-in, encrypted, recursively-proved claim carried inside a note
+      that every ancestor note descends from a screened (or authority-certified) deposit and every
+      transfer along the way went to a certified address; dummy payload of the same length
+      otherwise, so the chain cannot tell. Railgun's PPOI is the reference design (per-list proofs,
+      1 h unshield-only standby, inheritance through blinded commitments, proof once per shield);
+      its node / list-provider / aggregator software (TypeScript, GPL-3.0, run as a separate
+      service) and its status model are reusable, its proof is not — a circom/Groth16 circuit over
+      Railgun's BN254/Poseidon note format, while Orchard notes live on Pallas with Sinsemilla —
+      so this needs our own Halo 2 circuit with the Orchard gadgets, a lineage attestation format
+      and a full design + audit cycle. **The cheap form is built** (boundary screening, §1): with
+      the gate on since genesis, pool-wide innocence holds by construction and is replayable from
+      the public log. This expensive form is for when there is nothing else to do (owner, 2026-10-10). *Audit condition:* the certification binds the identity
       computed from evidence, never a host-named one.
    Each item becomes a REQ + firsthand IMPL-PASS when built (audit session, 2026-10-08, recorded in
    `docs/audit/RESP-quorum-services-2026-10-05.md`). Not adopted: proving ciphertext/plaintext consistency in-circuit (their ciphertext-derived note
@@ -234,6 +245,9 @@ blind-sign (`Verifier::endorse`). Upside vs. Railgun: Halo 2 has no trusted setu
 - **Endpoint correlation.** The pool hides the internal graph, not that someone shielded X and later
   someone unshielded X. Pre-populate; prefer fixed denominations; add delay.
 - **Empty pool at launch = no privacy** for the first operations.
+- **Screening lists are public data and can be wrong or late.** A false positive blocks a
+  legitimate depositor at the gate; their XRP sits in the pool account until the quorum refunds it
+  (manual today, §4.3a). Say "gatekeeping", never "proof of innocence", for the cheap gate.
 - **Liveness** depends on k signers; on stage that is three sidecars + their nodes under systemd with
   `Restart=on-failure`. The restart path is exercised (state files restored, custody gate re-checked);
   a cold rebuild from the ledger (`--rebuild --mirror`) is tested in the services harness.

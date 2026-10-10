@@ -12,9 +12,10 @@ use confidant_core::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::screening::Screening;
 use crate::xrpl::{
-    anchor_fact, anchor_memos, check_custody_info, deposit_facts, ensure_full_history, Ledger,
-    LedgerError,
+    anchor_fact, anchor_memos, check_custody_info, deposit_facts, deposit_source,
+    ensure_full_history, Ledger, LedgerError,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -25,6 +26,9 @@ pub enum NodeError {
     Ledger(#[from] LedgerError),
     #[error("state file: {0}")]
     Io(String),
+    /// Refused by this node's boundary screening policy (list or standby); HTTP 403.
+    #[error("refused by screening policy: {0}")]
+    Screened(String),
 }
 
 /// What `submit_*` and `endorse` return: the core's `Accepted` plus the anchor memo the quorum
@@ -42,6 +46,7 @@ pub struct Node<L: Ledger> {
     ledger: L,
     pool: String,
     state_path: Option<PathBuf>,
+    screening: Screening,
 }
 
 impl<L: Ledger> Node<L> {
@@ -56,7 +61,18 @@ impl<L: Ledger> Node<L> {
             ledger,
             pool: pool.into(),
             state_path,
+            screening: Screening::off(),
         }
+    }
+
+    /// Installs the boundary screening policy this node enforces (default: off).
+    pub fn with_screening(mut self, screening: Screening) -> Self {
+        self.screening = screening;
+        self
+    }
+
+    pub fn screening(&self) -> &Screening {
+        &self.screening
     }
 
     pub fn pool(&self) -> &str {
@@ -107,6 +123,32 @@ impl<L: Ledger> Node<L> {
         Ok(deposit_facts(&tx, tx_hash, &self.pool)?)
     }
 
+    /// The deposit facts plus the screening gate: the sender account and the deposit's ledger are
+    /// read from the same ledger answer, never from the client; a listed sender or a deposit
+    /// younger than the standby is refused before the core sees the bundle.
+    async fn screened_deposit(&self, tx_hash: &str) -> Result<DepositRef, NodeError> {
+        let tx = self.ledger.tx(tx_hash).await?;
+        let deposit = deposit_facts(&tx, tx_hash, &self.pool)?;
+        if self.screening.is_active() {
+            let (account, deposit_ledger) = deposit_source(&tx)?;
+            let validated = if self.screening.standby_ledgers() > 0 {
+                self.ledger.validated_ledger_index().await?
+            } else {
+                u64::MAX
+            };
+            self.screening
+                .check_deposit(&account, deposit_ledger, validated)
+                .map_err(|e| NodeError::Screened(e.to_string()))?;
+        }
+        Ok(deposit)
+    }
+
+    fn screened_destination(&self, destination: &str) -> Result<(), NodeError> {
+        self.screening
+            .check_destination(destination)
+            .map_err(|e| NodeError::Screened(e.to_string()))
+    }
+
     // ----- submissions ---------------------------------------------------------------------
 
     pub async fn submit_shield(
@@ -114,7 +156,7 @@ impl<L: Ledger> Node<L> {
         record: &BundleRecord,
         deposit_tx_hash: &str,
     ) -> Result<AcceptedWithMemo, NodeError> {
-        let deposit = self.deposit(deposit_tx_hash).await?;
+        let deposit = self.screened_deposit(deposit_tx_hash).await?;
         let mut v = self.lock();
         let acc = v.submit_shield(record, &deposit)?;
         self.persist(&v)?;
@@ -133,6 +175,7 @@ impl<L: Ledger> Node<L> {
         record: &BundleRecord,
         destination: &str,
     ) -> Result<AcceptedWithMemo, NodeError> {
+        self.screened_destination(destination)?;
         let mut v = self.lock();
         let acc = v.submit_unshield(record, destination)?;
         self.persist(&v)?;
@@ -153,8 +196,18 @@ impl<L: Ledger> Node<L> {
         let submission = match submission {
             Submission::Shield { record, deposit } => Submission::Shield {
                 record: record.clone(),
-                deposit: self.deposit(&deposit.tx_hash).await?,
+                deposit: self.screened_deposit(&deposit.tx_hash).await?,
             },
+            Submission::Unshield {
+                record,
+                destination,
+            } => {
+                self.screened_destination(destination)?;
+                Submission::Unshield {
+                    record: record.clone(),
+                    destination: destination.clone(),
+                }
+            }
             other => other.clone(),
         };
         let (record, op, external) = match &submission {

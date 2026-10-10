@@ -243,7 +243,7 @@ export async function setupPool(client, { signers, quorum, dir }) {
 // ---- launching a quorum locally -------------------------------------------------------------------
 /** Spawns N verifier nodes (Rust), N signer sidecars and one coordinator (with its own node).
  *  Returns URLs and a stop() that kills everything. */
-export async function launchQuorum({ config, dir, nodeBin, xrplRpc, xrplWs, basePort = 7000, quiet = true }) {
+export async function launchQuorum({ config, dir, nodeBin, xrplRpc, xrplWs, basePort = 7000, quiet = true, screeningList = null, screeningStandbyLedgers = 0 }) {
   const procs = [];
   const run = (cmd, args, env) => {
     const p = spawn(cmd, args, { env: { ...process.env, ...env }, stdio: quiet ? ["ignore", "ignore", "pipe"] : "inherit" });
@@ -257,7 +257,8 @@ export async function launchQuorum({ config, dir, nodeBin, xrplRpc, xrplWs, base
   const coordinatorUrl = `http://127.0.0.1:${basePort + 200}`;
   for (let i = 0; i <= n; i++) {
     run(nodeBin, ["--listen", `127.0.0.1:${basePort + i}`, "--state", `${dir}/node${i}.verifier-state.json`, "--xrpl-rpc", xrplRpc, "--pool", config.pool,
-      "--signers", config.signers.map((s) => s.address).join(","), "--quorum", String(config.quorum)]);
+      "--signers", config.signers.map((s) => s.address).join(","), "--quorum", String(config.quorum),
+      ...(screeningList ? ["--screening-list", screeningList] : []), ...(screeningStandbyLedgers > 0 ? ["--screening-standby-ledgers", String(screeningStandbyLedgers)] : [])]);
   }
   for (let i = 1; i <= n; i++) {
     run(process.execPath, [new URL("./signer.mjs", import.meta.url).pathname], {

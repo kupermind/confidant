@@ -77,7 +77,13 @@ future Sequence, a missing or too-distant LastLedgerSequence and a payout placed
 and signs the honest set; a replay is refused by the coordinator; a node refuses `/anchored` for a
 non-anchor transaction or a root the anchor does not carry; **nodes configured for another quorum or
 signer set refuse to start** (custody gate); a **new Rust node started with `--rebuild --mirror`**
-lands on the quorum's root and anchored root with every deposit re-validated.
+lands on the quorum's root and anchored root with every deposit re-validated. **Boundary screening**
+(every node launched with a demo list holding one funded account and a 2-ledger standby): the first
+shield is refused with 403 "standby" right after its deposit validates and accepted once the ledger
+caught up; a deposit from the listed account is refused with 403 at the coordinator's node; an
+unshield to the listed address is refused at the coordinator and by a signer sidecar's own node;
+the replayable screening audit (`backend/quorum/screening/audit.mjs`) over the public log reports
+clean.
 
 ```bash
 cargo build --release --example cli --bin confidant-node

@@ -68,6 +68,10 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
 - **Auditor key = the holder's full viewing key:** it reveals that holder's complete activity
   (receipts, change, spends, and the recipients/amounts of their outgoing transfers) and balance,
   nothing about transactions they were not a party to.
+- **Boundary screening** (optional, per node): shields from listed depositors or too-fresh deposits
+  and unshields to listed addresses are refused on public data (e.g. OFAC's XRP entries). It is
+  gatekeeping at the pool's public boundary, not a per-note proof of innocence; lists can be wrong
+  or late; anyone can re-audit a pool from the public log.
 - **Do not** claim "untraceable / trustless today."
 
 ## Status

@@ -49,6 +49,7 @@ impl IntoResponse for ApiError {
             }
             NodeError::Ledger(_) => StatusCode::BAD_GATEWAY,
             NodeError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            NodeError::Screened(_) => StatusCode::FORBIDDEN,
         };
         (
             status,

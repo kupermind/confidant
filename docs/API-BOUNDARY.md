@@ -25,6 +25,7 @@ Everything is JSON. Errors are `{ "error": "<message>", "details"?: {…} }` wit
 | 400 | malformed request or a core limit | zero amount, too many outputs, bad hex, missing fields |
 | 409 | refused by the verifiers | nullifier already spent (replay / double spend), memo mismatch, unknown anchor, `only 1/3 signers endorsed (quorum 2)` |
 | 422 | the ledger does not back the claim | deposit not validated / not to the pool / wrong amount / no `confidant/shield` memo; anchor tx does not carry the root |
+| 403 | refused by a node's screening policy (optional, per node) | `account r… is on the screening list` (final); `deposit … younger than the standby … retry at ledger N` (retry later) |
 | 502 | ledger RPC or a node unreachable | `txnNotFound <hash>` for a bogus deposit hash, `fetch failed` |
 
 ### Endpoints
@@ -78,7 +79,7 @@ later a local process over `confidant_core::Wallet`. The wallet file `*.wallet.j
 | Flow | Steps |
 |---|---|
 | **Sync** | `GET /log?from=0` → write `records` to `log.json`. Every build below takes it. |
-| **Shield** | 1. `cli wallet --file u.wallet.json build-shield <drops> shield.json log.json` → prints `{ bundleHash, file }`. 2. The user's XRPL account sends a `Payment` of exactly `<drops>` to the pool account with one memo `{ MemoType: hex("confidant/shield"), MemoData: <bundleHash hex> }`; wait for validation. 3. `POST /submit/shield { record: <shield.json>, depositTxHash }`. **Build first, deposit second** — the memo must commit to the bundle; the amount must equal `delivered_amount`. |
+| **Shield** | 1. `cli wallet --file u.wallet.json build-shield <drops> shield.json log.json` → prints `{ bundleHash, file }`. 2. The user's XRPL account sends a `Payment` of exactly `<drops>` to the pool account with one memo `{ MemoType: hex("confidant/shield"), MemoData: <bundleHash hex> }`; wait for validation. 3. `POST /submit/shield { record: <shield.json>, depositTxHash }`. **Build first, deposit second** — the memo must commit to the bundle; the amount must equal `delivered_amount`. A 403 mentioning the standby means "too fresh": retry after the named ledger (the demo quorum uses 2 ledgers ≈ 8 s); a 403 naming the screening list is final — the deposit stays in the pool account until the operators refund it. |
 | **Transfer** | sync → `cli wallet --file u.wallet.json build-transfer <recipientAddressHex> <drops> transfer.json log.json` → `POST /submit/transfer`. Nothing else reaches the ledger but the anchor. |
 | **Unshield** | sync → `cli wallet --file u.wallet.json build-unshield <drops> <rDestination> unshield.json log.json` → `POST /submit/unshield` **with the same destination** (the signature inside the bundle binds it; another destination is refused). Default to a **fresh XRPL destination** for every unshield and suggest depositing from a fresh account: the pool's entry and exit addresses are public, and reuse lets chain analysis cluster one user's boundary events (ROADMAP §4.6). |
 | **Reveal** | `cli wallet --file u.wallet.json info` → `viewingKey` → `POST /audit/reveal`. Shows that holder's full activity and nothing else. |

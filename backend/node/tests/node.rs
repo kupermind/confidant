@@ -10,8 +10,8 @@ use confidant_core::memo::MEMO_TYPE;
 use confidant_core::record::bundle_hash;
 use confidant_core::{DepositRef, Error as CoreError, Submission, Verifier, Wallet};
 use confidant_node::{
-    anchor_memos, deposit_facts, http, Ledger, LedgerError, Node, NodeError, LSF_DISABLE_MASTER,
-    MEMO_SHIELD,
+    anchor_memos, canonical, deposit_facts, deposit_source, http, Ledger, LedgerError, Node,
+    NodeError, Screening, LSF_DISABLE_MASTER, MEMO_SHIELD,
 };
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
@@ -25,6 +25,8 @@ struct FakeLedger {
     txs: Arc<Mutex<BTreeMap<String, Value>>>,
     account: Arc<Mutex<Vec<Value>>>,
     info: Arc<Mutex<Value>>,
+    /// Latest validated ledger index the fake reports (0 = "unknown", the call errors).
+    validated: Arc<Mutex<u64>>,
 }
 
 impl FakeLedger {
@@ -49,6 +51,9 @@ impl FakeLedger {
     }
     fn set_info(&self, v: Value) {
         *self.info.lock().unwrap() = v;
+    }
+    fn set_validated(&self, n: u64) {
+        *self.validated.lock().unwrap() = n;
     }
     fn push_anchor(&self, memo_hex: &str) {
         self.account.lock().unwrap().push(json!({
@@ -77,6 +82,13 @@ impl Ledger for FakeLedger {
             return Err(LedgerError::Rpc(format!("actNotFound {account}")));
         }
         Ok(v)
+    }
+    async fn validated_ledger_index(&self) -> Result<u64, LedgerError> {
+        let n = *self.validated.lock().unwrap();
+        if n == 0 {
+            return Err(LedgerError::Rpc("ledger: unavailable".into()));
+        }
+        Ok(n)
     }
 }
 
@@ -159,6 +171,7 @@ async fn node_refuses_to_serve_unless_the_pool_custody_is_the_configured_quorum(
 fn deposit_tx(dest: &str, drops: &str, memo_hash: &str) -> Value {
     json!({
         "validated": true,
+        "ledger_index": 100,
         "tx_json": { "TransactionType": "Payment", "Account": "rAlice", "Destination": dest,
             "Memos": [{ "Memo": { "MemoType": hex::encode(MEMO_SHIELD), "MemoData": memo_hash.to_uppercase() } }] },
         "meta": { "delivered_amount": drops }
@@ -529,6 +542,7 @@ async fn new_node_rebuilds_from_ledger_memos_and_refuses_bad_ledgers() {
         txs: ledger.txs.clone(),
         account: ledger.account.clone(),
         info: ledger.info.clone(),
+        validated: ledger.validated.clone(),
     };
     let caught = Node::<FakeLedger>::rebuild_from_ledger(&ledger2, POOL, &mirror)
         .await
@@ -835,4 +849,281 @@ async fn node_persists_its_state_and_maps_io_errors() {
     let bad_rpc =
         http::ApiError(NodeError::Ledger(LedgerError::Rpc("down".into()))).into_response();
     assert_eq!(bad_rpc.status(), StatusCode::BAD_GATEWAY);
+}
+
+/// The boundary screening gate: listed depositors and destinations are refused by every node on
+/// its own list (submit and endorse alike), a deposit younger than the standby is refused until the
+/// ledger catches up, and nothing is refused when the gate is off.
+#[tokio::test]
+async fn screening_gate_refuses_listed_parties_and_fresh_deposits_fail_closed() {
+    // Policy parsing: lines with comments, or a JSON array.
+    let dir = std::env::temp_dir().join(format!("confidant-screening-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("list.txt"),
+        "# demo list\nrAlice  # the depositor\n\nrEve\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join("list.json"), "[\"rEve\", \" rMallory \"]").unwrap();
+    let txt = Screening::from_file(&dir.join("list.txt"), 0).unwrap();
+    assert!(txt.is_listed("rAlice") && txt.is_listed("rEve") && !txt.is_listed("rBob"));
+    assert_eq!(txt.listed_count(), 2);
+    let js = Screening::from_file(&dir.join("list.json"), 7).unwrap();
+    assert!(js.is_listed("rEve") && js.is_listed("rMallory") && js.standby_ledgers() == 7);
+    std::fs::write(dir.join("bad.json"), "[1, 2]").unwrap();
+    assert!(Screening::from_file(&dir.join("bad.json"), 0).is_err());
+    assert!(Screening::from_file(&dir.join("missing.txt"), 0).is_err());
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(!Screening::off().is_active());
+    assert!(Screening::new(Vec::<String>::new(), 1).is_active());
+
+    // deposit_source reads the sender and the ledger from the tx answer, nothing else.
+    let d = deposit_tx(POOL, "100", &"a".repeat(64));
+    assert_eq!(deposit_source(&d).unwrap(), ("rAlice".to_owned(), 100));
+    let mut no_acc = d.clone();
+    no_acc["tx_json"].as_object_mut().unwrap().remove("Account");
+    assert!(matches!(
+        deposit_source(&no_acc),
+        Err(LedgerError::Deposit("no sender account"))
+    ));
+    let mut no_ledger = d.clone();
+    no_ledger.as_object_mut().unwrap().remove("ledger_index");
+    assert!(matches!(
+        deposit_source(&no_ledger),
+        Err(LedgerError::Deposit("no ledger index"))
+    ));
+
+    let ledger = FakeLedger::default();
+    let open = node(&ledger); // no policy: accepts everything the core accepts
+    let strict = Node::new(Verifier::new(), ledger.clone(), POOL, None)
+        .with_screening(Screening::new(["rAlice".to_owned(), "rEve".to_owned()], 0));
+    assert!(strict.screening().is_active());
+    let mut alice = Wallet::new();
+    let p = alice.build_shield(100).unwrap();
+    ledger.put_tx("DEP1", deposit_tx(POOL, "100", &p.hash_hex()));
+    // Listed depositor: refused at submit and at endorse, with the account named; the open node accepts.
+    match strict.submit_shield(&p.record, "DEP1").await {
+        Err(NodeError::Screened(m)) => assert!(m.contains("rAlice"), "{m}"),
+        other => panic!("expected a screening refusal, got {other:?}"),
+    }
+    let acc = open.submit_shield(&p.record, "DEP1").await.unwrap();
+    assert!(matches!(
+        strict
+            .endorse(
+                &Submission::Shield {
+                    record: p.record.clone(),
+                    deposit: DepositRef {
+                        tx_hash: "DEP1".into(),
+                        delivered: 100,
+                        memo_hash: p.hash_hex()
+                    }
+                },
+                &acc.memo_hex
+            )
+            .await,
+        Err(NodeError::Screened(_))
+    ));
+    assert_eq!(
+        strict.state().bundle_count,
+        0,
+        "a refused shield leaves the state untouched"
+    );
+
+    // Listed destination: refused at submit and at endorse on a node that holds the note.
+    alice.sync(&open.log(0)).unwrap();
+    let u = alice.build_unshield(40, "rEve").unwrap();
+    let lenient = Node::new(Verifier::new(), ledger.clone(), POOL, None)
+        .with_screening(Screening::new(["rEve".to_owned()], 0));
+    lenient
+        .endorse(
+            &Submission::Shield {
+                record: p.record.clone(),
+                deposit: DepositRef {
+                    tx_hash: "DEP1".into(),
+                    delivered: 0,
+                    memo_hash: String::new(),
+                },
+            },
+            &acc.memo_hex,
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        lenient.submit_unshield(&u.record, "rEve"),
+        Err(NodeError::Screened(_))
+    ));
+    let acc_u = open.submit_unshield(&u.record, "rEve").unwrap();
+    assert!(matches!(
+        lenient
+            .endorse(
+                &Submission::Unshield {
+                    record: u.record.clone(),
+                    destination: "rEve".into()
+                },
+                &acc_u.memo_hex
+            )
+            .await,
+        Err(NodeError::Screened(_))
+    ));
+    assert_eq!(lenient.state().bundle_count, 1);
+
+    // Standby: the deposit validated in ledger 100; with a 5-ledger standby it is refused until
+    // the validated ledger reaches 105, and an unavailable ledger index refuses too (fail closed).
+    let mut bob = Wallet::new();
+    let p2 = bob.build_shield(50).unwrap();
+    ledger.put_tx("DEP2", deposit_tx(POOL, "50", &p2.hash_hex()));
+    let waiting = Node::new(Verifier::new(), ledger.clone(), POOL, None)
+        .with_screening(Screening::new(Vec::<String>::new(), 5));
+    assert!(matches!(
+        waiting.submit_shield(&p2.record, "DEP2").await,
+        Err(NodeError::Ledger(LedgerError::Rpc(_)))
+    ));
+    ledger.set_validated(104);
+    match waiting.submit_shield(&p2.record, "DEP2").await {
+        Err(NodeError::Screened(m)) => assert!(m.contains("standby") && m.contains("105"), "{m}"),
+        other => panic!("expected a standby refusal, got {other:?}"),
+    }
+    ledger.set_validated(105);
+    waiting.submit_shield(&p2.record, "DEP2").await.unwrap();
+    bob.sync(&waiting.log(0)).unwrap();
+    assert_eq!(bob.balance(), 50);
+
+    // HTTP: a screening refusal is 403, distinct from the ledger-facts 422.
+    let app = http::router(Arc::new(
+        Node::new(Verifier::new(), ledger.clone(), POOL, None)
+            .with_screening(Screening::new(["rAlice".to_owned()], 0)),
+    ));
+    let (s, v) = call(
+        &app,
+        "POST",
+        "/submit/shield",
+        Some(json!({ "record": p.record, "depositTxHash": "DEP1" })),
+    )
+    .await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    assert!(v["error"].as_str().unwrap().contains("screening"));
+    let (s, _) = call(
+        &app,
+        "POST",
+        "/submit/unshield",
+        Some(json!({ "record": u.record, "destination": "rAlice" })),
+    )
+    .await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+}
+
+/// Address canonicalization (vectors generated with xrpl.js `classicAddressToXAddress`): every
+/// spelling of a listed party resolves to the one classic address the list is compared in.
+#[test]
+fn screening_canonicalizes_classic_and_x_addresses() {
+    let vectors = [
+        (
+            "rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf",
+            "XVLhHMPHU98es4dbozjVtdWzVrDjtV5fdx1mHp98tDMoQXb",
+            "XVLhHMPHU98es4dbozjVtdWzVrDjtVFpRb8iCFUkMtRyVii",
+            "TVE26TYGhfLC7tQDno7G8dGtxSkYQn49b3qD26PK7FcGSKE",
+            "TVE26TYGhfLC7tQDno7G8dGtxSkYQnXoy6kSDh6rZzApc69",
+        ),
+        (
+            "rnXyVQzgxZe7TR1EPzTkGj2jxH4LMJYh66",
+            "X75KjMo4pw9UQ9H7hbpCZUDfskq2PL3MEZS3AoCF1J86KTL",
+            "X75KjMo4pw9UQ9H7hbpCZUDfskq2PLNGsUMNLb58LzRZpGB",
+            "T7di9TxLtf6DqChnLPmSTByrXU44tu8PUjPbE7uMTvc3fM8",
+            "T7di9TxLtf6DqChnLPmSTByrXU44tuxsbJJo1iDsZ39RgWa",
+        ),
+        (
+            "rrrrrrrrrrrrrrrrrrrrrhoLvTp",
+            "X7TYFRtYHMcHtT2qNycMwgXzFbcRvEgLY6WDzQKYkjCp8GS",
+            "X7TYFRtYHMcHtT2qNycMwgXzFbcRvE8ELLRKPU4WN4GdcBY",
+            "T7PnNYsX9KwKKyMSW8M3hgHuJs9NRqL4V1TgJnZnMNYFgg8",
+            "T7PnNYsX9KwKKyMSW8M3hgHuJs9NRqWptS4tvSimSStGN7n",
+        ),
+    ];
+    for (classic, x_main, x_main_tag, x_test, x_test_tag) in vectors {
+        assert_eq!(
+            canonical(classic).as_deref(),
+            Some(classic),
+            "classic round-trips"
+        );
+        for other in [x_main, x_main_tag, x_test, x_test_tag] {
+            assert_eq!(
+                canonical(other).as_deref(),
+                Some(classic),
+                "{other} → {classic}"
+            );
+        }
+        assert_eq!(
+            canonical(format!("  {classic}  ").trim()).as_deref(),
+            Some(classic)
+        );
+    }
+    // Malformed spellings never canonicalize: bad checksum, wrong length, foreign alphabet, empty.
+    assert_eq!(canonical("rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpg"), None);
+    assert_eq!(canonical("rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QY"), None);
+    assert_eq!(canonical("0GWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf"), None);
+    assert_eq!(canonical(""), None);
+    assert_eq!(canonical("rrr"), None);
+    // A valid checksum is not enough: an X-shaped payload with a foreign prefix or an unknown
+    // tag flag is refused, while the same AccountID under the mainnet prefix canonicalizes.
+    assert_eq!(
+        canonical("XVLhHMPHU98es4dbozjVtdWzVrDjtV5fdx1mHp98tDMoQXc"),
+        None
+    );
+    assert_eq!(
+        canonical("XWnVd9AKTnhnt1GMCVYyuheajMsFPonVqYz5qHtcDZSFYQU"),
+        None,
+        "foreign prefix 0x0545"
+    );
+    assert_eq!(
+        canonical("X7mSinhEWd7qFaYLZpcFyck2NrXqyhWSxs59wH7whfkyYbx"),
+        None,
+        "tag flag 2"
+    );
+    assert_eq!(
+        canonical("X7mSinhEWd7qFaYLZpcFyck2NrXqyhL8Z78uoaeGQG7EVWe").as_deref(),
+        Some("raVZNVnDrTHaYvifmAFuKcvdkKAAnrnBxL")
+    );
+
+    // The gate: a classic entry catches every X spelling, an X entry catches the classic one.
+    let listed_classic = Screening::new(["rnXyVQzgxZe7TR1EPzTkGj2jxH4LMJYh66".to_owned()], 0);
+    for spelling in [
+        "rnXyVQzgxZe7TR1EPzTkGj2jxH4LMJYh66",
+        "X75KjMo4pw9UQ9H7hbpCZUDfskq2PL3MEZS3AoCF1J86KTL",
+        "X75KjMo4pw9UQ9H7hbpCZUDfskq2PLNGsUMNLb58LzRZpGB",
+        "T7di9TxLtf6DqChnLPmSTByrXU44tu8PUjPbE7uMTvc3fM8",
+        "T7di9TxLtf6DqChnLPmSTByrXU44tuxsbJJo1iDsZ39RgWa",
+    ] {
+        assert!(
+            listed_classic.is_listed(spelling),
+            "{spelling} must be caught"
+        );
+        assert!(listed_classic.check_destination(spelling).is_err());
+        assert!(listed_classic.check_deposit(spelling, 1, 1).is_err());
+    }
+    assert!(!listed_classic.is_listed("rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf"));
+    let listed_x = Screening::new(
+        ["T7di9TxLtf6DqChnLPmSTByrXU44tuxsbJJo1iDsZ39RgWa".to_owned()],
+        0,
+    );
+    assert!(listed_x.is_listed("rnXyVQzgxZe7TR1EPzTkGj2jxH4LMJYh66"));
+    assert!(listed_x.is_listed("X75KjMo4pw9UQ9H7hbpCZUDfskq2PL3MEZS3AoCF1J86KTL"));
+    // A list file mixing spellings canonicalizes on load; an undecodable entry only matches itself.
+    let dir = std::env::temp_dir().join(format!("confidant-canon-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("mixed.txt"),
+        "X75KjMo4pw9UQ9H7hbpCZUDfskq2PL3MEZS3AoCF1J86KTL # eve as X\nnot-an-address\n",
+    )
+    .unwrap();
+    let mixed = Screening::from_file(&dir.join("mixed.txt"), 0).unwrap();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(mixed.listed_count(), 2);
+    assert_eq!(
+        mixed.undecodable_count(),
+        1,
+        "the inert entry is counted so startup can warn"
+    );
+    assert!(mixed.is_listed("rnXyVQzgxZe7TR1EPzTkGj2jxH4LMJYh66"));
+    assert!(mixed.is_listed("not-an-address") && !mixed.is_listed("not-an-addres"));
+    assert_eq!(listed_classic.undecodable_count(), 0);
 }
