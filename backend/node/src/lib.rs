@@ -25,12 +25,14 @@
 //! The XRPL *transactions* (anchor memo Payments, payouts) are signed by the Node.js signer
 //! sidecar next to this node, only after this node endorsed — see `backend/quorum/`.
 
+pub mod address;
 pub mod http;
 pub mod node;
 pub mod rpc;
 pub mod screening;
 pub mod xrpl;
 
+pub use address::canonical;
 pub use node::{AcceptedWithMemo, Node, NodeError};
 pub use rpc::JsonRpc;
 pub use screening::{ScreenError, Screening};

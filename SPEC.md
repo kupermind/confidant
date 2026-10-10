@@ -321,7 +321,10 @@ Address - XRP" entries via `backend/quorum/screening/fetch-ofac.mjs`) and
 `--screening-standby-ledgers N` refuses, with HTTP 403 and before the verifier sees the bundle: a
 shield whose deposit was sent by a listed account; a shield whose deposit is younger than N
 validated ledgers, so list providers have time to publish (Railgun's "unshield-only standby" is
-1 h ≈ 900 XRPL ledgers; the demo runs 2); an unshield whose destination is listed. The check runs at
+1 h ≈ 900 XRPL ledgers; the demo runs 2); an unshield whose destination is listed. Addresses are
+compared in one canonical form — the classic `r…` address; X-addresses (`X…`/`T…`, with or without
+a tag) decode to it on both the list and the destination — so a listed party cannot slip past the
+exit screen by spelling their address differently. The check runs at
 `/submit/*` and at `/endorse` alike, so a coordinator cannot route around a signer's policy, and the
 sender account and the deposit's ledger are read from the ledger by the node itself. With the gate
 on since a pool's genesis, no note in that pool descends from a listed address, and anyone can

@@ -10,8 +10,8 @@ use confidant_core::memo::MEMO_TYPE;
 use confidant_core::record::bundle_hash;
 use confidant_core::{DepositRef, Error as CoreError, Submission, Verifier, Wallet};
 use confidant_node::{
-    anchor_memos, deposit_facts, deposit_source, http, Ledger, LedgerError, Node, NodeError,
-    Screening, LSF_DISABLE_MASTER, MEMO_SHIELD,
+    anchor_memos, canonical, deposit_facts, deposit_source, http, Ledger, LedgerError, Node,
+    NodeError, Screening, LSF_DISABLE_MASTER, MEMO_SHIELD,
 };
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
@@ -1010,4 +1010,114 @@ async fn screening_gate_refuses_listed_parties_and_fresh_deposits_fail_closed() 
     )
     .await;
     assert_eq!(s, StatusCode::FORBIDDEN);
+}
+
+/// Address canonicalization (vectors generated with xrpl.js `classicAddressToXAddress`): every
+/// spelling of a listed party resolves to the one classic address the list is compared in.
+#[test]
+fn screening_canonicalizes_classic_and_x_addresses() {
+    let vectors = [
+        (
+            "rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf",
+            "XVLhHMPHU98es4dbozjVtdWzVrDjtV5fdx1mHp98tDMoQXb",
+            "XVLhHMPHU98es4dbozjVtdWzVrDjtVFpRb8iCFUkMtRyVii",
+            "TVE26TYGhfLC7tQDno7G8dGtxSkYQn49b3qD26PK7FcGSKE",
+            "TVE26TYGhfLC7tQDno7G8dGtxSkYQnXoy6kSDh6rZzApc69",
+        ),
+        (
+            "rnXyVQzgxZe7TR1EPzTkGj2jxH4LMJYh66",
+            "X75KjMo4pw9UQ9H7hbpCZUDfskq2PL3MEZS3AoCF1J86KTL",
+            "X75KjMo4pw9UQ9H7hbpCZUDfskq2PLNGsUMNLb58LzRZpGB",
+            "T7di9TxLtf6DqChnLPmSTByrXU44tu8PUjPbE7uMTvc3fM8",
+            "T7di9TxLtf6DqChnLPmSTByrXU44tuxsbJJo1iDsZ39RgWa",
+        ),
+        (
+            "rrrrrrrrrrrrrrrrrrrrrhoLvTp",
+            "X7TYFRtYHMcHtT2qNycMwgXzFbcRvEgLY6WDzQKYkjCp8GS",
+            "X7TYFRtYHMcHtT2qNycMwgXzFbcRvE8ELLRKPU4WN4GdcBY",
+            "T7PnNYsX9KwKKyMSW8M3hgHuJs9NRqL4V1TgJnZnMNYFgg8",
+            "T7PnNYsX9KwKKyMSW8M3hgHuJs9NRqWptS4tvSimSStGN7n",
+        ),
+    ];
+    for (classic, x_main, x_main_tag, x_test, x_test_tag) in vectors {
+        assert_eq!(
+            canonical(classic).as_deref(),
+            Some(classic),
+            "classic round-trips"
+        );
+        for other in [x_main, x_main_tag, x_test, x_test_tag] {
+            assert_eq!(
+                canonical(other).as_deref(),
+                Some(classic),
+                "{other} → {classic}"
+            );
+        }
+        assert_eq!(
+            canonical(format!("  {classic}  ").trim()).as_deref(),
+            Some(classic)
+        );
+    }
+    // Malformed spellings never canonicalize: bad checksum, wrong length, foreign alphabet, empty.
+    assert_eq!(canonical("rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpg"), None);
+    assert_eq!(canonical("rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QY"), None);
+    assert_eq!(canonical("0GWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf"), None);
+    assert_eq!(canonical(""), None);
+    assert_eq!(canonical("rrr"), None);
+    // A valid checksum is not enough: an X-shaped payload with a foreign prefix or an unknown
+    // tag flag is refused, while the same AccountID under the mainnet prefix canonicalizes.
+    assert_eq!(
+        canonical("XVLhHMPHU98es4dbozjVtdWzVrDjtV5fdx1mHp98tDMoQXc"),
+        None
+    );
+    assert_eq!(
+        canonical("XWnVd9AKTnhnt1GMCVYyuheajMsFPonVqYz5qHtcDZSFYQU"),
+        None,
+        "foreign prefix 0x0545"
+    );
+    assert_eq!(
+        canonical("X7mSinhEWd7qFaYLZpcFyck2NrXqyhWSxs59wH7whfkyYbx"),
+        None,
+        "tag flag 2"
+    );
+    assert_eq!(
+        canonical("X7mSinhEWd7qFaYLZpcFyck2NrXqyhL8Z78uoaeGQG7EVWe").as_deref(),
+        Some("raVZNVnDrTHaYvifmAFuKcvdkKAAnrnBxL")
+    );
+
+    // The gate: a classic entry catches every X spelling, an X entry catches the classic one.
+    let listed_classic = Screening::new(["rnXyVQzgxZe7TR1EPzTkGj2jxH4LMJYh66".to_owned()], 0);
+    for spelling in [
+        "rnXyVQzgxZe7TR1EPzTkGj2jxH4LMJYh66",
+        "X75KjMo4pw9UQ9H7hbpCZUDfskq2PL3MEZS3AoCF1J86KTL",
+        "X75KjMo4pw9UQ9H7hbpCZUDfskq2PLNGsUMNLb58LzRZpGB",
+        "T7di9TxLtf6DqChnLPmSTByrXU44tu8PUjPbE7uMTvc3fM8",
+        "T7di9TxLtf6DqChnLPmSTByrXU44tuxsbJJo1iDsZ39RgWa",
+    ] {
+        assert!(
+            listed_classic.is_listed(spelling),
+            "{spelling} must be caught"
+        );
+        assert!(listed_classic.check_destination(spelling).is_err());
+        assert!(listed_classic.check_deposit(spelling, 1, 1).is_err());
+    }
+    assert!(!listed_classic.is_listed("rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf"));
+    let listed_x = Screening::new(
+        ["T7di9TxLtf6DqChnLPmSTByrXU44tuxsbJJo1iDsZ39RgWa".to_owned()],
+        0,
+    );
+    assert!(listed_x.is_listed("rnXyVQzgxZe7TR1EPzTkGj2jxH4LMJYh66"));
+    assert!(listed_x.is_listed("X75KjMo4pw9UQ9H7hbpCZUDfskq2PL3MEZS3AoCF1J86KTL"));
+    // A list file mixing spellings canonicalizes on load; an undecodable entry only matches itself.
+    let dir = std::env::temp_dir().join(format!("confidant-canon-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("mixed.txt"),
+        "X75KjMo4pw9UQ9H7hbpCZUDfskq2PL3MEZS3AoCF1J86KTL # eve as X\nnot-an-address\n",
+    )
+    .unwrap();
+    let mixed = Screening::from_file(&dir.join("mixed.txt"), 0).unwrap();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(mixed.listed_count(), 2);
+    assert!(mixed.is_listed("rnXyVQzgxZe7TR1EPzTkGj2jxH4LMJYh66"));
+    assert!(mixed.is_listed("not-an-address") && !mixed.is_listed("not-an-addres"));
 }

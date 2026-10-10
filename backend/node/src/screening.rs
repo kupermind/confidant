@@ -11,6 +11,15 @@
 use std::collections::HashSet;
 use std::path::Path;
 
+use crate::address::canonical;
+
+/// The form every comparison uses: the classic address for anything that decodes (X-addresses
+/// lose their tag), the raw trimmed string otherwise (an operator's typo never matches anything).
+fn canon(s: &str) -> String {
+    let t = s.trim();
+    canonical(t).unwrap_or_else(|| t.to_owned())
+}
+
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ScreenError {
     #[error("account {0} is on the screening list")]
@@ -39,7 +48,7 @@ impl Screening {
         Self {
             blocked: blocked
                 .into_iter()
-                .map(|s| s.trim().to_owned())
+                .map(|s| canon(&s))
                 .filter(|s| !s.is_empty())
                 .collect(),
             standby_ledgers,
@@ -71,8 +80,11 @@ impl Screening {
         self.standby_ledgers
     }
 
+    /// Listed in any spelling: the account is canonicalized before the lookup, so a listed
+    /// classic address is caught when supplied as an X-address (with or without a tag), and vice
+    /// versa.
     pub fn is_listed(&self, account: &str) -> bool {
-        self.blocked.contains(account)
+        self.blocked.contains(&canon(account))
     }
 
     /// A shield's deposit: the sender must not be listed and the deposit must be old enough.

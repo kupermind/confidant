@@ -20,7 +20,7 @@
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { Client, Wallet, xrpToDrops, convertHexToString, decode } from "xrpl";
+import { Client, Wallet, xrpToDrops, convertHexToString, decode, classicAddressToXAddress } from "xrpl";
 import { setupPool, launchQuorum, http, memoOf, MEMO_SHIELD, MEMO_ANCHOR, resilientClient } from "../../backend/quorum/lib.mjs";
 
 const XRPL_WS = process.env.XRPL_WS ?? "wss://s.altnet.rippletest.net:51233";
@@ -140,6 +140,10 @@ async function main() {
     // A listed destination: refused by every node before the verifier even looks at the bundle.
     bob("build-unshield", UNSHIELD_1, eveXrpl.address, `${DIR}/unshield-eve.json`, LOG);
     await expectRefusal("unshield to a listed address", http("POST", `${C}/submit/unshield`, { record: JSON.parse(readFileSync(`${DIR}/unshield-eve.json`, "utf8")), destination: eveXrpl.address }), /screening list/);
+    // The same listed party spelled as a testnet X-address (with a tag): canonicalized, still refused.
+    const eveX = classicAddressToXAddress(eveXrpl.address, 7, true);
+    bob("build-unshield", UNSHIELD_1, eveX, `${DIR}/unshield-eve-x.json`, LOG);
+    await expectRefusal("unshield to the listed address as an X-address", http("POST", `${C}/submit/unshield`, { record: JSON.parse(readFileSync(`${DIR}/unshield-eve-x.json`, "utf8")), destination: eveX }), /screening list/);
     await syncLog(C);
     bob("build-unshield", UNSHIELD_1, bobFresh.address, `${DIR}/unshield1.json`, LOG);
     const s3 = await http("POST", `${C}/submit/unshield`, { record: JSON.parse(readFileSync(`${DIR}/unshield1.json`, "utf8")), destination: bobFresh.address });
