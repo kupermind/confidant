@@ -377,7 +377,8 @@ docs/audit/  REQ/RESP всех раундов, INDEX.md
 docs/CORE-API.md, docs/E2E.md, docs/NODE-OPERATOR.md
 .github/workflows/check.yml  CI: fmt / clippy / тесты (release) / покрытие 100% / hygiene / ручной e2e
 frontend/      index.html — прототип UI (статика, xrpl.js в браузере; ходит в /api → координатор, /wallet → демо-сервис кошелька)
-backend/wallet/ confidant-wallet: демо-сервис кошелька (HTTP над Wallet; хранит демо-ключи трат на своём хосте)
+backend/wallet/ confidant-wallet: демо-сервис кошелька (HTTP над Wallet; хранит демо-ключи трат на своём хосте;
+               ТОЛЬКО ДЛЯ TESTNET-ДЕМО — никогда не путь для пула с реальной ценностью; браузерный WASM-кошелёк — production-путь)
 scripts/       — предзаполнение (API/XRPL-лид, не начато)
 README.md, SPEC.md, SPEC.ru.md, ROADMAP.md, CLAUDE.md
 ```

@@ -141,7 +141,7 @@ build step, same-origin `/api/` (coordinator) and `/wallet/` (demo wallet servic
 `POST /wallets`, `GET /wallets/{id}`, `POST /wallets/{id}/{shield|transfer|unshield}` → `{record,
 bundleHash}`), `xrpl.js` in the browser for the faucet and the deposit. The demo wallet service holds
 the demo wallets' spending keys on the demo host — label it so; the browser-side (WASM) wallet that
-removes it is in progress. `?demo=1` renders the page on simulated data. nginx site:
+removes it is in progress. **Testnet demo only, and it must not carry over to real value:** a custodial wallet service is never the path for a mainnet or real-XRP pool; the browser (WASM) wallet is the production path and the service does not graduate with it. `?demo=1` renders the page on simulated data. nginx site:
 `backend/deploy/nginx/confidant-ui.conf` (port 80). Smoke of the exact UI path without a browser:
 `npm run smoke-ui` in `backend/quorum`.
 

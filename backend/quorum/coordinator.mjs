@@ -80,6 +80,7 @@ async function anchorThroughQuorum(accepted, submission) {
 }
 
 await serve(Number(env.PORT), {
+  // READ-ONLY and PUBLIC FACTS ONLY (pool, sink, k-of-N, ws, explorer): nothing node-internal or secret may ever be added here.
   "GET /config": async () => ({ network: env.NETWORK ?? "testnet", explorer: env.EXPLORER ?? "https://testnet.xrpl.org", xrplWs: XRPL_WS, pool: env.POOL, sink: env.SINK, quorum: QUORUM, signers: SIGNERS.length }),
   "GET /state": async () => http("GET", `${env.NODE_URL}/state`),
   "GET /log": async (_b, url) => http("GET", `${env.NODE_URL}/log?from=${url.searchParams.get("from") ?? 0}`),

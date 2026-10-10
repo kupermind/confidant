@@ -73,6 +73,7 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
   nothing about transactions they were not a party to.
 - **Demo wallets are hosted:** the prototype's wallet service keeps the demo spending keys on the
   demo host — say so; the non-custodial claim holds for a wallet running on the holder's machine.
+  **Testnet demo only, and it must not carry over to real value:** a custodial wallet service is never the path for a mainnet or real-XRP pool; the browser (WASM) wallet is the production path and the service does not graduate with it.
 - **Boundary screening** (optional, per node): shields from listed depositors or too-fresh deposits
   and unshields to listed addresses are refused on public data (e.g. OFAC's XRP entries). It is
   gatekeeping at the pool's public boundary, not a per-note proof of innocence; lists can be wrong

@@ -5,7 +5,9 @@
 //! bundles for the UI to submit. It holds the demo wallets' **spending keys** in its data
 //! directory (0600), so wherever it runs is where the keys are: on the demo host it is a
 //! custodial convenience for the hackathon; in production the same service runs on the holder's
-//! own machine (the honest label in `README.md`). It never talks to XRPL and never submits
+//! own machine (the honest label in `README.md`). **Testnet demo only:** this service must never be
+//! the path for a real-value pool; the browser (WASM) wallet is the production path and this service
+//! does not graduate with it. It never talks to XRPL and never submits
 //! anything: the browser sends the deposit from the user's own XRPL account and posts the bundle
 //! to the coordinator.
 //!

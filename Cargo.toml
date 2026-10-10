@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["core", "backend/node", "backend/wallet"]
+members = ["core", "backend/node", "backend/wallet", "frontend/wasm"]
 
 [workspace.package]
 edition = "2021"
@@ -10,7 +10,7 @@ publish = false
 
 [workspace.dependencies]
 # The reused Halo 2 circuit: Zcash Orchard, unchanged. See docs/audit/REQ-pool-design-2026-10-04.md.
-orchard = { version = "0.15.5", default-features = false, features = ["circuit", "multicore", "std"] }
+orchard = { version = "0.15.5", default-features = false, features = ["circuit", "std"] }
 incrementalmerkletree = "0.8"
 shardtree = "0.7"
 zcash_note_encryption = "0.4"
