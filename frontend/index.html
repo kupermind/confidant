@@ -7,8 +7,10 @@
 <!--
   Confidant UI prototype (static, no build step). Talks to:
     /api/    the coordinator (public, holds nothing): config, state, submit/*, audit/reveal
-    /wallet/ the demo wallet service (holds the demo wallets' spending keys on the demo host;
-             production: the same service — or the WASM wallet — on the holder's machine)
+    ./pkg/   the browser wallet: confidant-core compiled to WebAssembly, run in a Web Worker
+             (wallet-worker.js) — keys, notes, proving and signing stay in this browser (primary)
+    /wallet/ the demo wallet service — fallback only when WebAssembly is unavailable (holds demo
+             keys on the demo host; testnet demo only, never for real value)
     XRPL testnet directly from the browser (xrpl.js): faucet, the deposit Payment with the memo.
   ?demo=1 or a claude.ai host runs it on simulated data for design review.
 -->
@@ -110,17 +112,20 @@
     <section class="card" id="walletcard">
       <h2>Wallet</h2>
       <div id="nowallet">
-        <p class="empty">No wallet yet. A demo wallet is a fresh Orchard spending key plus a faucet-funded XRPL testnet account for deposits.</p>
-        <div class="actions"><button class="primary" id="btn-create">Create demo wallet</button></div>
+        <p class="empty">No wallet yet. Creating one generates an Orchard spending key in this browser (never sent anywhere) and a faucet-funded XRPL testnet account for deposits.</p>
+        <div class="actions"><button class="primary" id="btn-create">Create wallet</button></div>
+        <div id="create-progress"></div>
       </div>
       <div id="haswallet" hidden>
         <div class="balance"><span id="priv-balance">0</span><small>XRP private</small></div>
         <div class="hint" id="sync-hint">synced 0 of 0 bundles</div>
+        <div class="row"><span class="k">Keys</span><span class="v" id="keys-mode" style="font-family:inherit"></span></div>
         <div class="row"><span class="k">Orchard address</span><span class="v" id="orchard-addr"></span><button class="small ghost copy" data-copy="orchard-addr">copy</button></div>
         <div class="row"><span class="k">Viewing key</span><span class="v" id="viewing-key">••••••••</span><button class="small ghost copy" id="btn-vk">show</button></div>
         <div class="row"><span class="k">XRPL account</span><span class="v" id="xrpl-addr"></span><button class="small ghost copy" data-copy="xrpl-addr">copy</button></div>
         <div class="row"><span class="k">XRPL balance</span><span class="v" id="xrpl-balance">—</span><button class="small" id="btn-fund">fund (faucet)</button></div>
         <div class="actions"><button class="small" id="btn-sync">Sync</button><button class="small ghost" id="btn-forget">Forget wallet</button></div>
+        <div id="wallet-progress"></div>
       </div>
     </section>
 
@@ -138,7 +143,7 @@
         <p class="hint">Your XRPL account pays the pool account; the memo commits to the bundle built first. Inside the pool the amount becomes a private note.</p>
         <div class="actions"><button class="primary" id="btn-shield">Shield</button></div>
         <div class="steps" id="steps-shield">
-          <div class="step"><b>1 · prove</b>build the bundle</div>
+          <div class="step"><b>1 · prove</b>build the bundle (~20 s in the browser)</div>
           <div class="step"><b>2 · deposit</b>Payment with memo</div>
           <div class="step"><b>3 · anchor</b>quorum signs 2-of-3</div>
         </div>
@@ -202,7 +207,7 @@
       <span>quorum: <b id="st-quorum">—</b></span>
       <span><a id="st-pool-link" href="#" target="_blank" rel="noopener">pool account on the explorer</a></span>
     </div>
-    <div>Notes are non-custodial: this wallet's spending key never reaches the pool. The pool account is held by a k-of-N quorum of independent verifiers; collusion of k can drain the pool account but cannot spend anyone's notes. Shield and unshield amounts and addresses are public by nature; the transfer graph inside the pool is not. In this demo the wallet keys live in the demo wallet service on the demo host: testnet demo only, never for real value — in production the wallet runs on your machine.</div>
+    <div>Notes are non-custodial: this wallet's spending key never reaches the pool. The pool account is held by a k-of-N quorum of independent verifiers; collusion of k can drain the pool account but cannot spend anyone's notes. Shield and unshield amounts and addresses are public by nature; the transfer graph inside the pool is not. Your wallet runs in this browser (WebAssembly): the spending key, your notes and the proofs never leave it. Only if WebAssembly is unavailable does the page fall back to the demo wallet service on the demo host — testnet demo only, never for real value.</div>
   </footer>
 </div>
 
@@ -256,6 +261,37 @@
   })();
   const be = DEMO ? mock : real;
 
+  // ---- wallet backends: the browser (WebAssembly in a worker) first, the demo service as fallback
+  const serviceBackend = {
+    mode: "service", label: "demo wallet service on the host — testnet only",
+    async create() { const w = await be.createWallet(); return { mode: "service", id: w.id, address: w.address, viewingKey: w.viewingKey }; },
+    async restore(w) { return w; },
+    async summary(w) { return be.wallet(w.id); },
+    async build(w, op, body) { return be.build(w.id, op, body); },
+    async forget() {},
+  };
+  const browserBackend = (() => {
+    let worker = null, seq = 0; const pending = new Map();
+    const call = (op, args) => new Promise((res, rej) => { const id = ++seq; pending.set(id, { res, rej }); worker.postMessage({ id, op, args }); });
+    function start() {
+      if (worker) return;
+      worker = new Worker("./wallet-worker.js", { type: "module" });
+      worker.onmessage = ({ data }) => { const p = pending.get(data.id); if (!p) return; pending.delete(data.id); data.error ? p.rej(new Error(data.error)) : p.res(data.result); };
+      worker.onerror = (e) => { for (const p of pending.values()) p.rej(new Error("browser wallet failed to load: " + (e.message ?? "unknown"))); pending.clear(); worker = null; };
+    }
+    async function syncNow() { const { records } = await http("GET", `${API}/log?from=0`); return call("sync", { records }); }
+    return {
+      mode: "browser", label: "in this browser (WebAssembly) — never sent anywhere",
+      async create() { start(); const s = await call("create"); return { mode: "browser", secret: s.secret, address: s.address, viewingKey: s.viewingKey }; },
+      async restore(w) { start(); await call("restore", { secret: w.secret }); return w; },
+      async summary() { return syncNow(); },
+      async build(w, op, body) { await syncNow(); return call(op, body); },
+      async forget() { if (worker) await call("forget"); },
+    };
+  })();
+  const wbFor = (w) => (DEMO || w?.mode === "service" ? serviceBackend : browserBackend);
+  let walletReady = false;
+
   // ---- XRPL side (browser only) ----------------------------------------------------------
   let cfg = null, xrplClient = null;
   async function xrpl_() {
@@ -308,8 +344,12 @@
     $("nowallet").hidden = !!w; $("haswallet").hidden = !w;
     if (!w) return;
     $("orchard-addr").textContent = w.address;
-    try { const s = await be.wallet(w.id); $("priv-balance").textContent = fmt(s.balance); $("sync-hint").textContent = `synced ${s.synced} bundle${s.synced === 1 ? "" : "s"}`; }
-    catch (e) { $("sync-hint").textContent = `sync failed: ${e.message}`; }
+    $("keys-mode").textContent = wbFor(w).label;
+    if (!walletReady) { $("sync-hint").textContent = "preparing…"; }
+    else {
+      try { const s = await wbFor(w).summary(w); $("priv-balance").textContent = fmt(s.balance); $("sync-hint").textContent = `synced ${s.synced} bundle${s.synced === 1 ? "" : "s"}`; }
+      catch (e) { $("sync-hint").textContent = `sync failed: ${e.message}`; }
+    }
     const x = store.get("xrpl");
     $("xrpl-addr").textContent = x ? x.address : "not funded yet";
     $("xrpl-balance").textContent = x ? `${fmt(await xrplBalance() ?? 0)} XRP` : "—";
@@ -338,10 +378,11 @@
     const btn = $("btn-shield"); const w = wallet();
     try {
       if (!w) throw new Error("create a wallet first");
+      if (!walletReady) throw new Error("the wallet is still preparing");
       if (!store.get("xrpl")) throw new Error("fund your XRPL account first (faucet)");
       const drops = toDrops($("shield-amount").value);
       busy(btn, true); setMsg("msg-shield", "");
-      setSteps("steps-shield", 0); const built = await be.build(w.id, "shield", { amount: Number(drops) });
+      setSteps("steps-shield", 0); const built = await wbFor(w).build(w, "shield", { amount: Number(drops) });
       setSteps("steps-shield", 1); const depositTxHash = await deposit(drops, built.bundleHash);
       setSteps("steps-shield", 2);
       const acc = await submitWithStandby("shield", { record: built.record, depositTxHash }, (m) => setMsg("msg-shield", `<span class="spin"></span>${m} — waiting`, "warn"));
@@ -355,10 +396,11 @@
     const btn = $("btn-transfer"); const w = wallet();
     try {
       if (!w) throw new Error("create a wallet first");
+      if (!walletReady) throw new Error("the wallet is still preparing");
       const recipient = $("transfer-to").value.trim(); if (!/^[0-9a-fA-F]{86}$/.test(recipient)) throw new Error("recipient must be a 43-byte Orchard address in hex");
       const drops = toDrops($("transfer-amount").value);
       busy(btn, true); setMsg("msg-transfer", "");
-      setSteps("steps-transfer", 0); const built = await be.build(w.id, "transfer", { recipient, amount: Number(drops) });
+      setSteps("steps-transfer", 0); const built = await wbFor(w).build(w, "transfer", { recipient, amount: Number(drops) });
       setSteps("steps-transfer", 1); const acc = await be.submit("transfer", { record: built.record });
       setSteps("steps-transfer", 2, true);
       setMsg("msg-transfer", `Sent ${fmt(drops)} XRP privately. ${link("anchor", acc.anchorTx)}`, "ok");
@@ -370,10 +412,11 @@
     const btn = $("btn-unshield"); const w = wallet();
     try {
       if (!w) throw new Error("create a wallet first");
+      if (!walletReady) throw new Error("the wallet is still preparing");
       const destination = $("unshield-to").value.trim(); if (!/^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(destination)) throw new Error("destination must be a classic XRPL address");
       const drops = toDrops($("unshield-amount").value);
       busy(btn, true); setMsg("msg-unshield", "");
-      setSteps("steps-unshield", 0); const built = await be.build(w.id, "unshield", { amount: Number(drops), destination });
+      setSteps("steps-unshield", 0); const built = await wbFor(w).build(w, "unshield", { amount: Number(drops), destination });
       setSteps("steps-unshield", 1); const acc = await be.submit("unshield", { record: built.record, destination });
       setSteps("steps-unshield", 2, !!acc.payoutTx);
       if (acc.payoutError) setMsg("msg-unshield", `Anchored, but the payout failed on the ledger: ${acc.payoutError}. The signed payout can be resubmitted; the note is already spent.`, "warn");
@@ -403,13 +446,23 @@
   $("btn-vk").addEventListener("click", async () => { const w = wallet(); if (!w) return; const el = $("viewing-key"); if (el.textContent.startsWith("•")) { el.textContent = w.viewingKey; $("btn-vk").textContent = "copy"; } else { try { await navigator.clipboard.writeText(w.viewingKey); $("btn-vk").textContent = "copied"; setTimeout(() => ($("btn-vk").textContent = "copy"), 1200); } catch {} } });
   $("btn-create").addEventListener("click", async () => {
     const btn = $("btn-create"); busy(btn, true);
-    try { const w = await be.createWallet(); store.set("wallet", { id: w.id, address: w.address, viewingKey: w.viewingKey }); await fund(); }
-    catch (e) { alert(e.message); }
+    try {
+      let w;
+      if (!DEMO && typeof WebAssembly === "object") {
+        setMsg("create-progress", `<span class="spin"></span>Generating your key and building the proving keys in this browser (~25 s, once per session)…`, "warn");
+        try { w = await browserBackend.create(); }
+        catch (e) { setMsg("create-progress", `Browser wallet unavailable (${e.message}); using the demo wallet service instead.`, "warn"); w = await serviceBackend.create(); }
+      } else { w = await serviceBackend.create(); }
+      store.set("wallet", w); walletReady = true;
+      setMsg("create-progress", `<span class="spin"></span>Funding an XRPL testnet account from the faucet…`, "warn");
+      await fund();
+      setMsg("create-progress", "");
+    } catch (e) { setMsg("create-progress", e.message, "err"); }
     finally { busy(btn, false); refreshWallet(); }
   });
   $("btn-fund").addEventListener("click", async () => { const b = $("btn-fund"); busy(b, true); try { await fund(); } catch (e) { alert(e.message); } finally { busy(b, false); refreshWallet(); } });
   $("btn-sync").addEventListener("click", refreshWallet);
-  $("btn-forget").addEventListener("click", () => { if (confirm("Forget this demo wallet in this browser? Its key stays only in the demo wallet service.")) { store.del("wallet"); store.del("xrpl"); store.del("activity"); $("viewing-key").textContent = "••••••••"; $("btn-vk").textContent = "show"; refreshWallet(); renderActivity(); } });
+  $("btn-forget").addEventListener("click", async () => { const w = wallet(); if (!w) return; if (confirm(w.mode === "browser" ? "Forget this wallet? Its spending key exists only in this browser — any private balance is lost for good." : "Forget this demo wallet in this browser? Its key stays only in the demo wallet service.")) { await wbFor(w).forget(); store.del("wallet"); store.del("xrpl"); store.del("activity"); walletReady = false; $("viewing-key").textContent = "••••••••"; $("btn-vk").textContent = "show"; refreshWallet(); renderActivity(); } });
   $("btn-shield").addEventListener("click", doShield);
   $("btn-transfer").addEventListener("click", doTransfer);
   $("btn-unshield").addEventListener("click", doUnshield);
@@ -423,7 +476,16 @@
     try { cfg = await be.config(); } catch (e) { cfg = { explorer: "https://testnet.xrpl.org", signers: "?", quorum: "?" }; }
     $("st-quorum").textContent = `${cfg.quorum} of ${cfg.signers}`;
     $("st-pool-link").href = cfg.pool ? `${cfg.explorer}/accounts/${cfg.pool}` : "#";
-    renderActivity(); await refreshStatus(); await refreshWallet();
+    renderActivity(); await refreshStatus();
+    const w = wallet();
+    if (w) {
+      await refreshWallet();
+      try {
+        if (w.mode === "browser") setMsg("wallet-progress", `<span class="spin"></span>Restoring your wallet: building the proving keys in this browser (~25 s)…`, "warn");
+        await wbFor(w).restore(w); walletReady = true; setMsg("wallet-progress", "");
+      } catch (e) { setMsg("wallet-progress", `could not restore the wallet: ${e.message}`, "err"); }
+    }
+    await refreshWallet();
     setInterval(refreshStatus, 20000);
   })();
 })();

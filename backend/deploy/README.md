@@ -33,7 +33,11 @@ Every node logs `pool custody verified on the ledger: k-of-N SignerList, master 
 (the custody gate). Logs: `journalctl -u 'confidant-*' -f`. Restart everything:
 `systemctl restart confidant.target`. The UI's base URL is `http://<host>:8787` (`docs/API-BOUNDARY.md`).
 
-**UI prototype** (`frontend/index.html`, static) + **demo wallet service** (`confidant-wallet`, holds the
+**Browser wallet:** `cargo install wasm-pack` once, then `wasm-pack build frontend/wasm --target web --release --out-dir ../pkg`
+produces `frontend/pkg/` (≈ 3 MB wasm; gitignored) — ship it next to `index.html` and `wallet-worker.js`
+(nginx serves `application/wasm`). Keys, notes and proofs then stay in the visitor's browser.
+
+**UI prototype** (`frontend/index.html`, static) + **demo wallet service** (fallback when WebAssembly is unavailable) (`confidant-wallet`, holds the
 demo wallets' spending keys under `data/wallets/` — a custodial convenience on the demo host, see
 `README.md`): `cargo build --release --bin confidant-wallet`, install the binary next to the node,
 `systemctl enable --now confidant-wallet`, then the nginx site `nginx/confidant-ui.conf` on port 80
