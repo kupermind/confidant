@@ -306,3 +306,20 @@ impl Wallet {
         Ok(Prepared { record, hash })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// In-crate, so the runner's coverage attributes the trivial accessors to this file whatever
+    /// its inlining decisions across the integration-test crates.
+    #[test]
+    fn accessors_of_a_fresh_wallet() {
+        let w = Wallet::new();
+        assert_eq!(w.replica().state().bundle_count, 0);
+        assert_eq!(w.synced(), 0);
+        assert_eq!(w.balance(), 0);
+        assert_eq!(w.info().address.len(), 86);
+        let _ = w.address();
+    }
+}
