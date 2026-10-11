@@ -30,6 +30,10 @@ const client = resilientClient(new Client(XRPL_WS));
 await client.connect();
 try {
   const state0 = await http("GET", `${C}/state`);
+  const cfg = await http("GET", `${C}/config`).catch(() => ({ fees: { shieldBps: 0, unshieldBps: 0 } }));
+  const feeOf = (drops, bps) => Math.floor((Number(drops) * (bps ?? 0)) / 10000);
+  const NET = String(Number(DROPS) - feeOf(DROPS, cfg.fees?.shieldBps));
+  const PAYOUT = String(Number(NET) - feeOf(NET, cfg.fees?.unshieldBps));
   log(`coordinator ${C}: ${state0.bundleCount} bundles, root ${state0.root.slice(0, 16)}…`);
   const { wallet: funder } = await client.fundWallet();
   const alice = wallet("alice"), bob = wallet("bob");
@@ -37,7 +41,7 @@ try {
   await sync();
 
   // 1. shield: build first, then the deposit Payment with memo = bundle hash, then submit the tx hash.
-  const built = alice("build-shield", DROPS, `${DIR}/shield.json`, LOG);
+  const built = alice("build-shield", NET, `${DIR}/shield.json`, LOG);
   const prepared = await client.autofill({ TransactionType: "Payment", Account: funder.address, Destination: (await poolOf()), Amount: DROPS, Memos: [memoOf(MEMO_SHIELD, built.bundleHash)] });
   const signed = funder.sign(prepared);
   const dep = await client.submitAndWait(signed.tx_blob);
@@ -51,11 +55,11 @@ try {
   }
   must(s1, "shield still refused by the standby after 90 s");
   must(s1.bundleIndex === state0.bundleCount && s1.anchorTx, `shield not anchored: ${JSON.stringify(s1)}`);
-  log(`shield accepted by ${s1.signers.length} signers, anchor ${EXPLORER}/${s1.anchorTx}`);
+  log(`shield accepted by ${s1.signers.length} signers (fee ${s1.fee} drops), anchor ${EXPLORER}/${s1.anchorTx}`);
 
   // 2. private transfer alice → bob: only the anchor reaches the ledger.
   await sync();
-  alice("build-transfer", bobInfo.address, DROPS, `${DIR}/transfer.json`, LOG);
+  alice("build-transfer", bobInfo.address, NET, `${DIR}/transfer.json`, LOG);
   const s2 = await http("POST", `${C}/submit/transfer`, { record: record("transfer.json") });
   must(s2.anchorTx, "transfer not anchored");
   log(`transfer anchored ${EXPLORER}/${s2.anchorTx}`);
@@ -63,11 +67,11 @@ try {
   // 3. unshield bob → a fresh XRPL address: anchor, then the 2-of-3 payout.
   await sync();
   const fresh = Wallet.generate();
-  bob("build-unshield", DROPS, fresh.address, `${DIR}/unshield.json`, LOG);
+  bob("build-unshield", NET, fresh.address, `${DIR}/unshield.json`, LOG);
   const s3 = await http("POST", `${C}/submit/unshield`, { record: record("unshield.json"), destination: fresh.address });
   must(s3.anchorTx && s3.payoutTx && !s3.payoutError, `unshield: ${JSON.stringify({ anchorTx: s3.anchorTx, payoutTx: s3.payoutTx, payoutError: s3.payoutError })}`);
   const bal = (await client.request({ command: "account_info", account: fresh.address, ledger_index: "validated" })).result.account_data.Balance;
-  must(bal === DROPS, `fresh address balance ${bal} ≠ ${DROPS}`);
+  must(bal === PAYOUT, `fresh address balance ${bal} ≠ ${PAYOUT} (net of the unshield fee)`);
   log(`unshield anchored ${EXPLORER}/${s3.anchorTx}, paid ${EXPLORER}/${s3.payoutTx} (${bal} drops at ${fresh.address})`);
 
   // 4. reveal bob with his viewing key.

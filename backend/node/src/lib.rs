@@ -13,6 +13,11 @@
 //! - `POST /anchored {root, anchorTxHash}` — the node reads the anchor Payment from the ledger and
 //!   checks its memo carries the root before marking it anchored; `POST /audit/reveal`.
 //!
+//! Protocol fee (optional, `--fee-shield-bps`, `--fee-unshield-bps`, `--fee-treasury`): a share of
+//! every shield (credited net to the note) and unshield (paid net) accrues in the pool account;
+//! `GET /fees` reports it, `POST /fees/swept {txHash}` records a treasury sweep the node verified
+//! on the ledger. Transfers carry no fee.
+//!
 //! Boundary screening (optional, `--screening-list`, `--screening-standby-ledgers`): every node
 //! refuses, on its own list and fail-closed, a shield whose depositor is listed or whose deposit is
 //! younger than the standby, and an unshield whose destination is listed (HTTP 403).
@@ -26,6 +31,7 @@
 //! sidecar next to this node, only after this node endorsed — see `backend/quorum/`.
 
 pub mod address;
+pub mod fees;
 pub mod http;
 pub mod node;
 pub mod rpc;
@@ -33,10 +39,12 @@ pub mod screening;
 pub mod xrpl;
 
 pub use address::canonical;
+pub use fees::{FeeLedger, FeePolicy, FeeReport, MAX_BPS};
 pub use node::{AcceptedWithMemo, Node, NodeError};
 pub use rpc::JsonRpc;
 pub use screening::{ScreenError, Screening};
 pub use xrpl::{
     anchor_fact, anchor_memos, check_custody_info, deposit_facts, deposit_source,
-    ensure_full_history, Ledger, LedgerError, LSF_DISABLE_MASTER, MEMO_SHIELD,
+    ensure_full_history, sweep_facts, sweeps_in, Ledger, LedgerError, LSF_DISABLE_MASTER,
+    MEMO_SHIELD,
 };

@@ -77,6 +77,23 @@ test("payout: only what the sidecar's own node endorsed", () => {
   checkTxShape("payout", { ...payout(), Memos: [] }, pctx);
 });
 
+test("fee-sweep: treasury and amount come from the signer's own node", () => {
+  const sweep = () => ({ TransactionType: "Payment", Account: pool, Destination: "rTREAS", Amount: "250000", Fee: "40", Sequence: 7, LastLedgerSequence: 1020 });
+  const fctx = { ...ctx, treasury: "rTREAS", feesAvailable: 300000 };
+  checkTxShape("fee-sweep", sweep(), fctx);
+  checkTxShape("fee-sweep", { ...sweep(), Amount: "300000" }, fctx); // all of it
+  refused("fee-sweep", sweep(), /no treasury configured/, { ...ctx, feesAvailable: 300000 });
+  refused("fee-sweep", { ...sweep(), Destination: "rEVE" }, /destination is not the treasury/, fctx);
+  refused("fee-sweep", { ...sweep(), Amount: "300001" }, /exceeds the 300000 drops/, fctx);
+  refused("fee-sweep", sweep(), /exceeds the 0 drops/, { ...fctx, feesAvailable: undefined });
+  refused("fee-sweep", { ...sweep(), Amount: "0" }, /positive drops/, fctx);
+  refused("fee-sweep", { ...sweep(), Amount: "-5" }, /positive drops/, fctx);
+  refused("fee-sweep", { ...sweep(), Memos: [memoOf(MEMO_ANCHOR, memoHex)] }, /unexpected memos/, fctx);
+  refused("fee-sweep", { ...sweep(), Account: "rEVE" }, /Account is not the pool/, fctx);
+  refused("fee-sweep", { ...sweep(), Sequence: 9 }, /next sequence/, fctx);
+  refused("fee-sweep", { ...sweep(), LastLedgerSequence: 1500 }, /missing or outside/, fctx);
+});
+
 test("unknown kinds are refused", () => {
   refused("refund", { ...payout(), LastLedgerSequence: 1020 }, /unknown tx kind/, pctx);
 });

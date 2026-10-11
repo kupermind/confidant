@@ -75,6 +75,10 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
 - **Demo wallets are hosted:** the prototype's wallet service keeps the demo spending keys on the
   demo host — say so; the non-custodial claim holds for a wallet running on the holder's machine.
   **Testnet demo only, and it must not carry over to real value:** a custodial wallet service is never the path for a mainnet or real-XRP pool; the browser (WASM) wallet is the production path and the service does not graduate with it.
+- **Protocol fee** (server-side policy, Railgun's model): a configurable share of every shield and
+  unshield (transfers free) is credited to a treasury account under the same k-of-N; the rates are
+  public (`GET /config`), the note is credited net, the payout is net, and every accrual and sweep is
+  verifiable by replaying the ledger. It is an operating fee, not a privacy feature.
 - **Boundary screening** (optional, per node): shields from listed depositors or too-fresh deposits
   and unshields to listed addresses are refused on public data (e.g. OFAC's XRP entries). It is
   gatekeeping at the pool's public boundary, not a per-note proof of innocence; lists can be wrong

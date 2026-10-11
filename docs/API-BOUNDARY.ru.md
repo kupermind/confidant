@@ -23,7 +23,7 @@
 | Статус | Смысл | Типичные сообщения |
 |---|---|---|
 | 400 | кривой запрос или лимит ядра | нулевая сумма, слишком много выходов, плохой hex, нет полей |
-| 409 | отказ верификаторов | nullifier уже потрачен (повтор / двойная трата), несовпадение memo, неизвестный якорь, `only 1/3 signers endorsed (quorum 2)` |
+| 409 | отказ верификаторов | nullifier уже потрачен (повтор / двойная трата), несовпадение memo, неизвестный якорь, `only 1/3 signers endorsed (quorum 2)`; перевод комиссий больше доступного / уже учтён |
 | 422 | леджер не подтверждает утверждение | депозит не validated / не в пул / не та сумма / нет memo `confidant/shield`; анкорная транзакция не несёт этот корень |
 | 403 | отказ политики скрининга узла (необязательная, у каждого узла своя) | `account r… is on the screening list` (окончательно); `deposit … younger than the standby … retry at ledger N` (повторить позже) |
 | 502 | недоступен RPC леджера или узел | `txnNotFound <hash>` для выдуманного хеша депозита, `fetch failed` |
@@ -38,12 +38,16 @@
 | `POST /submit/transfer` | `{ record }` | `Accepted` + поля кворума |
 | `POST /submit/unshield` | `{ record, destination }` | `Accepted` (с `payout`) + поля кворума, включая `payoutTx` / `payoutBlob` |
 | `POST /audit/reveal` | `{ viewingKey }` | `RevealReport` |
+| `GET /config` | — | `{ network, explorer, xrplWs, pool, sink, quorum, signers, fees: { shieldBps, unshieldBps, treasury } }` — публичные факты для UI; без секретов |
+| `GET /fees` | — | `FeeReport` узла координатора |
+| `POST /fees/sweep` | `{ amount? }` (дропы; по умолчанию всё доступное) | `{ amount, tx, treasury, recorded, refusals }` — вызов оператора, k-of-N Payment пул → казна |
 
 Формы (на проводе camelCase):
 
 ```jsonc
 PoolState   { root, anchoredRoot | null, leafCount, nullifierCount, bundleCount, consumedDeposits }
-Accepted    { bundleIndex, firstLeaf, newRoot, bundleHash, nullifiers[], commitments[], payout?: { destination, amount } }
+Accepted    { bundleIndex, firstLeaf, newRoot, bundleHash, nullifiers[], commitments[], fee, payout?: { destination, amount } }
+FeeReport   { shieldBps, unshieldBps, treasury | null, accrued, swept, available }
 кворум      { memoHex, anchorTx, payoutTx | null, payoutBlob | null, payoutError | null, signers: [rAddr…], refusals: [string…] }
 RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, leafIndex, bundleIndex, timestamp, spent, recipient? }] }
 ```
@@ -56,6 +60,14 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
   координатору (`/endorse` идемпотентен, сайдкары подпишут заново). Не показывать «оплачено», пока
   нет `payoutTx`.
 - Суммы — в **дропах** (числа в `Accepted.payout.amount`, строки в полях XRPL).
+- **Протокольная комиссия (настраивается на сервере, UI только показывает).** `GET /config.fees`
+  даёт ставки в базисных пунктах. **Shield:** депозит — брутто-сумма, которую ввёл пользователь; UI
+  обязан построить ноту на `gross − floor(gross · shieldBps / 10000)` и внести `gross` — нота на
+  любую другую сумму отвергается с 422 (`delivered == value_balance`). **Unshield:** нота сжигается на
+  введённую сумму; `payout.amount` в ответе — нетто, которое получит адресат
+  (`gross − floor(gross · unshieldBps / 10000)`); показывать обе. **Переводы бесплатны.**
+  `Accepted.fee` — комиссия, взятая кворумом, в дропах. В UI комиссия не настраивается, не
+  редактируется и не платится отдельно; казна публична, весь учёт комиссий проверяем по леджеру.
 - **Ключ просмотра — это авторизация для `/audit/reveal`**, он раскрывает всю историю держателя
   (только чтение, ничего более). UI отправляет его только тому координатору, которого выбрал
   пользователь, по настроенному пользователем URL, и предупреждает перед отправкой; никогда не
@@ -136,6 +148,8 @@ cd backend/quorum && POOL=<pool> COORDINATOR_URL=http://<host>:8787 CLI=../../ta
   меняется путь доверия (что проверяет узел, что подписывает сайдкар), сначала нужно решение аудитора
   по срезу; чистое изменение формы API — однострочное FYI аудитору.
 - Контракт выше заморожен до конца хакатона, если оба лида не договорятся об ином в PR.
+- 2026-10-11: добавлена протокольная комиссия (`Accepted.fee`, нетто `payout.amount`,
+  `GET /config.fees`, `GET /fees`, `POST /fees/sweep`); UI строит ноту shield за вычетом комиссии (§2).
 
 ## 6a. Прототип (2026-10-10)
 

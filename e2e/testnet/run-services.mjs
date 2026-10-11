@@ -6,6 +6,8 @@
 //   shield      wallet builds → deposit Payment with memo = bundle hash → POST coordinator /submit/shield
 //               (coordinator's node validates the deposit; every signer's node re-validates it before endorsing)
 //   transfer    POST /submit/transfer — only the anchor memo reaches the ledger
+//   fees        shield credited net of the shield fee, unshield paid net; all nodes accrue the same; a
+//               2-of-3 sweep moves fees to the treasury; sidecars refuse excess / misdirected sweeps
 //   unshield    POST /submit/unshield — anchor then 2-of-3 payout to a fresh address; the multisigned
 //               payout blob comes back (resubmittable recovery path)
 //   negatives   a sidecar refuses: tampered anchor memo, re-pointed/inflated payout, a tx from another
@@ -84,8 +86,13 @@ async function main() {
     const aliceInfo = alice("init"), bobInfo = bob("init");
     await syncLog(C);
 
-    // ---- 1. shield through the coordinator
-    const built = alice("build-shield", DEPOSIT_DROPS, `${DIR}/shield.json`, LOG);
+    // ---- 1. shield through the coordinator. Protocol fee (Railgun's model): the deposit is gross,
+    //      the note is credited net of the shield fee the nodes take; unshields pay out net too.
+    const cfg = await http("GET", `${C}/config`);
+    assert(cfg.fees && cfg.fees.treasury === config.treasury && cfg.fees.shieldBps === config.fees.shieldBps, `config fees ${JSON.stringify(cfg.fees)}`);
+    const feeOf = (drops, bps) => String(Math.floor((Number(drops) * bps) / 10000));
+    const SHIELD_FEE = feeOf(DEPOSIT_DROPS, cfg.fees.shieldBps), NET = String(Number(DEPOSIT_DROPS) - Number(SHIELD_FEE));
+    const built = alice("build-shield", NET, `${DIR}/shield.json`, LOG);
     const depositHash = await pay(client, aliceXrpl, { TransactionType: "Payment", Destination: config.pool, Amount: DEPOSIT_DROPS, Memos: [memoOf(MEMO_SHIELD, built.bundleHash)] });
     link("deposit alice → pool (memo = bundle hash)", depositHash);
     const shieldRecord = JSON.parse(readFileSync(`${DIR}/shield.json`, "utf8"));
@@ -100,6 +107,7 @@ async function main() {
       catch (e) { if (!/standby/.test(e.message)) throw e; await new Promise((r) => setTimeout(r, 2000)); }
     }
     assert(s1, "shield still refused 60 s after the deposit");
+    assert(String(s1.fee) === SHIELD_FEE, `shield fee ${s1.fee} ≠ ${SHIELD_FEE}`);
     link("anchor after shield (2-of-3 multisig)", s1.anchorTx);
     assert(s1.signers.length === 2 && s1.refusals.length === 0, `expected 3/3 endorsements, got refusals ${JSON.stringify(s1.refusals)}`);
     step("shield accepted by the coordinator's node, endorsed by all signer nodes, anchored by the quorum", { root: s1.newRoot.slice(0, 16) + "…" });
@@ -124,7 +132,7 @@ async function main() {
 
     // ---- 2. transfer
     await syncLog(C);
-    alice("build-transfer", bobInfo.address, DEPOSIT_DROPS, `${DIR}/transfer.json`, LOG);
+    alice("build-transfer", bobInfo.address, NET, `${DIR}/transfer.json`, LOG);
     const seqBefore = (await client.request({ command: "account_info", account: config.pool })).result.account_data.Sequence;
     const s2 = await http("POST", `${C}/submit/transfer`, { record: JSON.parse(readFileSync(`${DIR}/transfer.json`, "utf8")) });
     link("anchor after transfer", s2.anchorTx);
@@ -136,7 +144,9 @@ async function main() {
     //      payout blob comes back so the client could resubmit it had the payout failed after the
     //      anchor landed (note spent, user unpaid) — the documented recovery path.
     await syncLog(C);
-    const UNSHIELD_1 = xrpToDrops(10), UNSHIELD_2 = String(Number(DEPOSIT_DROPS) - Number(UNSHIELD_1));
+    const UNSHIELD_1 = xrpToDrops(10), UNSHIELD_2 = String(Number(NET) - Number(UNSHIELD_1));
+    const PAYOUT_1 = String(Number(UNSHIELD_1) - Number(feeOf(UNSHIELD_1, cfg.fees.unshieldBps)));
+    const PAYOUT_2 = String(Number(UNSHIELD_2) - Number(feeOf(UNSHIELD_2, cfg.fees.unshieldBps)));
     // A listed destination: refused by every node before the verifier even looks at the bundle.
     bob("build-unshield", UNSHIELD_1, eveXrpl.address, `${DIR}/unshield-eve.json`, LOG);
     await expectRefusal("unshield to a listed address", http("POST", `${C}/submit/unshield`, { record: JSON.parse(readFileSync(`${DIR}/unshield-eve.json`, "utf8")), destination: eveXrpl.address }), /screening list/);
@@ -151,7 +161,8 @@ async function main() {
     assert(s3.payoutTx && !s3.payoutError, `payout through the coordinator failed: ${s3.payoutError}`);
     link("payout #1 pool → bob's fresh address (coordinator, 2-of-3)", s3.payoutTx);
     const blob = decode(s3.payoutBlob);
-    assert(blob.Account === config.pool && blob.Destination === bobFresh.address && blob.Amount === UNSHIELD_1 && blob.Signers?.length === 2 && blob.LastLedgerSequence > 0, `payout blob is not the multisigned payout: ${JSON.stringify(blob)}`);
+    assert(blob.Account === config.pool && blob.Destination === bobFresh.address && blob.Amount === PAYOUT_1 && blob.Signers?.length === 2 && blob.LastLedgerSequence > 0, `payout blob is not the net multisigned payout (${PAYOUT_1}): ${JSON.stringify(blob)}`);
+    assert(String(s3.fee) === feeOf(UNSHIELD_1, cfg.fees.unshieldBps) && String(s3.payout.amount) === PAYOUT_1, `unshield fee/payout ${s3.fee}/${s3.payout.amount}`);
     const resubmit = await client.request({ command: "submit", tx_blob: s3.payoutBlob });
     assert(/^(tefPAST_SEQ|tefALREADY|tesSUCCESS)$/.test(resubmit.result.engine_result), `resubmitting the landed payout blob: ${resubmit.result.engine_result}`);
     step("unshield #1 through the coordinator: anchored, paid 2-of-3, payout blob returned and resubmittable", { resubmit: resubmit.result.engine_result, payoutLls: blob.LastLedgerSequence - blob.Sequence > 0 });
@@ -207,29 +218,50 @@ async function main() {
     await expectRefusal("anchored with a root the tx does not carry", http("POST", `${q.nodeUrl(1)}/anchored`, { root: s3.newRoot, anchorTxHash: anchorRes.result.hash }), /does not carry the claimed root/);
     for (let i = 0; i <= 3; i++) await http("POST", `${q.nodeUrl(i)}/anchored`, { root: honest.newRoot, anchorTxHash: anchorRes.result.hash });
     const bal = (await client.request({ command: "account_info", account: bobFresh.address, ledger_index: "validated" })).result.account_data.Balance;
-    assert(bal === DEPOSIT_DROPS, `fresh address balance ${bal}, expected ${DEPOSIT_DROPS} (both payouts)`);
+    assert(bal === String(Number(PAYOUT_1) + Number(PAYOUT_2)), `fresh address balance ${bal}, expected ${Number(PAYOUT_1) + Number(PAYOUT_2)} (both payouts, net of fees)`);
     step("unshield #2: 3/3 signers endorsed on their own nodes, anchor + payout multisigned 2-of-3, funds arrived; nodes verified the anchor tx on the ledger");
+
+    // ---- 3b. protocol fees: accrued on every node, swept to the treasury 2-of-3; sidecars refuse
+    //      a sweep above what their own node accounted or to another destination.
+    const expectedAccrued = Number(SHIELD_FEE) + Number(feeOf(UNSHIELD_1, cfg.fees.unshieldBps)) + Number(feeOf(UNSHIELD_2, cfg.fees.unshieldBps));
+    for (let i = 0; i <= 3; i++) { const f = await http("GET", `${q.nodeUrl(i)}/fees`); assert(f.accrued === expectedAccrued && f.swept === 0, `node ${i} fees ${JSON.stringify(f)} ≠ accrued ${expectedAccrued}`); }
+    const sweepTx = await client.autofill({ TransactionType: "Payment", Account: config.pool, Destination: config.treasury, Amount: String(expectedAccrued) }, 3);
+    await expectRefusal("sidecar: sweep above the fees available", http("POST", `${S1}/sign`, { txs: [{ kind: "fee-sweep", tx: { ...sweepTx, Amount: String(expectedAccrued + 1) } }] }), /exceeds the/);
+    await expectRefusal("sidecar: sweep to a non-treasury destination", http("POST", `${S1}/sign`, { txs: [{ kind: "fee-sweep", tx: { ...sweepTx, Destination: aliceXrpl.address } }] }), /not the treasury/);
+    const treasuryBefore = Number((await client.request({ command: "account_info", account: config.treasury, ledger_index: "validated" })).result.account_data.Balance);
+    const sw = await http("POST", `${C}/fees/sweep`, {});
+    assert(sw.amount === expectedAccrued && sw.tx && sw.recorded === 4, `sweep ${JSON.stringify(sw)}`);
+    link("fee sweep pool → treasury (2-of-3)", sw.tx);
+    const treasuryAfter = Number((await client.request({ command: "account_info", account: config.treasury, ledger_index: "validated" })).result.account_data.Balance);
+    assert(treasuryAfter - treasuryBefore === expectedAccrued, `treasury +${treasuryAfter - treasuryBefore} ≠ ${expectedAccrued}`);
+    for (let i = 0; i <= 3; i++) { const f = await http("GET", `${q.nodeUrl(i)}/fees`); assert(f.swept === expectedAccrued && f.available === 0, `node ${i} after sweep ${JSON.stringify(f)}`); }
+    await expectRefusal("sweep again with nothing available", http("POST", `${C}/fees/sweep`, {}), /nothing to sweep/);
+    step("protocol fees: accrued identically on all nodes, swept to the treasury 2-of-3, sidecars refused excess and misdirected sweeps", { accruedDrops: expectedAccrued });
 
     // ---- 4. reveal via the coordinator
     const reveal = await http("POST", `${C}/audit/reveal`, { viewingKey: bobInfo.viewingKey });
-    assert(reveal.balance === 0 && reveal.notes.length === 2 && reveal.notes.every((n) => n.spent), `auditor should see bob's two spent notes (25 in, 15 change): ${JSON.stringify(reveal.notes)}`);
+    assert(reveal.balance === 0 && reveal.notes.length === 2 && reveal.notes.every((n) => n.spent), `auditor should see bob's two spent notes (net in, change): ${JSON.stringify(reveal.notes)}`);
     step("auditor reveal (bob) through the coordinator", { balance: reveal.balance });
 
     // ---- 5. a new node joins from the ledger with --rebuild (scanner + rebuild_checked). First the
     //      custody gate: a node configured for a quorum the ledger does not show refuses to start.
     const signerAddrs = config.signers.map((s) => s.address).join(",");
     const wrong = spawnSync(NODE_BIN, ["--listen", "127.0.0.1:7398", "--state", `${DIR}/wrong.verifier-state.json`, "--xrpl-rpc", XRPL_RPC, "--pool", config.pool, "--signers", signerAddrs, "--quorum", "3"], { encoding: "utf8", timeout: 60000 });
+    const noTreasury = spawnSync(NODE_BIN, ["--listen", "127.0.0.1:7398", "--state", `${DIR}/wrong.verifier-state.json`, "--xrpl-rpc", XRPL_RPC, "--pool", config.pool, "--signers", signerAddrs, "--quorum", "2", "--fee-shield-bps", "25"], { encoding: "utf8", timeout: 60000 });
+    assert(noTreasury.status !== 0 && /fee-treasury/.test(noTreasury.stderr), `a fee without a treasury must refuse to start: ${noTreasury.stderr}`);
     assert(wrong.status !== 0 && /custody/.test(wrong.stderr) && /SignerQuorum is 2, expected 3/.test(wrong.stderr), `node with the wrong quorum must refuse to start: ${wrong.status} ${wrong.stderr}`);
     const stranger = spawnSync(NODE_BIN, ["--listen", "127.0.0.1:7398", "--state", `${DIR}/wrong.verifier-state.json`, "--xrpl-rpc", XRPL_RPC, "--pool", config.pool, "--signers", `${aliceXrpl.address},${config.signers[1].address},${config.signers[2].address}`, "--quorum", "2"], { encoding: "utf8", timeout: 60000 });
     assert(stranger.status !== 0 && /differ from the configured/.test(stranger.stderr), `node with a foreign signer set must refuse to start: ${stranger.stderr}`);
     step("custody gate: nodes configured for another quorum or signer set refuse to start");
-    const newNode = spawn(NODE_BIN, ["--listen", "127.0.0.1:7399", "--state", `${DIR}/newnode.verifier-state.json`, "--xrpl-rpc", XRPL_RPC, "--pool", config.pool, "--signers", signerAddrs, "--quorum", String(config.quorum), "--screening-list", SCREENING_LIST, "--screening-standby-ledgers", String(STANDBY), "--mirror", `${q.nodeUrl(0)}/log`, "--rebuild"], { stdio: ["ignore", "ignore", "pipe"] });
+    const newNode = spawn(NODE_BIN, ["--listen", "127.0.0.1:7399", "--state", `${DIR}/newnode.verifier-state.json`, "--xrpl-rpc", XRPL_RPC, "--pool", config.pool, "--signers", signerAddrs, "--quorum", String(config.quorum), "--screening-list", SCREENING_LIST, "--screening-standby-ledgers", String(STANDBY), "--fee-shield-bps", String(config.fees.shieldBps), "--fee-unshield-bps", String(config.fees.unshieldBps), "--fee-treasury", config.treasury, "--mirror", `${q.nodeUrl(0)}/log`, "--rebuild"], { stdio: ["ignore", "ignore", "pipe"] });
     let newNodeErr = ""; newNode.stderr.on("data", (d) => { newNodeErr += d.toString(); });
     let st = null;
     for (let t = 0; t < 150 && !st; t++) { try { st = await http("GET", "http://127.0.0.1:7399/state"); } catch { await new Promise((r) => setTimeout(r, 200)); } }
     assert(st, `new node did not come up: ${newNodeErr}`);
     const coordState = await http("GET", `${C}/state`);
     assert(st.root === coordState.root && st.bundleCount === 4 && st.consumedDeposits === 1 && st.anchoredRoot === coordState.root, `new node state differs: ${JSON.stringify(st)} vs ${JSON.stringify(coordState)}`);
+    const newFees = await http("GET", "http://127.0.0.1:7399/fees");
+    assert(newFees.accrued === expectedAccrued && newFees.swept === expectedAccrued, `new node fee ledger ${JSON.stringify(newFees)} (replayed from memos, deposits and the sweep on the ledger)`);
     newNode.kill("SIGTERM");
     step("new node rebuilt from account_tx anchor memos + mirror with every deposit re-validated; root equals the quorum's", { bundles: st.bundleCount });
     // ---- 6. the replayable screening audit: from the public log + ledger, no listed party inside.

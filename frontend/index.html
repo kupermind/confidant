@@ -143,7 +143,7 @@
       <div id="tab-shield">
         <label for="shield-amount">Amount (XRP) to move into the pool</label>
         <input id="shield-amount" inputmode="decimal" placeholder="25">
-        <p class="hint">Your XRPL account pays the pool account; the memo commits to the bundle built first. Inside the pool the amount becomes a private note.</p>
+        <p class="hint">Your XRPL account pays the pool account; the memo commits to the bundle built first. Inside the pool the amount becomes a private note<span id="shield-fee-hint"></span>.</p>
         <div class="actions"><button class="primary" id="btn-shield">Shield</button></div>
         <div class="steps" id="steps-shield">
           <div class="step"><b>1 · prove</b>build the bundle (~20 s in the browser)</div>
@@ -177,7 +177,7 @@
           <button class="small" id="btn-fresh">use a fresh address</button>
           <button class="small ghost" id="btn-own">use my XRPL account</button>
         </div>
-        <p class="hint">The quorum anchors the spend first, then pays the destination from the pool account. A fresh address breaks the link to your deposit; a new account needs at least the reserve (1 XRP).</p>
+        <p class="hint">The quorum anchors the spend first, then pays the destination from the pool account<span id="unshield-fee-hint"></span>. A fresh address breaks the link to your deposit; a new account needs at least the reserve (1 XRP).</p>
         <div class="actions"><button class="primary" id="btn-unshield">Unshield</button></div>
         <div class="steps" id="steps-unshield">
           <div class="step"><b>1 · prove</b>build the bundle</div>
@@ -227,6 +227,10 @@
     del(k) { try { localStorage.removeItem("confidant." + k); } catch {} },
   };
   const fmt = (drops) => (Number(drops) / DROPS).toLocaleString("en-US", { maximumFractionDigits: 6 });
+  // Protocol fee (server policy, read from /api/config): a share of every shield and unshield, in
+  // basis points; the note is credited net of the shield fee, the payout is net of the unshield fee.
+  const feeOf = (drops, bps) => Math.floor((Number(drops) * (bps ?? 0)) / 10000);
+  const pct = (bps) => `${(bps / 100).toLocaleString("en-US", { maximumFractionDigits: 4 })}%`;
   const toDrops = (s) => { const n = Number(String(s).trim()); if (!Number.isFinite(n) || n <= 0) throw new Error("enter a positive amount"); return String(Math.round(n * DROPS)); };
   const short = (h) => h ? h.slice(0, 10) + "…" + h.slice(-6) : "—";
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -253,12 +257,12 @@
   const mock = (() => {
     let bundles = 12, balance = 0, notes = [];
     return {
-      config: async () => ({ network: "testnet (demo data)", explorer: "https://testnet.xrpl.org", xrplWs: null, pool: "r45VYa4BuuKYFTbiLzomvLWTLjpg15bJcH", quorum: 2, signers: 3 }),
+      config: async () => ({ network: "testnet (demo data)", explorer: "https://testnet.xrpl.org", xrplWs: null, pool: "r45VYa4BuuKYFTbiLzomvLWTLjpg15bJcH", quorum: 2, signers: 3, fees: { shieldBps: 25, unshieldBps: 25, treasury: "rTreasuryDemo" } }),
       state: async () => ({ bundleCount: bundles, anchoredRoot: fakeHex(64) }),
       createWallet: async () => ({ id: fakeHex(32), address: fakeHex(86), viewingKey: fakeHex(192), balance: 0, synced: bundles }),
       wallet: async () => ({ balance, synced: bundles }),
       build: async (_id, op, body) => { await sleep(900); return { record: { op, _amount: body.amount }, bundleHash: fakeHex(64) }; },
-      submit: async (op, body) => { await sleep(1400); bundles++; const amt = Number(body.record?._amount ?? 0); if (op === "shield") { balance += amt; notes.push({ direction: "incoming", amount: amt, spent: false }); } if (op === "transfer" || op === "unshield") { balance -= amt; } return { newRoot: fakeHex(64), anchorTx: fakeHex(64).toUpperCase(), payoutTx: op === "unshield" ? fakeHex(64).toUpperCase() : null, signers: ["rA", "rB"] }; },
+      submit: async (op, body) => { await sleep(1400); bundles++; const amt = Number(body.record?._amount ?? 0); if (op === "shield") { balance += amt; notes.push({ direction: "incoming", amount: amt, spent: false }); } if (op === "transfer" || op === "unshield") { balance -= amt; } return { newRoot: fakeHex(64), anchorTx: fakeHex(64).toUpperCase(), payoutTx: op === "unshield" ? fakeHex(64).toUpperCase() : null, payout: op === "unshield" ? { amount: amt - Math.floor(amt * 25 / 10000), destination: body.destination } : undefined, signers: ["rA", "rB"] }; },
       reveal: async () => ({ balance, notes }),
     };
   })();
@@ -384,14 +388,16 @@
       if (!walletReady) throw new Error("the wallet is still preparing");
       if (!store.get("xrpl")) throw new Error("fund your XRPL account first (faucet)");
       const drops = toDrops($("shield-amount").value);
+      const fee = feeOf(drops, cfg.fees?.shieldBps), net = Number(drops) - fee;
+      if (net <= 0) throw new Error("amount too small for the fee");
       busy(btn, true); setMsg("msg-shield", "");
-      setSteps("steps-shield", 0); const built = await wbFor(w).build(w, "shield", { amount: Number(drops) });
+      setSteps("steps-shield", 0); const built = await wbFor(w).build(w, "shield", { amount: net });
       setSteps("steps-shield", 1); const depositTxHash = await deposit(drops, built.bundleHash);
       setSteps("steps-shield", 2);
       const acc = await submitWithStandby("shield", { record: built.record, depositTxHash }, (m) => setMsg("msg-shield", `<span class="spin"></span>${m} — waiting`, "warn"));
       setSteps("steps-shield", 2, true);
-      setMsg("msg-shield", `Shielded ${fmt(drops)} XRP. ${link("deposit", depositTxHash)} · ${link("anchor", acc.anchorTx)} · signed by ${acc.signers?.length ?? "k"} of ${cfg.signers}`, "ok");
-      addActivity({ type: "shield", text: `${fmt(drops)} XRP into the pool`, links: [["deposit", depositTxHash], ["anchor", acc.anchorTx]] });
+      setMsg("msg-shield", `Shielded ${fmt(drops)} XRP (note ${fmt(net)} XRP after the ${pct(cfg.fees?.shieldBps ?? 0)} fee). ${link("deposit", depositTxHash)} · ${link("anchor", acc.anchorTx)} · signed by ${acc.signers?.length ?? "k"} of ${cfg.signers}`, "ok");
+      addActivity({ type: "shield", text: `${fmt(drops)} XRP into the pool (note ${fmt(net)} XRP)`, links: [["deposit", depositTxHash], ["anchor", acc.anchorTx]] });
     } catch (e) { setMsg("msg-shield", e.message, "err"); }
     finally { busy(btn, false); refreshWallet(); refreshStatus(); }
   }
@@ -423,8 +429,8 @@
       setSteps("steps-unshield", 1); const acc = await be.submit("unshield", { record: built.record, destination });
       setSteps("steps-unshield", 2, !!acc.payoutTx);
       if (acc.payoutError) setMsg("msg-unshield", `Anchored, but the payout failed on the ledger: ${acc.payoutError}. The signed payout can be resubmitted; the note is already spent.`, "warn");
-      else setMsg("msg-unshield", `Withdrew ${fmt(drops)} XRP to ${destination}. ${link("anchor", acc.anchorTx)} · ${link("payout", acc.payoutTx)}`, "ok");
-      addActivity({ type: "unshield", text: `${fmt(drops)} XRP to ${destination}`, links: [["anchor", acc.anchorTx], ["payout", acc.payoutTx]] });
+      else setMsg("msg-unshield", `Withdrew ${fmt(drops)} XRP; ${destination} receives ${fmt(acc.payout?.amount ?? Number(drops) - feeOf(drops, cfg.fees?.unshieldBps))} XRP after the ${pct(cfg.fees?.unshieldBps ?? 0)} fee. ${link("anchor", acc.anchorTx)} · ${link("payout", acc.payoutTx)}`, "ok");
+      addActivity({ type: "unshield", text: `${fmt(drops)} XRP to ${destination} (paid ${fmt(acc.payout?.amount ?? Number(drops) - feeOf(drops, cfg.fees?.unshieldBps))} XRP)`, links: [["anchor", acc.anchorTx], ["payout", acc.payoutTx]] });
     } catch (e) { setMsg("msg-unshield", e.message, "err"); }
     finally { busy(btn, false); refreshWallet(); refreshStatus(); }
   }
@@ -484,6 +490,8 @@
   (async () => {
     try { cfg = await be.config(); } catch (e) { cfg = { explorer: "https://testnet.xrpl.org", signers: "?", quorum: "?" }; }
     $("st-quorum").textContent = `${cfg.quorum} of ${cfg.signers}`;
+    if (cfg.fees?.shieldBps) $("shield-fee-hint").textContent = ` net of the ${pct(cfg.fees.shieldBps)} protocol fee`;
+    if (cfg.fees?.unshieldBps) $("unshield-fee-hint").textContent = `, net of the ${pct(cfg.fees.unshieldBps)} protocol fee`;
     $("st-pool-link").href = cfg.pool ? `${cfg.explorer}/accounts/${cfg.pool}` : "#";
     renderActivity(); await refreshStatus();
     const w = wallet();

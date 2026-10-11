@@ -23,7 +23,7 @@ Everything is JSON. Errors are `{ "error": "<message>", "details"?: {…} }` wit
 | Status | Meaning | Typical messages |
 |---|---|---|
 | 400 | malformed request or a core limit | zero amount, too many outputs, bad hex, missing fields |
-| 409 | refused by the verifiers | nullifier already spent (replay / double spend), memo mismatch, unknown anchor, `only 1/3 signers endorsed (quorum 2)` |
+| 409 | refused by the verifiers | nullifier already spent (replay / double spend), memo mismatch, unknown anchor, `only 1/3 signers endorsed (quorum 2)`; fee sweep above the available fees / already recorded |
 | 422 | the ledger does not back the claim | deposit not validated / not to the pool / wrong amount / no `confidant/shield` memo; anchor tx does not carry the root |
 | 403 | refused by a node's screening policy (optional, per node) | `account r… is on the screening list` (final); `deposit … younger than the standby … retry at ledger N` (retry later) |
 | 502 | ledger RPC or a node unreachable | `txnNotFound <hash>` for a bogus deposit hash, `fetch failed` |
@@ -38,12 +38,16 @@ Everything is JSON. Errors are `{ "error": "<message>", "details"?: {…} }` wit
 | `POST /submit/transfer` | `{ record }` | `Accepted` + quorum fields |
 | `POST /submit/unshield` | `{ record, destination }` | `Accepted` (with `payout`) + quorum fields incl. `payoutTx` / `payoutBlob` |
 | `POST /audit/reveal` | `{ viewingKey }` | `RevealReport` |
+| `GET /config` | — | `{ network, explorer, xrplWs, pool, sink, quorum, signers, fees: { shieldBps, unshieldBps, treasury } }` — public facts the UI needs; no secrets |
+| `GET /fees` | — | `FeeReport` of the coordinator's node |
+| `POST /fees/sweep` | `{ amount? }` (drops; default: everything available) | `{ amount, tx, treasury, recorded, refusals }` — operator call, k-of-N Payment pool → treasury |
 
 Shapes (camelCase on the wire):
 
 ```jsonc
 PoolState   { root, anchoredRoot | null, leafCount, nullifierCount, bundleCount, consumedDeposits }
-Accepted    { bundleIndex, firstLeaf, newRoot, bundleHash, nullifiers[], commitments[], payout?: { destination, amount } }
+Accepted    { bundleIndex, firstLeaf, newRoot, bundleHash, nullifiers[], commitments[], fee, payout?: { destination, amount } }
+FeeReport   { shieldBps, unshieldBps, treasury | null, accrued, swept, available }
 quorum      { memoHex, anchorTx, payoutTx | null, payoutBlob | null, payoutError | null, signers: [rAddr…], refusals: [string…] }
 RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, leafIndex, bundleIndex, timestamp, spent, recipient? }] }
 ```
@@ -55,6 +59,14 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
   `LastLedgerSequence`, or simply re-POST the same `{record, destination}` to any coordinator
   (`/endorse` is idempotent; the sidecars re-sign). Never show "paid" before `payoutTx` is set.
 - Amounts are **drops** (integers as numbers in `Accepted.payout.amount`, strings in XRPL fields).
+- **Protocol fee (set on the server, shown by the UI).** `GET /config.fees` gives the rates in basis
+  points. **Shield:** the deposit is the gross amount the user typed; the UI must build the note for
+  `gross − floor(gross · shieldBps / 10000)` and deposit `gross` — a note built for any other amount is
+  refused with 422 (`delivered == value_balance`). **Unshield:** the note burns the amount the user
+  typed; `payout.amount` in the answer is the net amount the destination receives
+  (`gross − floor(gross · unshieldBps / 10000)`); show both. **Transfers are free.** `Accepted.fee` is
+  the fee the quorum took, in drops. Fees are never configured, shown as editable, or paid separately
+  in the UI; the treasury is public and the whole fee ledger is verifiable from the ledger.
 - **The viewing key is the authorization for `/audit/reveal`** and reveals that holder's whole history
   (read-only, nothing else). The UI sends it only to the coordinator the user chose, over the URL the
   user configured, and says so before sending; it never stores or forwards it elsewhere. CORS is `*`
@@ -133,6 +145,8 @@ cd backend/quorum && POOL=<pool> COORDINATOR_URL=http://<host>:8787 CLI=../../ta
   change touches a trust path (what a node verifies, what a sidecar signs) it needs an audit slice
   ruling first; a pure API-shape change gets a one-line FYI to the auditor.
 - The contract above is frozen for the hackathon unless both leads agree in a PR.
+- 2026-10-11: protocol fee added (`Accepted.fee`, net `payout.amount`, `GET /config.fees`,
+  `GET /fees`, `POST /fees/sweep`); the UI builds the shield note net of the fee (§2).
 
 ## 6a. The prototype (2026-10-10)
 

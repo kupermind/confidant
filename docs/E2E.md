@@ -83,7 +83,13 @@ shield is refused with 403 "standby" right after its deposit validates and accep
 caught up; a deposit from the listed account is refused with 403 at the coordinator's node; an
 unshield to the listed address is refused at the coordinator and by a signer sidecar's own node;
 the replayable screening audit (`backend/quorum/screening/audit.mjs`) over the public log reports
-clean.
+clean. **Protocol fee** (the harness pool runs 25 bps on shield and unshield): the shield note is
+built net and the answer's `fee` equals the policy; the two payouts land net on the fresh address;
+every node reports the same accrued fees; a sidecar refuses a sweep above the available fees and a
+sweep to a non-treasury destination; `POST /fees/sweep` moves the accrued fees pool → treasury 2-of-3
+and every node, having read the Payment from the ledger, reports `swept` = accrued and `available` = 0;
+a second sweep is refused; the rebuilt node reports the same fee ledger; a node started with a fee
+rate but no treasury refuses to start.
 
 ```bash
 cargo build --release --example cli --bin confidant-node

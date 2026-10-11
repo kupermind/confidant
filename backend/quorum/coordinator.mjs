@@ -81,7 +81,26 @@ async function anchorThroughQuorum(accepted, submission) {
 
 await serve(Number(env.PORT), {
   // READ-ONLY and PUBLIC FACTS ONLY (pool, sink, k-of-N, ws, explorer): nothing node-internal or secret may ever be added here.
-  "GET /config": async () => ({ network: env.NETWORK ?? "testnet", explorer: env.EXPLORER ?? "https://testnet.xrpl.org", xrplWs: XRPL_WS, pool: env.POOL, sink: env.SINK, quorum: QUORUM, signers: SIGNERS.length }),
+  "GET /config": async () => { const f = await http("GET", `${env.NODE_URL}/fees`); return { network: env.NETWORK ?? "testnet", explorer: env.EXPLORER ?? "https://testnet.xrpl.org", xrplWs: XRPL_WS, pool: env.POOL, sink: env.SINK, quorum: QUORUM, signers: SIGNERS.length, fees: { shieldBps: f.shieldBps, unshieldBps: f.unshieldBps, treasury: f.treasury } }; },
+  "GET /fees": async () => http("GET", `${env.NODE_URL}/fees`),
+  // Moves accrued protocol fees from the pool account to the treasury: a multisigned Payment every
+  // signer checks against its OWN node's fee ledger, then each node records the sweep it verified.
+  "POST /fees/sweep": async (body) => {
+    const fees = await http("GET", `${env.NODE_URL}/fees`);
+    if (!fees.treasury) throw refuse(409, "no treasury configured");
+    const amount = Number(body?.amount ?? fees.available);
+    if (!Number.isInteger(amount) || amount <= 0) throw refuse(409, `nothing to sweep (available ${fees.available} drops)`);
+    if (amount > fees.available) throw refuse(409, `amount ${amount} exceeds the ${fees.available} drops available`);
+    const tx = await client.autofill({ TransactionType: "Payment", Account: env.POOL, Destination: fees.treasury, Amount: String(amount) }, SIGNERS.length);
+    tx.LastLedgerSequence = (await client.getLedgerIndex()) + ANCHOR_LLS_OFFSET;
+    const results = await Promise.allSettled(SIGNERS.map((s) => http("POST", `${s}/sign`, { txs: [{ kind: "fee-sweep", tx }] })));
+    const signed = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+    const refusals = results.filter((r) => r.status === "rejected").map((r) => r.reason?.message ?? String(r.reason));
+    if (signed.length < QUORUM) throw refuse(409, `only ${signed.length}/${SIGNERS.length} signers agreed to the sweep (quorum ${QUORUM})`, { refusals });
+    const hash = await submitMultisigned(signed.slice(0, QUORUM).map((s) => s.blobs[0].tx_blob), "fee sweep");
+    const recorded = await Promise.allSettled(NODES.map((n) => http("POST", `${n}/fees/swept`, { txHash: hash })));
+    return { amount, tx: hash, treasury: fees.treasury, recorded: recorded.filter((r) => r.status === "fulfilled").length, refusals };
+  },
   "GET /state": async () => http("GET", `${env.NODE_URL}/state`),
   "GET /log": async (_b, url) => http("GET", `${env.NODE_URL}/log?from=${url.searchParams.get("from") ?? 0}`),
   "POST /audit/reveal": async (body) => http("POST", `${env.NODE_URL}/audit/reveal`, body),

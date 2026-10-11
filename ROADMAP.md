@@ -25,7 +25,7 @@ XRPL integration built on-site. Say so on stage.
 | **v2 trust-minimized architecture** (client-side keys/proving, state on ledger, k-of-N SignerList, permissionless relaying) | ✅ core + harness (PR #8); ✅ quorum services (PR #11); ✅ deployed on a testnet host; ⬜ user-facing layer — §5 | `SPEC.md` §4–5, §16; `docs/audit/`; `docs/API-BOUNDARY.md` |
 | Reused circuit validated (M0 gate) | ✅ Zcash Orchard Action circuit unchanged, `orchard` 0.15.5 / `orchard_v2` / `FixedPostNu6_2` | `core/src/verifier.rs` (`BUNDLE_VERSION`) |
 | Core: `Wallet` + `Verifier`, deposit binding, anchor memos, `rebuild_checked`, `endorse`, reveal, key-free snapshots | ✅ | `core/` |
-| Tests | ✅ core: 29 tests, 27 guards mutation-tested, **100% line coverage, enforced in CI**; node: 8 tests against a fake ledger, 25 guards mutation-tested, 95% gate (≈ 98.7%); sidecar guard: node:test suite, 20 guards mutation-tested | `core/tests/`, `backend/node/tests/`, `backend/quorum/test/`, CI `coverage` + `quorum` jobs |
+| Tests | ✅ core: 29 tests, 27 guards mutation-tested, **100% line coverage, enforced in CI**; node: 10 tests against a fake ledger, 25 + fee guards mutation-tested, 95% gate (≈ 98%); sidecar guard: node:test suite (14 tests incl. `fee-sweep`), 20 guards mutation-tested | `core/tests/`, `backend/node/tests/`, `backend/quorum/test/`, CI `coverage` + `quorum` jobs |
 | CI | ✅ fmt / clippy `-D warnings` / tests (release) / coverage gates (core 100%, node 95%) / sidecar unit tests / hygiene (no key-shaped files, label markers in SPEC/README/SPEC.ru, allow-listed over-claim grep) / manual testnet e2e (both harnesses) | `.github/workflows/check.yml` |
 | Security review | ✅ v1 DESIGN-PASS + IMPL-PASS (+2 slice PASSes); v2 core DESIGN-PASS + IMPL-PASS; quorum services DESIGN-PASS (C1–C5, all implemented) + IMPL-PASS; deployment manifests passed a security-delta look | `docs/audit/INDEX.md` |
 | Honest labels (v2 wording) | ✅ SPEC, SPEC.ru, README, crate docs | — |
@@ -33,6 +33,7 @@ XRPL integration built on-site. Say so on stage.
 | Core ↔ API contract, node-operator guide, **UI ↔ backend boundary** | ✅ | `docs/CORE-API.md`, `docs/NODE-OPERATOR.md`, `docs/API-BOUNDARY.md` (+ RU) |
 | **Quorum services**: Rust verifier node (`/submit/*`, `/endorse` idempotent, ledger-verified `/anchored`, `/log`, custody gate + scanner + `rebuild_checked` on start), Node signer sidecars (sign only what their own node endorsed; Fee/Sequence/LastLedgerSequence pinned from their own ledger reads), coordinator (k-of-N multisig, anchor then payout, payout blob returned) | ✅ built, audited and merged 2026-10-05 (PR #11); ✅ **deployed** the same night on a testnet host as systemd units behind nginx (`backend/deploy/`), 3 signers / quorum 2, smoke cycle green over the public address | `backend/`, `backend/deploy/README.md`, `docs/E2E.md` §2b |
 | **Boundary screening** (optional per-node policy): listed depositors / destinations and too-fresh deposits refused at submit and endorse (403); OFAC XRP list fetcher; replayable audit over the public log | ✅ built, audited (CONDITIONAL → IMPL-PASS, canonical addresses) and merged 2026-10-10 (PR #20); deployed on the testnet quorum with the OFAC XRP list and a 2-ledger standby | `backend/node/src/screening.rs`, `backend/quorum/screening/`, `SPEC.md` §6, `docs/audit/RESP-screening-gate-2026-10-10.md` |
+| **Protocol fee** (Railgun's economic model, server-side policy): configurable bps on shield and unshield, transfers free; shield credited net (deposit bound with `delivered = gross − fee`), payout net; per-node fee ledger replayable from the ledger; k-of-N sweep to a treasury the sidecars verify against their own node | ✅ built 2026-10-11 (branch `protocol-fees`, audit slice requested); UI shows the fee and builds the net note | `backend/node/src/fees.rs`, `SPEC.md` §6–7, `docs/API-BOUNDARY.md` §2 |
 | Front-end: UI over the coordinator, deposit from the user's XRPL account, explorer links | ✅ **prototype** 2026-10-10: `frontend/index.html` (static) with the wallet **in the browser** (`frontend/wasm`, core → WebAssembly in a worker; keys and proofs never leave the page; ≈ 25 s key build + ≈ 20 s per proof, single-threaded) and the demo wallet service as fallback · ⬜ FE team polish (threads for faster proving, key caching); pre-population; demo + pitch | `frontend/`, `backend/wallet/`, `scripts/` |
 
 ---
@@ -83,6 +84,16 @@ XRPL integration built on-site. Say so on stage.
   as read by the sidecar itself, LastLedgerSequence present and bounded.
 - **Coordinator** (Node): holds nothing; ≥ k signatures, anchor first, then payout; returns the
   multisigned payout blob so a failed payout is recoverable by anyone (or by a replacement coordinator).
+- **Protocol fee** (2026-10-11, Railgun/Tornado economics on the operator's terms): `--fee-shield-bps`
+  / `--fee-unshield-bps` / `--fee-treasury` on every node (≤ 10 %, treasury mandatory when non-zero,
+  never settable from the UI). Shield notes are credited net — the wallet builds `gross − fee`, the
+  node binds the deposit with `delivered = gross − fee`; unshields pay out net and the sidecars pin
+  the net amount; transfers are free. Each node keeps a fee ledger (`accrued` / `swept` /
+  `available`, `GET /fees`) that `--rebuild` recomputes from the ledger; fees reach the treasury only
+  by an explicit k-of-N sweep (`POST /fees/sweep` on the coordinator; sidecar kind `fee-sweep` checked
+  against *its own* node's treasury and available amount; `POST /fees/swept` verified on the ledger,
+  once per hash). `setup-pool.mjs` funds the treasury (`FEE_SHIELD_BPS` / `FEE_UNSHIELD_BPS`, default
+  25 bps); the deploy env renderer passes `FEE_ARGS` to every node.
 - **Deployment** (`backend/deploy/`): systemd units per node/sidecar/coordinator under a dedicated
   user, nginx with CORS on one public port, env renderer from `config.json`; smoke client
   `backend/quorum/smoke.mjs`. Running on a testnet host since 2026-10-05 (details handed over out of band).
@@ -199,6 +210,20 @@ XRPL integration built on-site. Say so on stage.
    4. **Post-quantum note, for honesty:** their hash-based (WOTS) spending escape hatch is specific
       to Zcash transparent scripts; XRPL has no such opcode and Orchard notes are not post-quantum
       either. Out of scope.
+7. **Browser performance and demo readiness (taken over from the FE team 2026-10-11, so they can
+   focus on presentation and design).** In order: **multithreaded proving in the browser**
+   (`wasm-bindgen-rayon` over `orchard/multicore`, a SharedArrayBuffer worker pool; needs
+   `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: require-corp` on the
+   nginx UI site and a `--target web` build with atomics; goal: ≈ 20 s → a few seconds per proof on a
+   laptop; single-threaded fallback kept) · **proving-key caching** (build once, keep the
+   `ProvingKey` across the worker's life; persist the circuit's parameters in IndexedDB so the
+   ≈ 25 s key build happens once per browser, not per session) · **UX for waits** (honest step
+   timers, "what is happening" copy per step, disabled double submits, resumable payout from
+   `payoutBlob`, fee shown before confirm) · **pool pre-population** (`scripts/prepopulate.mjs`: N
+   faucet accounts shield fixed denominations through the coordinator, some transfer, honest note
+   that the anonymity set on stage is synthetic) · **demo script** (SPEC §10 rehearsed with v2
+   wording and the fee shown; timings measured on the demo laptop). Holder-side/UI work: no audit
+   slice, FYI to the auditor if the submitted record format ever changes.
 
 ## 5. To do — API/XRPL lead (user-facing layer, pitch)
 
@@ -211,10 +236,12 @@ already deployed (base URL and pool account handed over out of band).
    unshield / reveal buttons calling the coordinator; explorer links; the reveal JSON; the
    viewing-key warning (`docs/API-BOUNDARY.md` §2).
 2. **Pre-populate the pool** before the demo (many testnet accounts shield fixed denominations, some
-   transfer) so the anonymity set is believable; decide the denominations.
+   transfer) so the anonymity set is believable; decide the denominations. *Script moved to §4.7
+   (crypto/ZK lead, 2026-10-11); the FE team decides the denominations and the look.*
 3. **Demo script + pitch** (SPEC §10): rehearse the 45 seconds with the v2 wording (non-custodial
    notes, quorum can drain the pool account, internal graph hidden but not the endpoints, ZK first,
-   TEE a footnote). Bonus only if time: Proof-of-Innocence, FROST.
+   TEE a footnote, the protocol fee named as an operating fee). Bonus only if time: Proof-of-Innocence,
+   FROST. *Draft script and measured timings come from §4.7; the FE team owns presentation and design.*
 
 ## 5a. v2 — trust-minimized architecture (decided 2026-10-05, core + harness done the same day)
 
@@ -251,7 +278,12 @@ blind-sign (`Verifier::endorse`). Upside vs. Railgun: Halo 2 has no trusted setu
 - **Liveness** depends on k signers; on stage that is three sidecars + their nodes under systemd with
   `Restart=on-failure`. The restart path is exercised (state files restored, custody gate re-checked);
   a cold rebuild from the ledger (`--rebuild --mirror`) is tested in the services harness.
-- **Proving cost is fine** (≈ 0.9 s per 2-action bundle on the wallet side).
+- **Proving cost is fine** (≈ 0.9 s per 2-action bundle on the wallet side) — natively. In the browser
+  it is ≈ 20 s single-threaded today (§4.7).
+- **The protocol fee is an operating fee, not a privacy feature.** Rates and the treasury are public;
+  the treasury is an ordinary XRPL account under the same k-of-N as the pool, so the custody caveat
+  covers it too. Different fee flags on different nodes split the quorum (roots diverge) — one policy
+  per pool, changed between operations.
 
 ## 8. Working agreements
 
