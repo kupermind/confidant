@@ -282,8 +282,9 @@ blind-sign (`Verifier::endorse`). Upside vs. Railgun: Halo 2 has no trusted setu
   it is ≈ 20 s single-threaded today (§4.7).
 - **The protocol fee is an operating fee, not a privacy feature.** Rates and the treasury are public;
   the treasury is an ordinary XRPL account under the same k-of-N as the pool, so the custody caveat
-  covers it too. Different fee flags on different nodes split the quorum (roots diverge) — one policy
-  per pool, changed between operations.
+  covers it too. Different fee flags on different nodes split the quorum (roots diverge), and a rate change
+  breaks `--rebuild` for earlier shields — one policy per pool, fixed at genesis (fee epochs in the
+  memo would lift this; roadmap).
 
 ## 8. Working agreements
 

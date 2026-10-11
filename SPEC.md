@@ -337,7 +337,9 @@ payout. After validation `POST /fees/swept {txHash}` makes each node read the Pa
 ledger itself (validated, from the pool, to the canonical treasury, amount ≤ available, counted
 once per hash) and move it from `accrued` to `swept`. The fee ledger is **replayable**: `--rebuild`
 recomputes accruals from the deposit facts and the anchored unshields and the sweeps from the
-pool's `account_tx`, so a rebuilt node reports the same `accrued`/`swept`. Honest label: the fee
+pool's `account_tx`, so a rebuilt node reports the same `accrued`/`swept` — which also makes the policy a constant of the
+pool from its genesis (a rate change would bind earlier shields with the wrong net and make replay
+refuse; a fee epoch in the memo is roadmap). Honest label: the fee
 is a public, verifiable policy of the pool (every shield, unshield and sweep is on the ledger and
 in the log); it is not a privacy feature, and the treasury is an ordinary XRPL account under the
 same k-of-N as the pool account.

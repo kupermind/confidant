@@ -36,8 +36,9 @@ Every node logs `pool custody verified on the ledger: k-of-N SignerList, master 
 (the custody gate), then `fees: shield S bps, unshield U bps, treasury rT…; accrued/swept/available`
 (or `fees: OFF`). **Sweep accrued fees to the treasury** (k-of-N, verified on the ledger by every node):
 `curl -sX POST http://127.0.0.1:7900/fees/sweep -H 'content-type: application/json' -d '{}'`; check with
-`curl -s http://127.0.0.1:7900/fees`. Changing the rates = edit `config.json` (`fees`), re-render the
-env files and restart the whole target between operations (nodes with different rates diverge). Logs: `journalctl -u 'confidant-*' -f`. Restart everything:
+`curl -s http://127.0.0.1:7900/fees`. The rates are fixed at the pool's genesis: a pool whose shields were
+bound with one policy cannot be replayed under another, so new rates mean a new pool (`setup-pool.mjs` again,
+fresh state files). Logs: `journalctl -u 'confidant-*' -f`. Restart everything:
 `systemctl restart confidant.target`. The UI's base URL is `http://<host>:8787` (`docs/API-BOUNDARY.md`).
 
 **Browser wallet:** `cargo install wasm-pack` once, then `wasm-pack build frontend/wasm --target web --release --out-dir ../pkg`
