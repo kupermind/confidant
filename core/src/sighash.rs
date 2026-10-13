@@ -51,6 +51,33 @@ pub fn sighash(bundle_commitment: &[u8; 32], op: OpTag, external_ctx: &[u8]) -> 
     out
 }
 
+/// SPIKE: personalization of a proof-of-funds sighash. Never computed by any pool operation, so a
+/// proof-of-funds bundle's signatures verify under no pool sighash.
+pub const POF_PERSONALIZATION: &[u8; 16] = b"ConfidantPoF_v1_";
+
+/// SPIKE: proof-of-funds external context = len(challenge) ‖ challenge ‖ amount.
+pub fn pof_ctx(challenge: &[u8], amount: u64) -> Vec<u8> {
+    let mut v = Vec::with_capacity(12 + challenge.len());
+    v.extend_from_slice(&(challenge.len() as u32).to_le_bytes());
+    v.extend_from_slice(challenge);
+    v.extend_from_slice(&amount.to_le_bytes());
+    v
+}
+
+/// SPIKE: the sighash a proof-of-funds bundle is signed over.
+pub fn pof_sighash(bundle_commitment: &[u8; 32], ctx: &[u8]) -> [u8; 32] {
+    let hash = blake2b_simd::Params::new()
+        .hash_length(32)
+        .personal(POF_PERSONALIZATION)
+        .to_state()
+        .update(bundle_commitment)
+        .update(ctx)
+        .finalize();
+    let mut out = [0u8; 32];
+    out.copy_from_slice(hash.as_bytes());
+    out
+}
+
 /// External context of an unshield: the XRPL destination and the payout amount (which the
 /// verifier always derives from the bundle's own value balance).
 pub fn unshield_ctx(destination: &str, amount: u64) -> Vec<u8> {

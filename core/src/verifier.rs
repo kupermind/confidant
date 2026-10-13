@@ -17,7 +17,7 @@ use crate::error::Error;
 use crate::keys::fvk_from_hex;
 use crate::memo::AnchorMemo;
 use crate::record::{bundle_from_record, bundle_hash, record_from_bundle};
-use crate::sighash::{external_ctx, sighash, OpTag};
+use crate::sighash::{external_ctx, pof_ctx, pof_sighash, sighash, OpTag};
 use crate::tree::CommitmentTree;
 use crate::types::*;
 
@@ -288,6 +288,51 @@ impl Verifier {
             .verify(&sh, bundle.authorization().binding_signature())
             .map_err(|_| Error::InvalidBindingSignature)?;
         Ok(sh)
+    }
+
+    /// SPIKE: read-only check of a proof of funds against this verifier's state: the holder
+    /// controls unspent notes in this pool worth at least `amount`, and answered `challenge`.
+    /// Mutates nothing; the bundle is never applied.
+    pub fn verify_proof_of_funds(
+        &self,
+        record: &BundleRecord,
+        amount: u64,
+        challenge: &[u8],
+    ) -> Result<(), Error> {
+        let bundle = bundle_from_record(record, self.params.version)?;
+        let vb = *bundle.value_balance();
+        if amount == 0 || vb != amount as i64 {
+            return Err(Error::ValueBalance {
+                expected: amount as i64,
+                actual: vb,
+            });
+        }
+        if !self.tree.is_known_anchor(bundle.anchor()) {
+            return Err(Error::UnknownAnchor);
+        }
+        let mut seen = HashSet::with_capacity(bundle.actions().len());
+        for action in bundle.actions() {
+            let nf = action.nullifier().to_bytes();
+            if self.nullifiers.contains(&nf) || !seen.insert(nf) {
+                return Err(Error::DoubleSpend);
+            }
+        }
+        bundle
+            .verify_proof(self.params.vk())
+            .map_err(|_| Error::InvalidProof)?;
+        let commitment: [u8; 32] = bundle.commitment(TxVersion::V5)?.into();
+        let sh = pof_sighash(&commitment, &pof_ctx(challenge, amount));
+        for action in bundle.actions() {
+            action
+                .rk()
+                .verify(&sh, action.authorization())
+                .map_err(|_| Error::InvalidSpendAuth)?;
+        }
+        bundle
+            .binding_validating_key()
+            .verify(&sh, bundle.authorization().binding_signature())
+            .map_err(|_| Error::InvalidBindingSignature)?;
+        Ok(())
     }
 
     /// Shield-only preconditions on this verifier's own state: a deposit must be named and must
