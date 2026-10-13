@@ -56,12 +56,12 @@ on the ledger — transfers inside are free."
 
 | Step | single-threaded | N threads |
 |---|---|---|
-| proving keys (once per tab, in the background) | ≈ 25 s | 6.0 s (16 threads, 20-core laptop) |
-| shield proof | ≈ 20 s | 3.2 s |
-| deposit validated + anchor | 8–15 s | same |
-| transfer proof + anchor | ≈ 20 s + 4–8 s | 11 s wall |
-| unshield proof + anchor + payout | ≈ 20 s + 8–15 s | 20 s wall |
-| whole cycle (shield, transfer, unshield, reveal), headless Chrome | 136–236 s | 75 s |
+| proving keys (once per tab, in the background) | 12.1 s | 6.0 s (16 threads, 20-core laptop) |
+| shield proof | 16.2 s | 3.2 s |
+| deposit validated + anchor + standby | ≈ 25 s wall | same |
+| transfer proof + anchor | 23 s wall | 11 s wall |
+| unshield proof + anchor + payout | 31 s wall | 20 s wall |
+| whole cycle (shield, transfer, unshield, reveal), headless Chrome | 127 s | 75 s |
 
 Measured 2026-10-13 against the deployed testnet quorum from a laptop; re-measure on the demo
 machine (a 4-core laptop will land between the columns).
