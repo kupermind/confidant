@@ -20,10 +20,15 @@ timings are from a rehearsal on a laptop (see the table at the end); re-measure 
    XRPL testnet explorer on the pool account (`cfg.explorer/accounts/<pool>`), zoomed so the memo
    column is readable. A third tab with `?demo=1` is the fallback (simulated data, every button works
    offline).
-4. **Warm the wallet** in tab A: open it once, create or restore the browser wallet, let the
+4. **Open the UI as a secure context** so the multithreaded wallet is used: `https://` once the
+   site has a domain and a certificate, or until then an SSH tunnel from the demo laptop
+   (`ssh -N -L 8080:127.0.0.1:80 <host>`, then `http://localhost:8080/`). Over plain `http://<ip>/`
+   browsers ignore the COOP/COEP headers and the wallet silently runs on one thread (≈ 16 s per
+   proof instead of ≈ 3 s); the wallet card says which ("N threads").
+5. **Warm the wallet** in tab A: open it once, create or restore the browser wallet, let the
    "proving keys ready (N threads, X s)" line appear under the balance, fund from the faucet. Keys
    live in this tab's worker; do not close the tab.
-5. **A second wallet** (Bob) in another browser profile or on a second laptop, also warmed, its
+6. **A second wallet** (Bob) in another browser profile or on a second laptop, also warmed, its
    Orchard address copied to a sticky note.
 
 ## The 45 seconds
