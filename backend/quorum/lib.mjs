@@ -160,7 +160,7 @@ export const DEFAULT_PAYOUT_LLS_WINDOW = 600;
  * flight per state) and LastLedgerSequence (present and within a window — no blob that lives forever).
  */
 export function checkTxShape(kind, tx, {
-  pool, sink, memoHex, endorse, expectedSequence, ledgerIndex,
+  pool, sink, memoHex, endorse, expectedSequence, ledgerIndex, treasury, feesAvailable,
   maxFeeDrops = DEFAULT_MAX_FEE_DROPS, anchorLlsWindow = DEFAULT_ANCHOR_LLS_WINDOW, payoutLlsWindow = DEFAULT_PAYOUT_LLS_WINDOW,
 }) {
   if (tx?.TransactionType !== "Payment") throw refuse(409, `${kind}: not a Payment`);
@@ -178,6 +178,15 @@ export function checkTxShape(kind, tx, {
     if (!Array.isArray(tx.Memos) || tx.Memos.length !== 1) throw refuse(409, "anchor: exactly one memo required");
     const m = firstMemo(tx);
     if (m.type !== MEMO_ANCHOR || m.data !== memoHex.toLowerCase()) throw refuse(409, "anchor: memo is not the endorsed anchor memo");
+    return;
+  }
+  if (kind === "fee-sweep") {
+    // Moves accrued protocol fees to the treasury: only what THIS signer's own node has accounted.
+    if (!treasury) throw refuse(409, "fee-sweep: this signer's node has no treasury configured");
+    if (tx.Destination !== treasury) throw refuse(409, "fee-sweep: destination is not the treasury");
+    if (!/^[0-9]{1,15}$/.test(String(tx.Amount)) || Number(tx.Amount) <= 0) throw refuse(409, "fee-sweep: amount must be a positive drops amount");
+    if (Number(tx.Amount) > Number(feesAvailable ?? 0)) throw refuse(409, `fee-sweep: amount ${tx.Amount} exceeds the ${feesAvailable ?? 0} drops of fees available on this signer's node`);
+    if (tx.Memos && tx.Memos.length) throw refuse(409, "fee-sweep: unexpected memos");
     return;
   }
   if (kind === "payout") {
@@ -211,10 +220,11 @@ export function loadWallet(path) {
 // ---- pool setup ------------------------------------------------------------------------------
 /** Faucet-funds the pool and the anchor sink, generates N signer keys, installs the SignerList and
  *  disables the pool's master key. Writes keys 0600 under `dir`. Returns the config object. */
-export async function setupPool(client, { signers, quorum, dir }) {
+export async function setupPool(client, { signers, quorum, dir, feeShieldBps = 25, feeUnshieldBps = 25 }) {
   mkdirSync(dir, { recursive: true });
   const { wallet: pool } = await client.fundWallet();
   const { wallet: sink } = await client.fundWallet();
+  const { wallet: treasury } = await client.fundWallet(); // where protocol fees are swept to
   const signerWallets = Array.from({ length: signers }, () => Wallet.generate());
   const single = async (from, tx) => {
     const prepared = await client.autofill({ Account: from.address, ...tx });
@@ -227,8 +237,10 @@ export async function setupPool(client, { signers, quorum, dir }) {
     SignerEntries: signerWallets.map((w) => ({ SignerEntry: { Account: w.address, SignerWeight: 1 } })),
   });
   const dm = await single(pool, { TransactionType: "AccountSet", SetFlag: 4 });
+  writePrivate(`${dir}/treasury.key.json`, { address: treasury.address, seed: treasury.seed });
   const config = {
     pool: pool.address, sink: sink.address, quorum,
+    treasury: treasury.address, fees: { shieldBps: feeShieldBps, unshieldBps: feeUnshieldBps },
     signers: signerWallets.map((w, i) => {
       const keyFile = `${dir}/signer${i + 1}.key.json`;
       writePrivate(keyFile, { address: w.address, seed: w.seed });
@@ -258,6 +270,7 @@ export async function launchQuorum({ config, dir, nodeBin, xrplRpc, xrplWs, base
   for (let i = 0; i <= n; i++) {
     run(nodeBin, ["--listen", `127.0.0.1:${basePort + i}`, "--state", `${dir}/node${i}.verifier-state.json`, "--xrpl-rpc", xrplRpc, "--pool", config.pool,
       "--signers", config.signers.map((s) => s.address).join(","), "--quorum", String(config.quorum),
+      ...(config.fees && config.treasury ? ["--fee-shield-bps", String(config.fees.shieldBps ?? 0), "--fee-unshield-bps", String(config.fees.unshieldBps ?? 0), "--fee-treasury", config.treasury] : []),
       ...(screeningList ? ["--screening-list", screeningList] : []), ...(screeningStandbyLedgers > 0 ? ["--screening-standby-ledgers", String(screeningStandbyLedgers)] : [])]);
   }
   for (let i = 1; i <= n; i++) {

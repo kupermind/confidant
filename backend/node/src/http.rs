@@ -44,9 +44,10 @@ impl IntoResponse for ApiError {
                 | CoreError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
                 _ => StatusCode::CONFLICT,
             },
-            NodeError::Ledger(LedgerError::Deposit(_) | LedgerError::Anchor(_)) => {
-                StatusCode::UNPROCESSABLE_ENTITY
-            }
+            NodeError::Ledger(
+                LedgerError::Deposit(_) | LedgerError::Anchor(_) | LedgerError::Sweep(_),
+            ) => StatusCode::UNPROCESSABLE_ENTITY,
+            NodeError::Fee(_) => StatusCode::CONFLICT,
             NodeError::Ledger(_) => StatusCode::BAD_GATEWAY,
             NodeError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
             NodeError::Screened(_) => StatusCode::FORBIDDEN,
@@ -117,6 +118,13 @@ pub struct Reveal {
     pub viewing_key: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Swept {
+    /// Hash of the pool → treasury Payment; the node reads it from the ledger.
+    pub tx_hash: String,
+}
+
 pub fn router<L: Ledger + 'static>(node: Arc<Node<L>>) -> Router {
     Router::new()
         .route("/state", get(state::<L>))
@@ -127,6 +135,8 @@ pub fn router<L: Ledger + 'static>(node: Arc<Node<L>>) -> Router {
         .route("/endorse", post(endorse::<L>))
         .route("/anchored", post(anchored::<L>))
         .route("/audit/reveal", post(reveal::<L>))
+        .route("/fees", get(fees::<L>))
+        .route("/fees/swept", post(fee_swept::<L>))
         .with_state(node)
 }
 
@@ -177,6 +187,17 @@ async fn anchored<L: Ledger>(
     Json(b): Json<Anchored>,
 ) -> Result<confidant_core::PoolState> {
     Ok(Json(n.anchored(&b.root, &b.anchor_tx_hash).await?))
+}
+
+async fn fees<L: Ledger>(State(n): State<Arc<Node<L>>>) -> Json<crate::FeeReport> {
+    Json(n.fees().await)
+}
+
+async fn fee_swept<L: Ledger>(
+    State(n): State<Arc<Node<L>>>,
+    Json(b): Json<Swept>,
+) -> Result<crate::FeeReport> {
+    Ok(Json(n.fee_swept(&b.tx_hash).await?))
 }
 
 async fn reveal<L: Ledger>(

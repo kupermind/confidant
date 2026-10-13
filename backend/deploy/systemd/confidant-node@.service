@@ -1,5 +1,5 @@
 # One verifier node (Rust). Instance %i = 0 (the coordinator's node) or a signer index 1..N.
-# Env: /srv/confidant/env/common.env (POOL, SIGNERS, QUORUM, XRPL_RPC, SCREENING_ARGS) + node-%i.env (LISTEN, STATE).
+# Env: /srv/confidant/env/common.env (POOL, SIGNERS, QUORUM, XRPL_RPC, FEE_ARGS, SCREENING_ARGS) + node-%i.env (LISTEN, STATE).
 [Unit]
 Description=Confidant verifier node %i (holds no keys; reads the ledger)
 After=network-online.target
@@ -12,7 +12,7 @@ Group=confidant
 WorkingDirectory=/srv/confidant
 EnvironmentFile=/srv/confidant/env/common.env
 EnvironmentFile=/srv/confidant/env/node-%i.env
-ExecStart=/srv/confidant/bin/confidant-node --listen ${LISTEN} --state ${STATE} --xrpl-rpc ${XRPL_RPC} --pool ${POOL} --signers ${SIGNERS} --quorum ${QUORUM} $SCREENING_ARGS
+ExecStart=/srv/confidant/bin/confidant-node --listen ${LISTEN} --state ${STATE} --xrpl-rpc ${XRPL_RPC} --pool ${POOL} --signers ${SIGNERS} --quorum ${QUORUM} $FEE_ARGS $SCREENING_ARGS
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true

@@ -1,4 +1,4 @@
-//! `confidant-node --listen 127.0.0.1:7001 --state data/n1.verifier-state.json --xrpl-rpc URL --pool rPOOL --signers r1,r2,r3 --quorum 2 [--screening-list FILE] [--screening-standby-ledgers N] [--mirror http://host/log] [--rebuild]`
+//! `confidant-node --listen 127.0.0.1:7001 --state data/n1.verifier-state.json --xrpl-rpc URL --pool rPOOL --signers r1,r2,r3 --quorum 2 [--fee-shield-bps N --fee-unshield-bps N --fee-treasury rT] [--screening-list FILE] [--screening-standby-ledgers N] [--mirror http://host/log] [--rebuild]`
 //!
 //! Holds no keys. Refuses to start unless the pool account's on-ledger SignerList is exactly
 //! `--signers` with `SignerQuorum == --quorum` and the master key disabled. With `--rebuild` the node ignores its state file and rebuilds from the pool
@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use confidant_core::{BundleRecord, Verifier, VerifierSnapshot};
-use confidant_node::{http, JsonRpc, Node, Screening};
+use confidant_node::{http, FeeLedger, FeePolicy, JsonRpc, Node, Screening};
 
 fn arg(args: &[String], name: &str) -> Option<String> {
     args.iter()
@@ -47,6 +47,20 @@ async fn main() {
                 .unwrap_or_else(|_| die("--screening-standby-ledgers must be a number"))
         })
         .unwrap_or(0);
+    let bps = |name: &str| -> u64 {
+        arg(&args, name)
+            .map(|n| {
+                n.parse()
+                    .unwrap_or_else(|_| die(format!("{name} must be a number")))
+            })
+            .unwrap_or(0)
+    };
+    let fees = FeePolicy::new(
+        bps("--fee-shield-bps"),
+        bps("--fee-unshield-bps"),
+        arg(&args, "--fee-treasury").as_deref(),
+    )
+    .unwrap_or_else(|e| die(e));
     let screening = match arg(&args, "--screening-list") {
         Some(p) => Screening::from_file(Path::new(&p), standby)
             .unwrap_or_else(|e| die(format!("--screening-list {p}: {e}"))),
@@ -103,23 +117,51 @@ async fn main() {
             "rebuilding from the ledger ({rpc}) and {} mirror records…",
             records.len()
         );
-        Node::<JsonRpc>::rebuild_from_ledger(&ledger, &pool, &records)
+        Node::<JsonRpc>::rebuild_from_ledger(&ledger, &pool, &records, &fees)
             .await
             .unwrap_or_else(|e| die(e))
     } else if let Some(p) = state.as_ref().filter(|p| p.exists()) {
         let text = std::fs::read_to_string(p).unwrap_or_else(|e| die(e));
         let snap: VerifierSnapshot = serde_json::from_str(&text).unwrap_or_else(|e| die(e));
-        Verifier::restore(&snap).unwrap_or_else(|e| die(e))
+        let fee_file = Node::<JsonRpc>::fee_ledger_path(p);
+        let fee_ledger: FeeLedger = if fee_file.exists() {
+            let t = std::fs::read_to_string(&fee_file).unwrap_or_else(|e| die(e));
+            serde_json::from_str(&t).unwrap_or_else(|e| die(format!("{}: {e}", fee_file.display())))
+        } else {
+            FeeLedger::default()
+        };
+        (
+            Verifier::restore(&snap).unwrap_or_else(|e| die(e)),
+            fee_ledger,
+        )
     } else {
-        Verifier::new()
+        (Verifier::new(), FeeLedger::default())
     };
+    let (verifier, fee_ledger) = verifier;
+    if fees.is_active() {
+        eprintln!(
+            "fees: shield {} bps, unshield {} bps, treasury {}; accrued {} swept {} available {} drops",
+            fees.shield_bps,
+            fees.unshield_bps,
+            fees.treasury.as_deref().unwrap_or("-"),
+            fee_ledger.accrued,
+            fee_ledger.swept,
+            fee_ledger.available()
+        );
+    } else {
+        eprintln!("fees: OFF (no --fee-shield-bps / --fee-unshield-bps)");
+    }
     eprintln!(
         "confidant-node: pool {pool}, {} bundles, root {}, listening on {listen} (holds no keys; reads the ledger at {rpc})",
         verifier.state().bundle_count,
         &verifier.state().root[..16]
     );
 
-    let node = Arc::new(Node::new(verifier, ledger, pool, state).with_screening(screening));
+    let node = Arc::new(
+        Node::new(verifier, ledger, pool, state)
+            .with_screening(screening)
+            .with_fees(fees, fee_ledger),
+    );
     let listener = tokio::net::TcpListener::bind(&listen)
         .await
         .unwrap_or_else(|e| die(e));

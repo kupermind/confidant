@@ -23,7 +23,8 @@ const signerUrl = (i) => `http://127.0.0.1:${basePort + 100 + i}`;
 mkdirSync(envDir, { recursive: true });
 const write = (name, kv) => writeFileSync(`${envDir}/${name}`, Object.entries(kv).map(([k, v]) => `${k}=${v}`).join("\n") + "\n", { mode: 0o640 });
 
-write("common.env", { POOL: config.pool, SINK: config.sink, QUORUM: config.quorum, SIGNERS: config.signers.map((s) => s.address).join(","), XRPL_RPC: xrplRpc,
+const feeArgs = config.fees && config.treasury ? `--fee-shield-bps ${config.fees.shieldBps ?? 0} --fee-unshield-bps ${config.fees.unshieldBps ?? 0} --fee-treasury ${config.treasury}` : "";
+write("common.env", { POOL: config.pool, SINK: config.sink, QUORUM: config.quorum, SIGNERS: config.signers.map((s) => s.address).join(","), XRPL_RPC: xrplRpc, FEE_ARGS: feeArgs,
   SCREENING_ARGS: [screeningList ? `--screening-list ${screeningList}` : "", screeningStandby > 0 ? `--screening-standby-ledgers ${screeningStandby}` : ""].filter(Boolean).join(" ") });
 for (let i = 0; i <= n; i++) write(`node-${i}.env`, { LISTEN: `127.0.0.1:${basePort + i}`, STATE: `${dataDir}/node${i}.verifier-state.json` });
 for (let i = 1; i <= n; i++) write(`signer-${i}.env`, { PORT: basePort + 100 + i, NODE_URL: nodeUrl(i), KEY_FILE: config.signers[i - 1].keyFile, MAX_FEE_DROPS: 5000 });

@@ -1,7 +1,7 @@
 //! The node's logic, independent of HTTP: a [`Verifier`] behind a mutex, the ledger it reads, and
 //! the operations the endpoints expose.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use confidant_core::memo::AnchorMemo;
@@ -12,10 +12,11 @@ use confidant_core::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::fees::{FeeLedger, FeePolicy, FeeReport};
 use crate::screening::Screening;
 use crate::xrpl::{
-    anchor_fact, anchor_memos, check_custody_info, deposit_facts, deposit_source,
-    ensure_full_history, Ledger, LedgerError,
+    account_balance, anchor_fact, anchor_memos, check_custody_info, deposit_facts, deposit_source,
+    ensure_full_history, sweep_facts, sweeps_in, Ledger, LedgerError,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -29,6 +30,9 @@ pub enum NodeError {
     /// Refused by this node's boundary screening policy (list or standby); HTTP 403.
     #[error("refused by screening policy: {0}")]
     Screened(String),
+    /// A fee sweep that does not match this node's fee ledger; HTTP 409.
+    #[error("fee sweep refused: {0}")]
+    Fee(String),
 }
 
 /// What `submit_*` and `endorse` return: the core's `Accepted` plus the anchor memo the quorum
@@ -39,6 +43,10 @@ pub struct AcceptedWithMemo {
     #[serde(flatten)]
     pub accepted: Accepted,
     pub memo_hex: String,
+    /// Protocol fee taken by this operation, in drops (0 for transfers and when fees are off).
+    /// For a shield it is `deposit − note`; for an unshield `note − payout`.
+    #[serde(default)]
+    pub fee: u64,
 }
 
 pub struct Node<L: Ledger> {
@@ -47,6 +55,8 @@ pub struct Node<L: Ledger> {
     pool: String,
     state_path: Option<PathBuf>,
     screening: Screening,
+    fees: FeePolicy,
+    fee_ledger: Mutex<FeeLedger>,
 }
 
 impl<L: Ledger> Node<L> {
@@ -62,7 +72,137 @@ impl<L: Ledger> Node<L> {
             pool: pool.into(),
             state_path,
             screening: Screening::off(),
+            fees: FeePolicy::off(),
+            fee_ledger: Mutex::new(FeeLedger::default()),
         }
+    }
+
+    /// Installs the protocol fee policy and the ledger of what already accrued/swept.
+    pub fn with_fees(mut self, policy: FeePolicy, ledger: FeeLedger) -> Self {
+        self.fees = policy;
+        self.fee_ledger = Mutex::new(ledger);
+        self
+    }
+
+    pub fn fee_policy(&self) -> &FeePolicy {
+        &self.fees
+    }
+
+    /// Where the fee ledger lives: next to the state file.
+    pub fn fee_ledger_path(state_path: &Path) -> PathBuf {
+        state_path.with_extension("fees.json")
+    }
+
+    fn lock_fees(&self) -> std::sync::MutexGuard<'_, FeeLedger> {
+        self.fee_ledger.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn persist_fees(&self, l: &FeeLedger) -> Result<(), NodeError> {
+        if let Some(p) = &self.state_path {
+            let text = serde_json::to_string(l).map_err(|e| NodeError::Io(e.to_string()))?;
+            std::fs::write(Self::fee_ledger_path(p), text)
+                .map_err(|e| NodeError::Io(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    fn accrue(&self, fee: u64) -> Result<(), NodeError> {
+        if fee == 0 {
+            return Ok(());
+        }
+        let mut l = self.lock_fees();
+        l.accrued = l.accrued.saturating_add(fee);
+        self.persist_fees(&l)
+    }
+
+    /// The fee an unshield takes from `acc.payout`, applied in place: the payout becomes net.
+    fn net_payout(&self, acc: &mut Accepted) -> u64 {
+        match acc.payout.as_mut() {
+            Some(p) => {
+                let fee = self.fees.unshield_fee(p.amount);
+                p.amount -= fee;
+                fee
+            }
+            None => 0,
+        }
+    }
+
+    /// The value of every note the pool still backs: shields in minus unshields out, from the
+    /// public value balances of the accepted bundles (transfers are zero).
+    pub fn outstanding_backing(&self) -> u64 {
+        let sum: i128 = self
+            .lock()
+            .records()
+            .iter()
+            .map(|r| -(r.value_balance as i128))
+            .sum();
+        u64::try_from(sum.max(0)).unwrap_or(u64::MAX)
+    }
+
+    /// What may leave the pool account without touching user backing: its validated balance on
+    /// the ledger minus `outstanding_backing`. Independent of the fee ledger by construction —
+    /// the belt the auditor asked for (2026-10-13): a conservation check must not be computed in
+    /// the accounting it guards.
+    async fn pool_excess(&self) -> Result<u64, LedgerError> {
+        let info = self.ledger.account_info(&self.pool).await?;
+        Ok(account_balance(&info)?.saturating_sub(self.outstanding_backing()))
+    }
+
+    /// `GET /fees`: the policy, this node's ledger, and the sweepable amount — the fee ledger's
+    /// `available` capped by the pool's excess over outstanding notes; nothing when the ledger
+    /// cannot be read.
+    pub async fn fees(&self) -> FeeReport {
+        let excess = self.pool_excess().await.ok();
+        let l = self.lock_fees();
+        FeeReport {
+            shield_bps: self.fees.shield_bps,
+            unshield_bps: self.fees.unshield_bps,
+            pool_excess: excess,
+            treasury: self.fees.treasury.clone(),
+            accrued: l.accrued,
+            swept: l.swept,
+            available: match excess {
+                Some(e) => l.available().min(e),
+                None => 0,
+            },
+        }
+    }
+
+    /// Records a treasury sweep after reading the Payment from the ledger itself: validated,
+    /// from the pool, to the treasury, not above what is available. Counted once per tx hash.
+    pub async fn fee_swept(&self, tx_hash: &str) -> Result<FeeReport, NodeError> {
+        let treasury = self
+            .fees
+            .treasury
+            .clone()
+            .ok_or_else(|| NodeError::Fee("no treasury configured".into()))?;
+        let tx = self.ledger.tx(tx_hash).await?;
+        let amount = sweep_facts(&tx, &self.pool, &treasury)?;
+        // Independent of the fee ledger: after this sweep the pool must still hold every note's
+        // value (read from the ledger; a sweep that broke that is never recorded, and is an alarm).
+        let balance = account_balance(&self.ledger.account_info(&self.pool).await?)?;
+        let outstanding = self.outstanding_backing();
+        if balance < outstanding {
+            return Err(NodeError::Fee(format!(
+                "after sweep {tx_hash} the pool account holds {balance} drops, below the {outstanding} drops its notes are backed by"
+            )));
+        }
+        {
+            // Scoped: the std mutex guard must not live across the await below.
+            let mut l = self.lock_fees();
+            if !l.sweeps.contains(tx_hash) {
+                if amount > l.available() {
+                    return Err(NodeError::Fee(format!(
+                        "{amount} drops exceed the {} available",
+                        l.available()
+                    )));
+                }
+                l.swept = l.swept.saturating_add(amount);
+                l.sweeps.insert(tx_hash.to_owned());
+                self.persist_fees(&l)?;
+            }
+        }
+        Ok(self.fees().await)
     }
 
     /// Installs the boundary screening policy this node enforces (default: off).
@@ -97,9 +237,31 @@ impl<L: Ledger> Node<L> {
         Ok(())
     }
 
-    fn with_memo(v: &Verifier, accepted: Accepted) -> Result<AcceptedWithMemo, NodeError> {
+    fn with_memo(
+        v: &Verifier,
+        accepted: Accepted,
+        fee: u64,
+    ) -> Result<AcceptedWithMemo, NodeError> {
         let memo_hex = v.anchor_memo(accepted.bundle_index)?.encode_hex()?;
-        Ok(AcceptedWithMemo { accepted, memo_hex })
+        Ok(AcceptedWithMemo {
+            accepted,
+            memo_hex,
+            fee,
+        })
+    }
+
+    /// The deposit the core may vouch for: the ledger's facts (screened) with the protocol fee
+    /// taken off `delivered`, plus that fee. The wallet must have built the note for the net.
+    async fn vouched_deposit(&self, tx_hash: &str) -> Result<(DepositRef, u64), NodeError> {
+        let gross = self.screened_deposit(tx_hash).await?;
+        let fee = self.fees.shield_fee(gross.delivered);
+        Ok((
+            DepositRef {
+                delivered: gross.delivered - fee,
+                ..gross
+            },
+            fee,
+        ))
     }
 
     // ----- reads ---------------------------------------------------------------------------
@@ -156,18 +318,19 @@ impl<L: Ledger> Node<L> {
         record: &BundleRecord,
         deposit_tx_hash: &str,
     ) -> Result<AcceptedWithMemo, NodeError> {
-        let deposit = self.screened_deposit(deposit_tx_hash).await?;
+        let (deposit, fee) = self.vouched_deposit(deposit_tx_hash).await?;
         let mut v = self.lock();
         let acc = v.submit_shield(record, &deposit)?;
         self.persist(&v)?;
-        Self::with_memo(&v, acc)
+        self.accrue(fee)?;
+        Self::with_memo(&v, acc, fee)
     }
 
     pub fn submit_transfer(&self, record: &BundleRecord) -> Result<AcceptedWithMemo, NodeError> {
         let mut v = self.lock();
         let acc = v.submit_transfer(record)?;
         self.persist(&v)?;
-        Self::with_memo(&v, acc)
+        Self::with_memo(&v, acc, 0)
     }
 
     pub fn submit_unshield(
@@ -177,9 +340,11 @@ impl<L: Ledger> Node<L> {
     ) -> Result<AcceptedWithMemo, NodeError> {
         self.screened_destination(destination)?;
         let mut v = self.lock();
-        let acc = v.submit_unshield(record, destination)?;
+        let mut acc = v.submit_unshield(record, destination)?;
         self.persist(&v)?;
-        Self::with_memo(&v, acc)
+        let fee = self.net_payout(&mut acc);
+        self.accrue(fee)?;
+        Self::with_memo(&v, acc, fee)
     }
 
     /// A signer's duty. For a shield the node **re-reads the deposit from the ledger itself** and
@@ -193,11 +358,16 @@ impl<L: Ledger> Node<L> {
         proposed_memo_hex: &str,
     ) -> Result<AcceptedWithMemo, NodeError> {
         let proposed = AnchorMemo::decode_hex(proposed_memo_hex)?;
+        let mut shield_fee = 0;
         let submission = match submission {
-            Submission::Shield { record, deposit } => Submission::Shield {
-                record: record.clone(),
-                deposit: self.screened_deposit(&deposit.tx_hash).await?,
-            },
+            Submission::Shield { record, deposit } => {
+                let (deposit, fee) = self.vouched_deposit(&deposit.tx_hash).await?;
+                shield_fee = fee;
+                Submission::Shield {
+                    record: record.clone(),
+                    deposit,
+                }
+            }
             Submission::Unshield {
                 record,
                 destination,
@@ -227,12 +397,24 @@ impl<L: Ledger> Node<L> {
             ),
         };
         let mut v = self.lock();
-        if let Some(already) = Self::already_applied(&v, record, op, external, &proposed)? {
-            return Self::with_memo(&v, already);
+        if let Some(mut already) = Self::already_applied(&v, record, op, external, &proposed)? {
+            // Already accrued when it was first applied: report the fee, do not count it twice.
+            let fee = if already.payout.is_some() {
+                self.net_payout(&mut already)
+            } else {
+                shield_fee
+            };
+            return Self::with_memo(&v, already, fee);
         }
-        let acc = v.endorse(&submission, &proposed)?;
+        let mut acc = v.endorse(&submission, &proposed)?;
         self.persist(&v)?;
-        Self::with_memo(&v, acc)
+        let fee = if acc.payout.is_some() {
+            self.net_payout(&mut acc)
+        } else {
+            shield_fee
+        };
+        self.accrue(fee)?;
+        Self::with_memo(&v, acc, fee)
     }
 
     /// If the submission (bundle, op and external context) is exactly the verifier's last accepted
@@ -256,6 +438,7 @@ impl<L: Ledger> Node<L> {
         if v.check_memo(index, proposed).is_err() {
             return Ok(None);
         }
+        // Gross here; the caller nets the fee off exactly as it did on first acceptance.
         let payout = (last.op == confidant_core::OpTag::Unshield).then(|| Payout {
             amount: last.value_balance as u64,
             destination: last.external.clone(),
@@ -316,17 +499,26 @@ impl<L: Ledger> Node<L> {
         ledger: &L,
         pool: &str,
         mirror: &[BundleRecord],
-    ) -> Result<Verifier, NodeError> {
+        fees: &FeePolicy,
+    ) -> Result<(Verifier, FeeLedger), NodeError> {
         let txs = ledger.account_tx(pool).await?;
         ensure_full_history(&txs, pool)?;
         let memos = anchor_memos(&txs, pool)?;
         let mut deposits = std::collections::BTreeMap::new();
+        let mut fee_ledger = FeeLedger::default();
         for memo in &memos {
             if memo.op == confidant_core::OpTag::Shield {
                 let tx = ledger.tx(&memo.external).await?;
+                let gross = deposit_facts(&tx, &memo.external, pool)?;
+                // The same fee the accepting nodes took: the note was credited net of it.
+                let fee = fees.shield_fee(gross.delivered);
+                fee_ledger.accrued = fee_ledger.accrued.saturating_add(fee);
                 deposits.insert(
                     memo.external.clone(),
-                    deposit_facts(&tx, &memo.external, pool)?,
+                    DepositRef {
+                        delivered: gross.delivered - fee,
+                        ..gross
+                    },
                 );
             }
         }
@@ -345,6 +537,21 @@ impl<L: Ledger> Node<L> {
         if let Some(last) = memos.last() {
             verifier.set_anchored_root(&hex::encode(last.root))?;
         }
-        Ok(verifier)
+        // Unshield fees from the replayed records; sweeps from the pool's own Payments to the treasury.
+        for r in verifier.records() {
+            if r.op == confidant_core::OpTag::Unshield {
+                fee_ledger.accrued = fee_ledger
+                    .accrued
+                    .saturating_add(fees.unshield_fee(r.value_balance as u64));
+            }
+        }
+        if let Some(treasury) = &fees.treasury {
+            for (hash, drops) in sweeps_in(&txs, pool, treasury) {
+                if fee_ledger.sweeps.insert(hash) {
+                    fee_ledger.swept = fee_ledger.swept.saturating_add(drops);
+                }
+            }
+        }
+        Ok((verifier, fee_ledger))
     }
 }

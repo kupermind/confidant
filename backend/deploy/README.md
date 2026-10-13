@@ -8,15 +8,18 @@ in this directory; the pool, signers and ports come from `config.json` and the e
 /srv/confidant/              owner: system user `confidant` (nologin), mode 750
   bin/                       confidant-node, cli            (cargo build --release --bin confidant-node --example cli)
   repo/                      this repository (backend/quorum needs `npm ci --omit=dev`, system Node ≥ 22)
-  data/quorum/               config.json, signer<N>.key.json (0600), node<N>.verifier-state.json
+  data/quorum/               config.json, signer<N>.key.json + treasury.key.json (0600), node<N>.verifier-state.json (+ .fees.json)
   env/                       common.env, node-<i>.env, signer-<i>.env, coordinator.env   (render-env.mjs)
   logs/
 ```
 
 ```bash
-# once per pool (testnet faucet): keys 0600 under data/quorum, config.json next to them
-sudo -u confidant -H bash -c 'cd /srv/confidant/repo/backend/quorum && SIGNERS=3 QUORUM=2 DIR=/srv/confidant/data/quorum node setup-pool.mjs'
+# once per pool (testnet faucet): keys 0600 under data/quorum, config.json next to them; the protocol
+# fee (Railgun's model: a share of every shield and unshield, transfers free) is set here, server-side —
+# FEE_SHIELD_BPS / FEE_UNSHIELD_BPS (default 25 = 0.25 %, max 1000) — and a treasury account is funded
+sudo -u confidant -H bash -c 'cd /srv/confidant/repo/backend/quorum && SIGNERS=3 QUORUM=2 FEE_SHIELD_BPS=25 FEE_UNSHIELD_BPS=25 DIR=/srv/confidant/data/quorum node setup-pool.mjs'
 # env files for the units (ports: nodes 7700+i, sidecars 7800+i, coordinator 7900, all on 127.0.0.1);
+# FEE_ARGS come from config.json (fees + treasury) — every node of the quorum gets the same policy;
 # optional boundary screening for every node: SCREENING_LIST=/srv/confidant/data/screening/ofac-xrp.txt SCREENING_STANDBY_LEDGERS=2
 sudo -u confidant -H node /srv/confidant/repo/backend/deploy/render-env.mjs /srv/confidant/data/quorum/config.json /srv/confidant/env /srv/confidant/data/quorum 7700
 # units
@@ -30,7 +33,12 @@ sudo ufw allow 8787/tcp
 ```
 
 Every node logs `pool custody verified on the ledger: k-of-N SignerList, master key disabled` or exits
-(the custody gate). Logs: `journalctl -u 'confidant-*' -f`. Restart everything:
+(the custody gate), then `fees: shield S bps, unshield U bps, treasury rT…; accrued/swept/available`
+(or `fees: OFF`). **Sweep accrued fees to the treasury** (k-of-N, verified on the ledger by every node):
+`curl -sX POST http://127.0.0.1:7900/fees/sweep -H 'content-type: application/json' -d '{}'`; check with
+`curl -s http://127.0.0.1:7900/fees`. The rates are fixed at the pool's genesis: a pool whose shields were
+bound with one policy cannot be replayed under another, so new rates mean a new pool (`setup-pool.mjs` again,
+fresh state files). Logs: `journalctl -u 'confidant-*' -f`. Restart everything:
 `systemctl restart confidant.target`. The UI's base URL is `http://<host>:8787` (`docs/API-BOUNDARY.md`).
 
 **Browser wallet:** `cargo install wasm-pack` once, then `wasm-pack build frontend/wasm --target web --release --out-dir ../pkg`

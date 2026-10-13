@@ -27,6 +27,8 @@ pub enum LedgerError {
     Custody(String),
     #[error("ledger history incomplete: {0}")]
     History(&'static str),
+    #[error("fee sweep rejected: {0}")]
+    Sweep(&'static str),
 }
 
 /// What the node needs from the ledger. Implemented by [`JsonRpc`] and by test fakes.
@@ -112,6 +114,60 @@ pub fn deposit_source(tx: &Value) -> Result<(String, u64), LedgerError> {
         .and_then(Value::as_u64)
         .ok_or(LedgerError::Deposit("no ledger index"))?;
     Ok((account, ledger_index))
+}
+
+/// The account's XRP balance in drops from an `account_info` answer.
+pub fn account_balance(info: &Value) -> Result<u64, LedgerError> {
+    info.get("account_data")
+        .and_then(|a| a.get("Balance"))
+        .and_then(Value::as_str)
+        .and_then(|s| s.parse::<u64>().ok())
+        .ok_or_else(|| LedgerError::Rpc("account_info without an XRP Balance".into()))
+}
+
+/// A fee sweep as the ledger shows it: a validated XRP Payment from the pool to the treasury.
+/// Returns the delivered drops.
+pub fn sweep_facts(tx: &Value, pool: &str, treasury: &str) -> Result<u64, LedgerError> {
+    if tx.get("validated").and_then(Value::as_bool) != Some(true) {
+        return Err(LedgerError::Sweep("not validated"));
+    }
+    let json = tx_json(tx);
+    if json.get("TransactionType").and_then(Value::as_str) != Some("Payment") {
+        return Err(LedgerError::Sweep("not a Payment"));
+    }
+    if json.get("Account").and_then(Value::as_str) != Some(pool) {
+        return Err(LedgerError::Sweep("not sent by the pool account"));
+    }
+    let dest = json
+        .get("Destination")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if crate::address::canonical(dest).as_deref() != Some(treasury) {
+        return Err(LedgerError::Sweep("destination is not the treasury"));
+    }
+    tx.get("meta")
+        .and_then(|m| m.get("delivered_amount"))
+        .and_then(Value::as_str)
+        .and_then(|s| s.parse::<u64>().ok())
+        .ok_or(LedgerError::Sweep(
+            "delivered_amount missing or not an XRP drops amount",
+        ))
+}
+
+/// Every validated sweep (pool → treasury Payment) in an `account_tx` listing: `(hash, drops)`.
+pub fn sweeps_in(txs: &[Value], pool: &str, treasury: &str) -> Vec<(String, u64)> {
+    txs.iter()
+        .filter_map(|tx| {
+            let hash = tx
+                .get("hash")
+                .or_else(|| tx_json(tx).get("hash"))
+                .and_then(Value::as_str)?
+                .to_owned();
+            sweep_facts(tx, pool, treasury)
+                .ok()
+                .map(|drops| (hash, drops))
+        })
+        .collect()
 }
 
 /// Turns a `tx` result for a pool anchor Payment into its memo: validated, sent by the pool,

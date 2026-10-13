@@ -281,10 +281,12 @@ deposit checks trusts the quorum on backing, which adds no risk beyond the conce
 | Method + path | Purpose | Request | Response |
 |---|---|---|---|
 | `GET /log?from=N` | public log (the mirror) and state | — | `records[]`, `root`, `anchoredRoot`, `leafCount`, `nullifierCount`, `consumedDeposits` |
-| `POST /submit/shield` | accept a client-built shield after the deposit is validated | `bundle`, `depositTxHash` | `Accepted {bundleIndex, firstLeaf, newRoot, bundleHash, nullifiers[], commitments[]}` |
-| `POST /submit/transfer` | accept a client-built private hop | `bundle` | `Accepted` |
-| `POST /submit/unshield` | accept a client-built exit; the quorum pays | `bundle`, `destination` | `Accepted` + `payout {amount, destination}` |
+| `POST /submit/shield` | accept a client-built shield after the deposit is validated | `bundle`, `depositTxHash` | `Accepted {bundleIndex, firstLeaf, newRoot, bundleHash, nullifiers[], commitments[], fee}` |
+| `POST /submit/transfer` | accept a client-built private hop | `bundle` | `Accepted` (`fee` = 0) |
+| `POST /submit/unshield` | accept a client-built exit; the quorum pays | `bundle`, `destination` | `Accepted` + `payout {amount, destination}` (net) + `fee` |
 | `POST /audit/reveal` | convenience over the public log | `viewingKey` | `balance`, `notes[]` |
+| `GET /fees` | the node's fee policy and ledger | — | `shieldBps`, `unshieldBps`, `treasury`, `accrued`, `swept`, `available` (drops) |
+| `POST /fees/swept` | record a treasury sweep the node verifies on the ledger | `txHash` | the updated `FeeReport` |
 
 No `owner`, no `senderAuth`: the spend-authorization signatures inside the bundle are the
 authorization. Implemented in `backend/`: the **verifier node** (`confidant-node`, Rust) serves
@@ -314,6 +316,39 @@ sidecars sign on request, a **replacement coordinator** (anyone may run one, it 
 re-drive the same submission — the nodes answer with the same acceptance, the payout is prepared at
 the pool's now-next sequence, the sidecars re-sign, and the payout lands; a dead coordinator strands
 no funds. Atomic anchor + payout via XLS-56 Batch is the production fix (roadmap).
+
+**Protocol fee (Railgun's economic model; server-side policy, never set from the UI).** A node
+started with `--fee-shield-bps S --fee-unshield-bps U --fee-treasury rT…` (both ≤ 1000 bps = 10 %;
+a treasury is required as soon as either rate is non-zero; all nodes of a quorum run the same
+policy, otherwise their roots diverge and `endorse` refuses) takes a share of every **shield** and
+every **unshield**; **transfers are free** (as in Railgun and Tornado; the pool's privacy benefits
+from internal hops). Shield: the deposit of `gross` drops credits a note of `gross − ⌊gross·S/10000⌋`
+— the wallet builds the net note (the fee is public policy, read from `GET /config`), the deposit
+stays gross, and the node binds the deposit with `delivered = gross − fee` so an over- or under-built
+note is refused as today (`delivered == value_balance`). Unshield: the note burns `gross`, the
+quorum pays `gross − ⌊gross·U/10000⌋`; the sidecars pin the **net** amount (their own node's
+`payout.amount`). Fees never leave the pool account on their own: every node keeps a **fee ledger**
+(`accrued`, `swept`, the set of sweep hashes; `<state>.fees.json`), accrues once per accepted
+operation (an idempotent `endorse` replay accrues nothing), and the accrued balance is moved to
+the treasury by an explicit **sweep** — a multisigned Payment pool → treasury that each sidecar
+signs only as the new kind `fee-sweep`: destination = the treasury, no memos, `0 < Amount ≤` what
+*its own* node reports available (`GET /fees`), Fee/Sequence/LastLedgerSequence pinned as for a
+payout. After validation `POST /fees/swept {txHash}` makes each node read the Payment from the
+ledger itself (validated, from the pool, to the canonical treasury, amount ≤ available, counted
+once per hash) and move it from `accrued` to `swept`. A second bound is **independent of the fee
+ledger** (audit, 2026-10-13: a conservation check must not be computed in the accounting it
+guards): `GET /fees` reports `poolExcess` = the pool account's validated XRP balance minus the value
+of every note it backs (shields in minus unshields out, from the public value balances), and
+`available` is the fee ledger's balance capped by it — nothing is sweepable when the ledger cannot
+be read; and a node refuses to record a sweep after which the pool account holds less than its
+outstanding notes. The fee ledger is **replayable**: `--rebuild`
+recomputes accruals from the deposit facts and the anchored unshields and the sweeps from the
+pool's `account_tx`, so a rebuilt node reports the same `accrued`/`swept` — which also makes the policy a constant of the
+pool from its genesis (a rate change would bind earlier shields with the wrong net and make replay
+refuse; a fee epoch in the memo is roadmap). Honest label: the fee
+is a public, verifiable policy of the pool (every shield, unshield and sweep is on the ledger and
+in the log); it is not a privacy feature, and the treasury is an ordinary XRPL account under the
+same k-of-N as the pool account.
 
 **Boundary screening (optional policy; every node enforces its own).** A node started with
 `--screening-list FILE` (one XRPL address per line or a JSON array — e.g. OFAC's "Digital Currency
@@ -349,7 +384,13 @@ Implemented in `backend/quorum/` (xrpl.js) and exercised by `e2e/testnet/run.mjs
   (1 drop) with memo `confidant/anchor` = the anchor memo; only signers whose `endorse` succeeded
   sign. After validation, `anchored <root>`.
 - **Payout.** After the anchor, a multisigned Payment pool → `payout.destination` for
-  `payout.amount` (XLS-56 Batch not used: anchor first, payout second).
+  `payout.amount` — the unshield amount net of the protocol fee (XLS-56 Batch not used: anchor
+  first, payout second).
+- **Treasury and fee sweep.** `setup-pool.mjs` funds a treasury account (`config.treasury`, default
+  25 bps on shield and unshield — `FEE_SHIELD_BPS` / `FEE_UNSHIELD_BPS`). `POST /fees/sweep` on the
+  coordinator moves the accrued fees pool → treasury as a k-of-N Payment of kind `fee-sweep`, then
+  reports the hash to every node (`POST /fees/swept`), which verify it on the ledger. Public facts for
+  the UI in `GET /config.fees {shieldBps, unshieldBps, treasury}`.
 - **Scanner.** `account_tx` of the pool account → memos in order → `rebuild_checked` with the
   deposit facts looked up on-ledger for every shield.
 - **Pre-population.** A script with N faucet accounts and fixed denominations.

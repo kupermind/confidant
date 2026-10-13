@@ -15,6 +15,9 @@ const must = (c, m) => { if (!c) throw new Error(`SMOKE-UI FAILED: ${m}`); };
 
 const cfg = await http("GET", `${C}/config`);
 must(cfg.pool && cfg.xrplWs, "coordinator /config must expose pool and xrplWs");
+const feeOf = (drops, bps) => Math.floor((Number(drops) * (bps ?? 0)) / 10000);
+const NET = Number(DROPS) - feeOf(DROPS, cfg.fees?.shieldBps);
+const PAYOUT = String(NET - feeOf(NET, cfg.fees?.unshieldBps));
 const client = resilientClient(new Client(cfg.xrplWs)); await client.connect();
 try {
   const alice = await http("POST", `${W}/wallets`), bob = await http("POST", `${W}/wallets`);
@@ -22,7 +25,7 @@ try {
   const { wallet: funder } = await client.fundWallet();
   log(`wallets ${alice.id.slice(0, 6)}… ${bob.id.slice(0, 6)}…, XRPL funder ${funder.address}`);
 
-  const built = await http("POST", `${W}/wallets/${alice.id}/shield`, { amount: Number(DROPS) });
+  const built = await http("POST", `${W}/wallets/${alice.id}/shield`, { amount: NET });
   const tx = await client.autofill({ TransactionType: "Payment", Account: funder.address, Destination: cfg.pool, Amount: DROPS, Memos: [memoOf(MEMO_SHIELD, built.bundleHash)] });
   const signed = funder.sign(tx); const dep = await client.submitAndWait(signed.tx_blob);
   must(dep.result.meta?.TransactionResult === "tesSUCCESS", "deposit");
@@ -30,19 +33,19 @@ try {
   for (let t = 0; t < 45 && !s1; t++) { try { s1 = await http("POST", `${C}/submit/shield`, { record: built.record, depositTxHash: signed.hash }); } catch (e) { if (!(e.status === 403 && /standby/.test(e.message))) throw e; await new Promise((r) => setTimeout(r, 2000)); } }
   must(s1?.anchorTx, "shield anchored");
   log(`shield anchored ${cfg.explorer}/transactions/${s1.anchorTx}`);
-  must((await http("GET", `${W}/wallets/${alice.id}`)).balance === Number(DROPS), "alice balance after shield");
+  must((await http("GET", `${W}/wallets/${alice.id}`)).balance === NET, "alice balance after shield (net of the fee)");
 
-  const t1 = await http("POST", `${W}/wallets/${alice.id}/transfer`, { recipient: bob.address, amount: Number(DROPS) });
+  const t1 = await http("POST", `${W}/wallets/${alice.id}/transfer`, { recipient: bob.address, amount: NET });
   const s2 = await http("POST", `${C}/submit/transfer`, { record: t1.record });
   must(s2.anchorTx, "transfer anchored"); log(`transfer anchored ${cfg.explorer}/transactions/${s2.anchorTx}`);
-  must((await http("GET", `${W}/wallets/${bob.id}`)).balance === Number(DROPS), "bob received");
+  must((await http("GET", `${W}/wallets/${bob.id}`)).balance === NET, "bob received");
 
   const fresh = Wallet.generate();
-  const u = await http("POST", `${W}/wallets/${bob.id}/unshield`, { amount: Number(DROPS), destination: fresh.address });
+  const u = await http("POST", `${W}/wallets/${bob.id}/unshield`, { amount: NET, destination: fresh.address });
   const s3 = await http("POST", `${C}/submit/unshield`, { record: u.record, destination: fresh.address });
   must(s3.anchorTx && s3.payoutTx && !s3.payoutError, `unshield ${JSON.stringify({ a: s3.anchorTx, p: s3.payoutTx, e: s3.payoutError })}`);
   const bal = (await client.request({ command: "account_info", account: fresh.address, ledger_index: "validated" })).result.account_data.Balance;
-  must(bal === DROPS, `fresh address got ${bal}`);
+  must(bal === PAYOUT, `fresh address got ${bal}, expected ${PAYOUT} net of the unshield fee`);
   log(`unshield paid ${cfg.explorer}/transactions/${s3.payoutTx}`);
 
   const r = await http("POST", `${C}/audit/reveal`, { viewingKey: bob.viewingKey });

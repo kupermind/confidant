@@ -10,8 +10,8 @@ use confidant_core::memo::MEMO_TYPE;
 use confidant_core::record::bundle_hash;
 use confidant_core::{DepositRef, Error as CoreError, Submission, Verifier, Wallet};
 use confidant_node::{
-    anchor_memos, canonical, deposit_facts, deposit_source, http, Ledger, LedgerError, Node,
-    NodeError, Screening, LSF_DISABLE_MASTER, MEMO_SHIELD,
+    anchor_memos, canonical, deposit_facts, deposit_source, http, FeeLedger, FeePolicy, Ledger,
+    LedgerError, Node, NodeError, Screening, LSF_DISABLE_MASTER, MEMO_SHIELD,
 };
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
@@ -514,9 +514,11 @@ async fn new_node_rebuilds_from_ledger_memos_and_refuses_bad_ledgers() {
     ledger.push_anchor(&a1.memo_hex);
     let mirror = coord.log(0);
 
-    let rebuilt = Node::<FakeLedger>::rebuild_from_ledger(&ledger, POOL, &mirror)
-        .await
-        .unwrap();
+    let rebuilt =
+        Node::<FakeLedger>::rebuild_from_ledger(&ledger, POOL, &mirror, &FeePolicy::off())
+            .await
+            .unwrap()
+            .0;
     assert_eq!(rebuilt.state().root, coord.state().root);
     assert_eq!(rebuilt.state().anchored_root, Some(coord.state().root));
     assert!(rebuilt.is_deposit_consumed("DEP1"));
@@ -544,9 +546,11 @@ async fn new_node_rebuilds_from_ledger_memos_and_refuses_bad_ledgers() {
         info: ledger.info.clone(),
         validated: ledger.validated.clone(),
     };
-    let caught = Node::<FakeLedger>::rebuild_from_ledger(&ledger2, POOL, &mirror)
-        .await
-        .unwrap();
+    let caught =
+        Node::<FakeLedger>::rebuild_from_ledger(&ledger2, POOL, &mirror, &FeePolicy::off())
+            .await
+            .unwrap()
+            .0;
     assert_eq!(caught.state().root, coord.state().root);
     assert_eq!(lagging.state().bundle_count, 1);
 
@@ -562,7 +566,7 @@ async fn new_node_rebuilds_from_ledger_memos_and_refuses_bad_ledgers() {
     bad.push_anchor(&a0.memo_hex);
     bad.push_anchor(&m.encode_hex().unwrap());
     assert!(matches!(
-        Node::<FakeLedger>::rebuild_from_ledger(&bad, POOL, &mirror).await,
+        Node::<FakeLedger>::rebuild_from_ledger(&bad, POOL, &mirror, &FeePolicy::off()).await,
         Err(NodeError::Core(CoreError::MemoMismatch {
             what: "root",
             ..
@@ -573,7 +577,7 @@ async fn new_node_rebuilds_from_ledger_memos_and_refuses_bad_ledgers() {
     nodep.created();
     nodep.push_anchor(&a0.memo_hex);
     assert!(matches!(
-        Node::<FakeLedger>::rebuild_from_ledger(&nodep, POOL, &mirror).await,
+        Node::<FakeLedger>::rebuild_from_ledger(&nodep, POOL, &mirror, &FeePolicy::off()).await,
         Err(NodeError::Ledger(LedgerError::Rpc(_)))
     ));
     // Deposit delivered less than the shield ⇒ refuse.
@@ -582,12 +586,13 @@ async fn new_node_rebuilds_from_ledger_memos_and_refuses_bad_ledgers() {
     short.put_tx("DEP1", deposit_tx(POOL, "99", &p.hash_hex()));
     short.push_anchor(&a0.memo_hex);
     assert!(matches!(
-        Node::<FakeLedger>::rebuild_from_ledger(&short, POOL, &mirror).await,
+        Node::<FakeLedger>::rebuild_from_ledger(&short, POOL, &mirror, &FeePolicy::off()).await,
         Err(NodeError::Core(CoreError::ValueBalance { .. }))
     ));
     // Mirror missing a bundle ⇒ refuse.
     assert!(matches!(
-        Node::<FakeLedger>::rebuild_from_ledger(&ledger, POOL, &mirror[..1]).await,
+        Node::<FakeLedger>::rebuild_from_ledger(&ledger, POOL, &mirror[..1], &FeePolicy::off())
+            .await,
         Err(NodeError::Core(CoreError::MirrorMissing(_)))
     ));
     // A pool with only its creation on the ledger ⇒ empty verifier. A scan that does not start at
@@ -595,12 +600,19 @@ async fn new_node_rebuilds_from_ledger_memos_and_refuses_bad_ledgers() {
     // the memos it does show would rebuild fine.
     let fresh = FakeLedger::default();
     fresh.created();
-    let empty = Node::<FakeLedger>::rebuild_from_ledger(&fresh, POOL, &[])
+    let empty = Node::<FakeLedger>::rebuild_from_ledger(&fresh, POOL, &[], &FeePolicy::off())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     assert_eq!(empty.state().bundle_count, 0);
     assert!(matches!(
-        Node::<FakeLedger>::rebuild_from_ledger(&FakeLedger::default(), POOL, &[]).await,
+        Node::<FakeLedger>::rebuild_from_ledger(
+            &FakeLedger::default(),
+            POOL,
+            &[],
+            &FeePolicy::off()
+        )
+        .await,
         Err(NodeError::Ledger(LedgerError::History(_)))
     ));
     let suffix = FakeLedger::default();
@@ -612,7 +624,7 @@ async fn new_node_rebuilds_from_ledger_memos_and_refuses_bad_ledgers() {
     suffix.push_anchor(&a0.memo_hex);
     suffix.push_anchor(&a1.memo_hex);
     assert!(matches!(
-        Node::<FakeLedger>::rebuild_from_ledger(&suffix, POOL, &mirror).await,
+        Node::<FakeLedger>::rebuild_from_ledger(&suffix, POOL, &mirror, &FeePolicy::off()).await,
         Err(NodeError::Ledger(LedgerError::History(_)))
     ));
 }
@@ -1126,4 +1138,289 @@ fn screening_canonicalizes_classic_and_x_addresses() {
     assert!(mixed.is_listed("rnXyVQzgxZe7TR1EPzTkGj2jxH4LMJYh66"));
     assert!(mixed.is_listed("not-an-address") && !mixed.is_listed("not-an-addres"));
     assert_eq!(listed_classic.undecodable_count(), 0);
+}
+
+/// Protocol fees (Railgun's model): a share of every shield and unshield accrues in the pool
+/// account on every node's ledger, netted off the note and the payout; a treasury sweep is
+/// recorded only after the node read it from the ledger and only up to what accrued; everything
+/// replays from the ledger + mirror.
+#[tokio::test]
+async fn protocol_fees_accrue_net_and_sweep_verified_on_ledger() {
+    const TREASURY: &str = "rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf";
+    // Policy sanity.
+    assert!(
+        FeePolicy::new(25, 25, None).is_err(),
+        "a fee needs a treasury"
+    );
+    assert!(
+        FeePolicy::new(2_000, 0, Some(TREASURY)).is_err(),
+        "above the 10% cap"
+    );
+    assert!(FeePolicy::new(10, 10, Some("not-an-address")).is_err());
+    assert!(!FeePolicy::new(0, 0, None).unwrap().is_active());
+    let policy = FeePolicy::new(
+        25,
+        25,
+        Some("XVLhHMPHU98es4dbozjVtdWzVrDjtV5fdx1mHp98tDMoQXb"),
+    )
+    .unwrap();
+    assert_eq!(
+        policy.treasury.as_deref(),
+        Some(TREASURY),
+        "treasury canonicalized"
+    );
+    assert_eq!(policy.shield_fee(100_000_000), 250_000);
+    assert_eq!(policy.unshield_fee(40_000_000), 100_000);
+    assert_eq!(policy.shield_fee(39), 0, "rounds down");
+
+    let ledger = FakeLedger::default();
+    // The pool account's balance as the ledger shows it: the independent bound on sweeps (below).
+    let balance =
+        |drops: u64| json!({ "account_data": { "Account": POOL, "Balance": drops.to_string() } });
+    ledger.set_info(balance(1_000_000_000_000));
+    let dir = std::env::temp_dir().join(format!("confidant-fees-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let state = dir.join("n.verifier-state.json");
+    let coord = Node::new(Verifier::new(), ledger.clone(), POOL, Some(state.clone()))
+        .with_fees(policy.clone(), FeeLedger::default());
+    let signer = Node::new(Verifier::new(), ledger.clone(), POOL, None)
+        .with_fees(policy.clone(), FeeLedger::default());
+    let mut alice = Wallet::new();
+    // The wallet builds the NET note: a 100 XRP deposit at 25 bps credits 99.75 XRP.
+    let gross = 100_000_000u64;
+    let wrong = alice.build_shield(gross).unwrap();
+    ledger.put_tx("DEP", deposit_tx(POOL, "100000000", &wrong.hash_hex()));
+    assert!(
+        matches!(
+            coord.submit_shield(&wrong.record, "DEP").await,
+            Err(NodeError::Core(CoreError::ValueBalance { .. }))
+        ),
+        "a note for the gross amount is refused: the fee is not optional"
+    );
+    let p = alice.build_shield(gross - 250_000).unwrap();
+    ledger.put_tx("DEP", deposit_tx(POOL, "100000000", &p.hash_hex()));
+    let acc = coord.submit_shield(&p.record, "DEP").await.unwrap();
+    assert_eq!(acc.fee, 250_000);
+    assert_eq!(coord.fees().await.accrued, 250_000);
+    // The signer nets the same fee from the ledger facts it reads itself; a retry does not re-accrue.
+    let sub = Submission::Shield {
+        record: p.record.clone(),
+        deposit: DepositRef {
+            tx_hash: "DEP".into(),
+            delivered: 1,
+            memo_hash: String::new(),
+        },
+    };
+    let e = signer.endorse(&sub, &acc.memo_hex).await.unwrap();
+    assert_eq!((e.fee, signer.fees().await.accrued), (250_000, 250_000));
+    let again = signer.endorse(&sub, &acc.memo_hex).await.unwrap();
+    assert_eq!((again.fee, signer.fees().await.accrued), (250_000, 250_000));
+    assert_eq!(signer.state().root, coord.state().root);
+
+    // Unshield 40 XRP: payout is net of 0.1 XRP on both nodes; the fee accrues once each.
+    alice.sync(&coord.log(0)).unwrap();
+    let u = alice.build_unshield(40_000_000, "rOut").unwrap();
+    let acc_u = coord.submit_unshield(&u.record, "rOut").unwrap();
+    assert_eq!(acc_u.fee, 100_000);
+    assert_eq!(acc_u.accepted.payout.as_ref().unwrap().amount, 39_900_000);
+    assert_eq!(coord.fees().await.accrued, 350_000);
+    let usub = Submission::Unshield {
+        record: u.record.clone(),
+        destination: "rOut".into(),
+    };
+    let e = signer.endorse(&usub, &acc_u.memo_hex).await.unwrap();
+    assert_eq!(
+        (e.fee, e.accepted.payout.unwrap().amount),
+        (100_000, 39_900_000)
+    );
+    let again = signer.endorse(&usub, &acc_u.memo_hex).await.unwrap();
+    assert_eq!(
+        again.accepted.payout.unwrap().amount,
+        39_900_000,
+        "the idempotent answer is net too"
+    );
+    assert_eq!(signer.fees().await.accrued, 350_000);
+    // Transfers carry no fee.
+    let mut bob = Wallet::new();
+    alice.sync(&coord.log(0)).unwrap();
+    let t = alice
+        .build_transfer(&[confidant_core::TransferOutput {
+            recipient: bob.info().address,
+            amount: 1_000_000,
+        }])
+        .unwrap();
+    let acc_t = coord.submit_transfer(&t.record).unwrap();
+    assert_eq!(acc_t.fee, 0);
+    assert_eq!(coord.fees().await.accrued, 350_000);
+    bob.sync(&coord.log(0)).unwrap();
+
+    // The ledger file lives next to the state file.
+    let fee_file = Node::<FakeLedger>::fee_ledger_path(&state);
+    let on_disk: FeeLedger =
+        serde_json::from_str(&std::fs::read_to_string(&fee_file).unwrap()).unwrap();
+    assert_eq!((on_disk.accrued, on_disk.swept), (350_000, 0));
+
+    // A sweep: recorded only after the node reads a validated pool → treasury Payment, once per
+    // hash, never above what is available; wrong destination / sender / unknown tx refused.
+    let sweep = |hash: &str, to: &str, drops: &str| {
+        ledger.put_tx(
+            hash,
+            json!({ "validated": true, "hash": hash, "ledger_index": 200,
+            "tx_json": { "TransactionType": "Payment", "Account": POOL, "Destination": to },
+            "meta": { "delivered_amount": drops } }),
+        );
+    };
+    sweep("SW1", TREASURY, "300000");
+    let r = coord.fee_swept("SW1").await.unwrap();
+    assert_eq!((r.swept, r.available), (300_000, 50_000));
+    let r = coord.fee_swept("SW1").await.unwrap();
+    assert_eq!(r.swept, 300_000, "counted once");
+    sweep("SW2", TREASURY, "60000");
+    assert!(
+        matches!(coord.fee_swept("SW2").await, Err(NodeError::Fee(_))),
+        "exceeds available"
+    );
+    sweep("SW3", "rEve", "1");
+    assert!(matches!(
+        coord.fee_swept("SW3").await,
+        Err(NodeError::Ledger(LedgerError::Sweep(
+            "destination is not the treasury"
+        )))
+    ));
+    ledger.put_tx("SW4", json!({ "validated": true, "tx_json": { "TransactionType": "Payment", "Account": "rEve", "Destination": TREASURY }, "meta": { "delivered_amount": "1" } }));
+    assert!(matches!(
+        coord.fee_swept("SW4").await,
+        Err(NodeError::Ledger(LedgerError::Sweep(
+            "not sent by the pool account"
+        )))
+    ));
+    ledger.put_tx("SW5", json!({ "validated": false, "tx_json": { "TransactionType": "Payment", "Account": POOL, "Destination": TREASURY }, "meta": { "delivered_amount": "1" } }));
+    assert!(matches!(
+        coord.fee_swept("SW5").await,
+        Err(NodeError::Ledger(LedgerError::Sweep("not validated")))
+    ));
+    ledger.put_tx("SW6", json!({ "validated": true, "tx_json": { "TransactionType": "OfferCreate", "Account": POOL, "Destination": TREASURY } }));
+    assert!(matches!(
+        coord.fee_swept("SW6").await,
+        Err(NodeError::Ledger(LedgerError::Sweep("not a Payment")))
+    ));
+    ledger.put_tx("SW7", json!({ "validated": true, "tx_json": { "TransactionType": "Payment", "Account": POOL, "Destination": TREASURY }, "meta": { "delivered_amount": { "currency": "USD", "value": "1" } } }));
+    assert!(matches!(
+        coord.fee_swept("SW7").await,
+        Err(NodeError::Ledger(LedgerError::Sweep(_)))
+    ));
+    assert!(matches!(
+        coord.fee_swept("NOPE").await,
+        Err(NodeError::Ledger(LedgerError::Rpc(_)))
+    ));
+    let no_treasury = Node::new(Verifier::new(), ledger.clone(), POOL, None);
+    assert!(matches!(
+        no_treasury.fee_swept("SW1").await,
+        Err(NodeError::Fee(_))
+    ));
+    assert_eq!(coord.fees().await.available, 50_000);
+
+    // The belt independent of the fee ledger (auditor, 2026-10-13): what may be swept is also
+    // bounded by the pool account's excess over the notes it backs, read from the ledger; after a
+    // sweep the pool must still cover every note, or the sweep is not recorded.
+    assert_eq!(coord.outstanding_backing(), 59_750_000, "99.75 in − 40 out");
+    ledger.set_info(balance(59_750_000 + 20_000));
+    let r = coord.fees().await;
+    assert_eq!(
+        (r.pool_excess, r.available),
+        (Some(20_000), 20_000),
+        "excess binds below the fee ledger's 50_000"
+    );
+    sweep("SW9", TREASURY, "30000");
+    ledger.set_info(balance(59_750_000 - 1));
+    assert!(
+        matches!(coord.fee_swept("SW9").await, Err(NodeError::Fee(_))),
+        "pool no longer covers outstanding notes"
+    );
+    assert_eq!(coord.fees().await.swept, 300_000, "not recorded");
+    ledger.set_info(Value::Null);
+    let r = coord.fees().await;
+    assert_eq!(
+        (r.pool_excess, r.available),
+        (None, 0),
+        "ledger unavailable: nothing sweepable"
+    );
+    assert!(matches!(
+        coord.fee_swept("SW9").await,
+        Err(NodeError::Ledger(LedgerError::Rpc(_)))
+    ));
+    ledger.set_info(custody(&["rS1"], 1, true));
+    assert_eq!(coord.fees().await.pool_excess, None, "no Balance field");
+    ledger.set_info(balance(1_000_000_000_000));
+    assert_eq!(coord.fees().await.available, 50_000);
+
+    // Replay: a new node rebuilds the same accrual from the memos + deposit facts and the same
+    // sweeps from the pool account's Payments to the treasury (the sweep itself is on the ledger).
+    ledger.created();
+    for memo in [&acc.memo_hex, &acc_u.memo_hex, &acc_t.memo_hex] {
+        ledger.push_anchor(memo);
+    }
+    ledger.account.lock().unwrap().push(json!({ "validated": true, "hash": "SW1",
+        "tx_json": { "TransactionType": "Payment", "Account": POOL, "Destination": TREASURY }, "meta": { "delivered_amount": "300000" } }));
+    ledger.account.lock().unwrap().push(json!({ "validated": true, "hash": "SW1",
+        "tx_json": { "TransactionType": "Payment", "Account": POOL, "Destination": TREASURY }, "meta": { "delivered_amount": "300000" } }));
+    let (rebuilt, fees) =
+        Node::<FakeLedger>::rebuild_from_ledger(&ledger, POOL, &coord.log(0), &policy)
+            .await
+            .unwrap();
+    assert_eq!(rebuilt.state().root, coord.state().root);
+    assert_eq!(
+        (fees.accrued, fees.swept, fees.available()),
+        (350_000, 300_000, 50_000),
+        "a duplicate listing counts once"
+    );
+    // Without the fee policy the same ledger does not rebuild: the notes were credited net.
+    assert!(matches!(
+        Node::<FakeLedger>::rebuild_from_ledger(&ledger, POOL, &coord.log(0), &FeePolicy::off())
+            .await,
+        Err(NodeError::Core(CoreError::ValueBalance { .. }))
+    ));
+
+    // HTTP: GET /fees, POST /fees/swept (409 on excess, 422 on a non-sweep tx).
+    let app = http::router(Arc::new(
+        Node::new(Verifier::new(), ledger.clone(), POOL, None).with_fees(
+            policy.clone(),
+            FeeLedger {
+                accrued: 1_000,
+                swept: 0,
+                sweeps: Default::default(),
+            },
+        ),
+    ));
+    let (s, v) = call(&app, "GET", "/fees", None).await;
+    assert_eq!(
+        (s, v["available"].as_u64(), v["shieldBps"].as_u64()),
+        (StatusCode::OK, Some(1_000), Some(25))
+    );
+    let (s, _) = call(
+        &app,
+        "POST",
+        "/fees/swept",
+        Some(json!({ "txHash": "SW1" })),
+    )
+    .await;
+    assert_eq!(s, StatusCode::CONFLICT);
+    let (s, _) = call(
+        &app,
+        "POST",
+        "/fees/swept",
+        Some(json!({ "txHash": "SW3" })),
+    )
+    .await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    sweep("SW8", TREASURY, "1000");
+    let (s, v) = call(
+        &app,
+        "POST",
+        "/fees/swept",
+        Some(json!({ "txHash": "SW8" })),
+    )
+    .await;
+    assert_eq!((s, v["available"].as_u64()), (StatusCode::OK, Some(0)));
+    std::fs::remove_dir_all(&dir).ok();
 }
