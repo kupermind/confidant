@@ -68,5 +68,7 @@ on the ledger — transfers inside are free."
 | unshield proof + anchor + payout | 31 s wall | 20 s wall |
 | whole cycle (shield, transfer, unshield, reveal), headless Chrome | 127 s | 75 s |
 
-Measured 2026-10-13 against the deployed testnet quorum from a laptop; re-measure on the demo
-machine (a 4-core laptop will land between the columns).
+Measured 2026-10-13 against the deployed testnet quorum from a laptop (local page); the same flow
+against the deployed UI itself: 131 s over plain `http://<ip>/` (1 thread, proof 16.3 s) and 77 s
+through the localhost tunnel (16 threads, proof 3.1 s). Re-measure on the demo machine (a 4-core
+laptop will land between the columns).
