@@ -47,7 +47,7 @@ Shapes (camelCase on the wire):
 ```jsonc
 PoolState   { root, anchoredRoot | null, leafCount, nullifierCount, bundleCount, consumedDeposits }
 Accepted    { bundleIndex, firstLeaf, newRoot, bundleHash, nullifiers[], commitments[], fee, payout?: { destination, amount } }
-FeeReport   { shieldBps, unshieldBps, treasury | null, accrued, swept, available }
+FeeReport   { shieldBps, unshieldBps, treasury | null, accrued, swept, available, poolExcess | null }   // available = min(accrued − swept, poolExcess); poolExcess = pool balance − outstanding notes, from the ledger
 quorum      { memoHex, anchorTx, payoutTx | null, payoutBlob | null, payoutError | null, signers: [rAddr…], refusals: [string…] }
 RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, leafIndex, bundleIndex, timestamp, spent, recipient? }] }
 ```

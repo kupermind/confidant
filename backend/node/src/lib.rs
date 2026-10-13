@@ -44,7 +44,7 @@ pub use node::{AcceptedWithMemo, Node, NodeError};
 pub use rpc::JsonRpc;
 pub use screening::{ScreenError, Screening};
 pub use xrpl::{
-    anchor_fact, anchor_memos, check_custody_info, deposit_facts, deposit_source,
+    account_balance, anchor_fact, anchor_memos, check_custody_info, deposit_facts, deposit_source,
     ensure_full_history, sweep_facts, sweeps_in, Ledger, LedgerError, LSF_DISABLE_MASTER,
     MEMO_SHIELD,
 };

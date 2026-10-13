@@ -1174,6 +1174,10 @@ async fn protocol_fees_accrue_net_and_sweep_verified_on_ledger() {
     assert_eq!(policy.shield_fee(39), 0, "rounds down");
 
     let ledger = FakeLedger::default();
+    // The pool account's balance as the ledger shows it: the independent bound on sweeps (below).
+    let balance =
+        |drops: u64| json!({ "account_data": { "Account": POOL, "Balance": drops.to_string() } });
+    ledger.set_info(balance(1_000_000_000_000));
     let dir = std::env::temp_dir().join(format!("confidant-fees-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let state = dir.join("n.verifier-state.json");
@@ -1197,7 +1201,7 @@ async fn protocol_fees_accrue_net_and_sweep_verified_on_ledger() {
     ledger.put_tx("DEP", deposit_tx(POOL, "100000000", &p.hash_hex()));
     let acc = coord.submit_shield(&p.record, "DEP").await.unwrap();
     assert_eq!(acc.fee, 250_000);
-    assert_eq!(coord.fees().accrued, 250_000);
+    assert_eq!(coord.fees().await.accrued, 250_000);
     // The signer nets the same fee from the ledger facts it reads itself; a retry does not re-accrue.
     let sub = Submission::Shield {
         record: p.record.clone(),
@@ -1208,9 +1212,9 @@ async fn protocol_fees_accrue_net_and_sweep_verified_on_ledger() {
         },
     };
     let e = signer.endorse(&sub, &acc.memo_hex).await.unwrap();
-    assert_eq!((e.fee, signer.fees().accrued), (250_000, 250_000));
+    assert_eq!((e.fee, signer.fees().await.accrued), (250_000, 250_000));
     let again = signer.endorse(&sub, &acc.memo_hex).await.unwrap();
-    assert_eq!((again.fee, signer.fees().accrued), (250_000, 250_000));
+    assert_eq!((again.fee, signer.fees().await.accrued), (250_000, 250_000));
     assert_eq!(signer.state().root, coord.state().root);
 
     // Unshield 40 XRP: payout is net of 0.1 XRP on both nodes; the fee accrues once each.
@@ -1219,7 +1223,7 @@ async fn protocol_fees_accrue_net_and_sweep_verified_on_ledger() {
     let acc_u = coord.submit_unshield(&u.record, "rOut").unwrap();
     assert_eq!(acc_u.fee, 100_000);
     assert_eq!(acc_u.accepted.payout.as_ref().unwrap().amount, 39_900_000);
-    assert_eq!(coord.fees().accrued, 350_000);
+    assert_eq!(coord.fees().await.accrued, 350_000);
     let usub = Submission::Unshield {
         record: u.record.clone(),
         destination: "rOut".into(),
@@ -1235,7 +1239,7 @@ async fn protocol_fees_accrue_net_and_sweep_verified_on_ledger() {
         39_900_000,
         "the idempotent answer is net too"
     );
-    assert_eq!(signer.fees().accrued, 350_000);
+    assert_eq!(signer.fees().await.accrued, 350_000);
     // Transfers carry no fee.
     let mut bob = Wallet::new();
     alice.sync(&coord.log(0)).unwrap();
@@ -1247,7 +1251,7 @@ async fn protocol_fees_accrue_net_and_sweep_verified_on_ledger() {
         .unwrap();
     let acc_t = coord.submit_transfer(&t.record).unwrap();
     assert_eq!(acc_t.fee, 0);
-    assert_eq!(coord.fees().accrued, 350_000);
+    assert_eq!(coord.fees().await.accrued, 350_000);
     bob.sync(&coord.log(0)).unwrap();
 
     // The ledger file lives next to the state file.
@@ -1314,7 +1318,41 @@ async fn protocol_fees_accrue_net_and_sweep_verified_on_ledger() {
         no_treasury.fee_swept("SW1").await,
         Err(NodeError::Fee(_))
     ));
-    assert_eq!(coord.fees().available, 50_000);
+    assert_eq!(coord.fees().await.available, 50_000);
+
+    // The belt independent of the fee ledger (auditor, 2026-10-13): what may be swept is also
+    // bounded by the pool account's excess over the notes it backs, read from the ledger; after a
+    // sweep the pool must still cover every note, or the sweep is not recorded.
+    assert_eq!(coord.outstanding_backing(), 59_750_000, "99.75 in − 40 out");
+    ledger.set_info(balance(59_750_000 + 20_000));
+    let r = coord.fees().await;
+    assert_eq!(
+        (r.pool_excess, r.available),
+        (Some(20_000), 20_000),
+        "excess binds below the fee ledger's 50_000"
+    );
+    sweep("SW9", TREASURY, "30000");
+    ledger.set_info(balance(59_750_000 - 1));
+    assert!(
+        matches!(coord.fee_swept("SW9").await, Err(NodeError::Fee(_))),
+        "pool no longer covers outstanding notes"
+    );
+    assert_eq!(coord.fees().await.swept, 300_000, "not recorded");
+    ledger.set_info(Value::Null);
+    let r = coord.fees().await;
+    assert_eq!(
+        (r.pool_excess, r.available),
+        (None, 0),
+        "ledger unavailable: nothing sweepable"
+    );
+    assert!(matches!(
+        coord.fee_swept("SW9").await,
+        Err(NodeError::Ledger(LedgerError::Rpc(_)))
+    ));
+    ledger.set_info(custody(&["rS1"], 1, true));
+    assert_eq!(coord.fees().await.pool_excess, None, "no Balance field");
+    ledger.set_info(balance(1_000_000_000_000));
+    assert_eq!(coord.fees().await.available, 50_000);
 
     // Replay: a new node rebuilds the same accrual from the memos + deposit facts and the same
     // sweeps from the pool account's Payments to the treasury (the sweep itself is on the ledger).

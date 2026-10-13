@@ -190,7 +190,7 @@ async fn anchored<L: Ledger>(
 }
 
 async fn fees<L: Ledger>(State(n): State<Arc<Node<L>>>) -> Json<crate::FeeReport> {
-    Json(n.fees())
+    Json(n.fees().await)
 }
 
 async fn fee_swept<L: Ledger>(

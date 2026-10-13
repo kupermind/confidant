@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::fees::{FeeLedger, FeePolicy, FeeReport};
 use crate::screening::Screening;
 use crate::xrpl::{
-    anchor_fact, anchor_memos, check_custody_info, deposit_facts, deposit_source,
+    account_balance, anchor_fact, anchor_memos, check_custody_info, deposit_facts, deposit_source,
     ensure_full_history, sweep_facts, sweeps_in, Ledger, LedgerError,
 };
 
@@ -127,16 +127,44 @@ impl<L: Ledger> Node<L> {
         }
     }
 
-    /// `GET /fees`: the policy and this node's ledger.
-    pub fn fees(&self) -> FeeReport {
+    /// The value of every note the pool still backs: shields in minus unshields out, from the
+    /// public value balances of the accepted bundles (transfers are zero).
+    pub fn outstanding_backing(&self) -> u64 {
+        let sum: i128 = self
+            .lock()
+            .records()
+            .iter()
+            .map(|r| -(r.value_balance as i128))
+            .sum();
+        u64::try_from(sum.max(0)).unwrap_or(u64::MAX)
+    }
+
+    /// What may leave the pool account without touching user backing: its validated balance on
+    /// the ledger minus `outstanding_backing`. Independent of the fee ledger by construction —
+    /// the belt the auditor asked for (2026-10-13): a conservation check must not be computed in
+    /// the accounting it guards.
+    async fn pool_excess(&self) -> Result<u64, LedgerError> {
+        let info = self.ledger.account_info(&self.pool).await?;
+        Ok(account_balance(&info)?.saturating_sub(self.outstanding_backing()))
+    }
+
+    /// `GET /fees`: the policy, this node's ledger, and the sweepable amount — the fee ledger's
+    /// `available` capped by the pool's excess over outstanding notes; nothing when the ledger
+    /// cannot be read.
+    pub async fn fees(&self) -> FeeReport {
+        let excess = self.pool_excess().await.ok();
         let l = self.lock_fees();
         FeeReport {
             shield_bps: self.fees.shield_bps,
             unshield_bps: self.fees.unshield_bps,
+            pool_excess: excess,
             treasury: self.fees.treasury.clone(),
             accrued: l.accrued,
             swept: l.swept,
-            available: l.available(),
+            available: match excess {
+                Some(e) => l.available().min(e),
+                None => 0,
+            },
         }
     }
 
@@ -150,20 +178,31 @@ impl<L: Ledger> Node<L> {
             .ok_or_else(|| NodeError::Fee("no treasury configured".into()))?;
         let tx = self.ledger.tx(tx_hash).await?;
         let amount = sweep_facts(&tx, &self.pool, &treasury)?;
-        let mut l = self.lock_fees();
-        if !l.sweeps.contains(tx_hash) {
-            if amount > l.available() {
-                return Err(NodeError::Fee(format!(
-                    "{amount} drops exceed the {} available",
-                    l.available()
-                )));
-            }
-            l.swept = l.swept.saturating_add(amount);
-            l.sweeps.insert(tx_hash.to_owned());
-            self.persist_fees(&l)?;
+        // Independent of the fee ledger: after this sweep the pool must still hold every note's
+        // value (read from the ledger; a sweep that broke that is never recorded, and is an alarm).
+        let balance = account_balance(&self.ledger.account_info(&self.pool).await?)?;
+        let outstanding = self.outstanding_backing();
+        if balance < outstanding {
+            return Err(NodeError::Fee(format!(
+                "after sweep {tx_hash} the pool account holds {balance} drops, below the {outstanding} drops its notes are backed by"
+            )));
         }
-        drop(l);
-        Ok(self.fees())
+        {
+            // Scoped: the std mutex guard must not live across the await below.
+            let mut l = self.lock_fees();
+            if !l.sweeps.contains(tx_hash) {
+                if amount > l.available() {
+                    return Err(NodeError::Fee(format!(
+                        "{amount} drops exceed the {} available",
+                        l.available()
+                    )));
+                }
+                l.swept = l.swept.saturating_add(amount);
+                l.sweeps.insert(tx_hash.to_owned());
+                self.persist_fees(&l)?;
+            }
+        }
+        Ok(self.fees().await)
     }
 
     /// Installs the boundary screening policy this node enforces (default: off).

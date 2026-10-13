@@ -116,6 +116,15 @@ pub fn deposit_source(tx: &Value) -> Result<(String, u64), LedgerError> {
     Ok((account, ledger_index))
 }
 
+/// The account's XRP balance in drops from an `account_info` answer.
+pub fn account_balance(info: &Value) -> Result<u64, LedgerError> {
+    info.get("account_data")
+        .and_then(|a| a.get("Balance"))
+        .and_then(Value::as_str)
+        .and_then(|s| s.parse::<u64>().ok())
+        .ok_or_else(|| LedgerError::Rpc("account_info without an XRP Balance".into()))
+}
+
 /// A fee sweep as the ledger shows it: a validated XRP Payment from the pool to the treasury.
 /// Returns the delivered drops.
 pub fn sweep_facts(tx: &Value, pool: &str, treasury: &str) -> Result<u64, LedgerError> {

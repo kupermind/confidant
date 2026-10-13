@@ -96,6 +96,11 @@ impl FeeLedger {
 pub struct FeeReport {
     pub shield_bps: u64,
     pub unshield_bps: u64,
+    /// The pool account's validated XRP balance minus the value of every note it backs, read from
+    /// the ledger — an upper bound on what may leave the pool that does not depend on this fee
+    /// ledger. `None` when the ledger could not be read (then nothing is sweepable).
+    #[serde(default)]
+    pub pool_excess: Option<u64>,
     pub treasury: Option<String>,
     pub accrued: u64,
     pub swept: u64,

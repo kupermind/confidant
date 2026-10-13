@@ -92,7 +92,9 @@ XRPL integration built on-site. Say so on stage.
   `available`, `GET /fees`) that `--rebuild` recomputes from the ledger; fees reach the treasury only
   by an explicit k-of-N sweep (`POST /fees/sweep` on the coordinator; sidecar kind `fee-sweep` checked
   against *its own* node's treasury and available amount; `POST /fees/swept` verified on the ledger,
-  once per hash). `setup-pool.mjs` funds the treasury (`FEE_SHIELD_BPS` / `FEE_UNSHIELD_BPS`, default
+  once per hash). A second bound is independent of the fee ledger (audit, 2026-10-13): `available`
+  is capped by `poolExcess` = the pool's validated balance minus the notes it backs, and a sweep that
+  leaves the pool below its outstanding notes is never recorded. `setup-pool.mjs` funds the treasury (`FEE_SHIELD_BPS` / `FEE_UNSHIELD_BPS`, default
   25 bps); the deploy env renderer passes `FEE_ARGS` to every node.
 - **Deployment** (`backend/deploy/`): systemd units per node/sidecar/coordinator under a dedicated
   user, nginx with CORS on one public port, env renderer from `config.json`; smoke client
