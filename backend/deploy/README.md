@@ -44,6 +44,14 @@ fresh state files). Logs: `journalctl -u 'confidant-*' -f`. Restart everything:
 **Browser wallet:** `cargo install wasm-pack` once, then `wasm-pack build frontend/wasm --target web --release --out-dir ../pkg`
 produces `frontend/pkg/` (≈ 3 MB wasm; gitignored) — ship it next to `index.html` and `wallet-worker.js`
 (nginx serves `application/wasm`). Keys, notes and proofs then stay in the visitor's browser.
+**Multithreaded proving** (`frontend/pkg-threads/`, also gitignored): a nightly build with atomics —
+`rustup toolchain install nightly && rustup target add wasm32-unknown-unknown --toolchain nightly && rustup component add rust-src --toolchain nightly`, then
+`frontend/wasm/build-threads.sh` (the exact RUSTFLAGS live there: atomics + shared, imported memory + the TLS
+exports; without the shared-memory flags the thread-pool workers cannot receive the module's memory).
+The worker uses it only when the page is cross-origin isolated, which `nginx/confidant-ui.conf` provides
+(`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`; every
+cross-origin resource the page loads must carry CORP — the xrpl.js CDN does); otherwise it falls back
+to `pkg/`. Ship both directories.
 
 **UI prototype** (`frontend/index.html`, static) + **demo wallet service** (fallback when WebAssembly is unavailable) (`confidant-wallet`, holds the
 demo wallets' spending keys under `data/wallets/` — a custodial convenience on the demo host, see

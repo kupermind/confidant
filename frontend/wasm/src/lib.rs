@@ -43,6 +43,12 @@ impl BrowserWallet {
         })
     }
 
+    /// Builds the proving key now (once per worker; the page calls it right after the wallet
+    /// exists, so the first bundle does not wait for it).
+    pub fn warm() {
+        confidant_core::Params::get().pk();
+    }
+
     /// The JSON `WalletSecret` to persist (this is the spending key — keep it in the browser).
     pub fn secret(&self) -> Result<String, JsValue> {
         serde_json::to_string(&self.inner.secret()).map_err(js)

@@ -412,7 +412,7 @@ docs/CORE-API.md, docs/E2E.md, docs/NODE-OPERATOR.md
 frontend/      index.html + wallet-worker.js — the UI prototype (static); wasm/ = the core behind wasm-bindgen (keys and proofs in the browser)
 backend/wallet/ confidant-wallet: demo wallet service (HTTP over Wallet; holds demo spending keys on its host;
                TESTNET DEMO ONLY — never the path for a real-value pool; the browser WASM wallet is the production path)
-scripts/       — pre-population (API/XRPL lead, not started)
+backend/quorum/prepopulate.mjs — pool pre-population (fixed denominations, synthetic holders); docs/DEMO.md — stage run-sheet
 README.md, SPEC.md, SPEC.ru.md, ROADMAP.md, CLAUDE.md
 ```
 

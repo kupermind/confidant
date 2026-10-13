@@ -42,27 +42,41 @@ fn check_deposit_binding(record: &BundleRecord, deposit: &DepositRef) -> Result<
 /// (`OrchardCircuitVersion::FixedPostNu6_2`), V2 notes, cross-address transfers permitted.
 pub const BUNDLE_VERSION: BundleVersion = BundleVersion::orchard_v2();
 
-/// Proving and verifying keys, built once per process from the circuit itself.
+/// Proving and verifying keys, each built once per process from the circuit itself — lazily, so a
+/// wallet never pays for the verifying key and a verifier never pays for the proving key (the
+/// browser wallet builds its proving key in the background right after the wallet exists).
 pub struct Params {
     pub version: BundleVersion,
-    pub pk: ProvingKey,
-    pub vk: VerifyingKey,
+    pk: OnceLock<ProvingKey>,
+    vk: OnceLock<VerifyingKey>,
 }
 
 impl Params {
-    /// Builds (first call, a few seconds) or returns the process-wide parameters.
+    /// The process-wide parameters (cheap; each key builds on its first use).
     pub fn get() -> Arc<Params> {
         static PARAMS: OnceLock<Arc<Params>> = OnceLock::new();
         PARAMS
             .get_or_init(|| {
-                let version = BUNDLE_VERSION;
                 Arc::new(Params {
-                    version,
-                    pk: ProvingKey::build(version.circuit_version()),
-                    vk: VerifyingKey::build(version.circuit_version()),
+                    version: BUNDLE_VERSION,
+                    pk: OnceLock::new(),
+                    vk: OnceLock::new(),
                 })
             })
             .clone()
+    }
+
+    /// The proving key; the first call builds it (seconds natively, ≈ 25 s single-threaded in a
+    /// browser).
+    pub fn pk(&self) -> &ProvingKey {
+        self.pk
+            .get_or_init(|| ProvingKey::build(self.version.circuit_version()))
+    }
+
+    /// The verifying key; the first call builds it.
+    pub fn vk(&self) -> &VerifyingKey {
+        self.vk
+            .get_or_init(|| VerifyingKey::build(self.version.circuit_version()))
     }
 }
 
@@ -258,7 +272,7 @@ impl Verifier {
             }
         }
         bundle
-            .verify_proof(&self.params.vk)
+            .verify_proof(self.params.vk())
             .map_err(|_| Error::InvalidProof)?;
 
         let commitment: [u8; 32] = bundle.commitment(TxVersion::V5)?.into();

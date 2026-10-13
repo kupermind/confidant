@@ -138,6 +138,9 @@ async fn main() {
         (Verifier::new(), FeeLedger::default())
     };
     let (verifier, fee_ledger) = verifier;
+    // The verifying key is built lazily by the core; build it now so the first submission does
+    // not pay for it.
+    confidant_core::Params::get().vk();
     if fees.is_active() {
         eprintln!(
             "fees: shield {} bps, unshield {} bps, treasury {}; accrued {} swept {} available {} drops",
