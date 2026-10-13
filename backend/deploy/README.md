@@ -51,7 +51,11 @@ exports; without the shared-memory flags the thread-pool workers cannot receive 
 The worker uses it only when the page is cross-origin isolated, which `nginx/confidant-ui.conf` provides
 (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`; every
 cross-origin resource the page loads must carry CORP — the xrpl.js CDN does); otherwise it falls back
-to `pkg/`. Ship both directories.
+to `pkg/`. Ship both directories. **Browsers honour those headers only in a secure context**: over
+plain `http://<ip>/` Chrome logs "COOP header has been ignored, because the URL's origin was
+untrustworthy" and the wallet runs single-threaded. Threads therefore need HTTPS (a domain + TLS on
+this site), or `http://localhost` — e.g. on the demo laptop `ssh -N -L 8080:127.0.0.1:80 <host>` and
+open `http://localhost:8080/`, which is a secure context and gets the full thread pool.
 
 **UI prototype** (`frontend/index.html`, static) + **demo wallet service** (fallback when WebAssembly is unavailable) (`confidant-wallet`, holds the
 demo wallets' spending keys under `data/wallets/` — a custodial convenience on the demo host, see
