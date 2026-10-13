@@ -13,8 +13,59 @@ two — the coordinator's HTTP contract, what the UI must produce, how to run th
 `docs/API-BOUNDARY.md` (RU: `docs/API-BOUNDARY.ru.md`).
 
 Judging rule: *only what is built during the hackathon counts.* The core and the harness are
-pre-event preparation on a pre-existing library (the Zcash Orchard circuit). The judged work is the
-XRPL integration built on-site. Say so on stage.
+pre-event preparation on a pre-existing library (the Zcash Orchard circuit). The XRPL integration
+already built is pre-event too; the judged work is what §0 decides to build on-site. Say so on stage.
+
+---
+
+## 0. Hackathon plan — PRELIMINARY (2026-10-13, under discussion, nothing here is decided)
+
+**The problem.** The event rule (organizer's page): *"Bring an existing project … and use the 36
+hours to ship a new feature on XRP Ledger. Only what you build during the hackathon counts toward
+judging."* Sat Oct 24, 8:30 AM → Sun Oct 25, 8:00 PM. The XRPL integration this file used to call
+"the judged work" (quorum services, deposit binding, browser wallet, fees, screening) is already built
+and deployed, so it is pre-event work too. Unless something new is built on-site, nothing is judged.
+Rubric, pitch length and submission format are not published yet.
+
+**Working rules until Oct 24 (proposed).**
+- **Feature freeze on `main`.** Pre-event work is ops, rehearsal, design and the deck only. Open items
+  that are good on-site material (§4.3a refund path, payout resume, §4.5.3 one-payment disclosure) wait
+  for the event.
+- **Public pre-event baseline.** The submission needs a public repo. Tag the baseline (e.g.
+  `pre-hackathon`) so the split between "came with" and "built this weekend" is a `git diff` anyone can
+  run. Say on stage: "we arrived with a working shielded pool on testnet; this weekend we built X."
+- **Designs may be written before the event; code is written at the event.** The audit session is
+  asked to be on call during the 36 hours for the slice rulings.
+
+**On-site candidates (options, to be chosen).**
+
+| Option | What | XRPL tie | ZK depth | Fits 36 h |
+|---|---|---|---|---|
+| A. Credential-gated shielding | shield only from accounts holding an accepted XLS-70 Credential from a trusted issuer (issuer set possibly via a Permissioned Domain); node checks at submit and endorse, sidecar refuses, issuer page + accept step in the UI | native compliance primitives (live on mainnet) | low | yes — same shape as the screening gate |
+| B. One-payment disclosure | note-opening report (§4.5.3): hand an auditor one payment, not the viewing key; optionally bound to the auditor's credentialed XRPL account | via A's credentials | medium (core + wasm) | yes |
+| C. ZK proof of shielded funds for lending | a holder proves "I control ≥ X in the pool" to a lender (XLS-66 / XLS-65 track) without revealing notes | lending track | high (likely a new Halo 2 circuit) | **feasibility check first** — Orchard unchanged may not express it |
+| D. Full data availability on the ledger | bundles published as chunked memos (§4.5.1); any node rebuilds from XRPL alone, no mirror | XRPL as the data layer | low | yes, but not visual |
+| Fillers | §4.3a refund for refused deposits; one-click payout resume from `payoutBlob` | — | — | yes |
+
+Current lean: **A as the headline, B as the second piece** ("compliant privacy built on XRPL
+Credentials"); C only if the feasibility check passes before the event. Not considered:
+RLUSD/issued tokens (deposit/payout/trust-line surface, risk), on-ledger verification (non-goal), a
+hardware signer in the quorum (liveness on stage).
+
+**Draft timeline (for A + B).**
+
+| When | Crypto/ZK lead | API/XRPL lead |
+|---|---|---|
+| Sat 9–13 | credential check in node + sidecar | issuer page, issue/accept flow |
+| Sat 13–20 | tests, mutation table, audit REQ, deploy to the testnet quorum | refusal + status in the UI; deck skeleton |
+| Sat 20 – Sun 2 | one-payment disclosure in core + wasm | disclosure UI; re-populate the pool with credentialed holders |
+| Sun 9–14 | audit fixes; fillers if ahead | deck and story |
+| Sun 14–18 | freeze; two full rehearsals on the demo laptop; fill `docs/DEMO.md` timings; fallbacks | same |
+
+**Before Oct 24.** Rehearse on the demo laptop and fill the `docs/DEMO.md` timings table; FE team
+finishes design and deck structure; confirm Credentials and Permissioned Domains are enabled on
+testnet; write the A/B designs (no code); C's feasibility note; get pitch length and submission
+format from the organizers; decide where the public repo lives.
 
 ---
 
