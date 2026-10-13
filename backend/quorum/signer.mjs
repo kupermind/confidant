@@ -33,7 +33,7 @@ await serve(Number(PORT), {
     const { txs, submission, memoHex } = body ?? {};
     if (!Array.isArray(txs) || !txs.length) throw refuse(400, "need txs[]");
     const kinds = txs.map((t) => t.kind).join(",");
-    if (!["anchor", "payout", "anchor,payout", "fee-sweep"].includes(kinds)) throw refuse(400, `txs must be [anchor], [payout], [anchor, payout] or [fee-sweep]; got [${kinds}]`);
+    if (!["anchor", "payout", "anchor,payout", "fee-sweep"].includes(kinds)) throw refuse(400, `txs must be [anchor], [payout], [anchor, payout] in that order, or [fee-sweep] alone; got [${kinds}]`);
     // 1. my own node decides. An anchor/payout needs its endorsement; a fee sweep needs its fee ledger.
     let endorse = null, fees = null;
     if (kinds === "fee-sweep") {
