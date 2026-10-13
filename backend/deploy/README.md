@@ -57,6 +57,51 @@ untrustworthy" and the wallet runs single-threaded. Threads therefore need HTTPS
 this site), or `http://localhost` — e.g. on the demo laptop `ssh -N -L 8080:127.0.0.1:80 <host>` and
 open `http://localhost:8080/`, which is a secure context and gets the full thread pool.
 
+**HTTPS on a domain** (`nginx/confidant-ui-tls.conf`, replaces `confidant-ui.conf`). Same page and
+proxies, served over TLS, so every visitor's browser is a secure context and gets the thread pool.
+`<domain>` below is the public demo domain.
+
+1. **DNS** at the registrar: `A` records for `<domain>` and `www.<domain>` → the host's public IPv4
+   (plus `AAAA` → its IPv6, if it has one). Low TTL (300) until the demo is over. Check:
+   `dig +short <domain>` and `dig +short www.<domain>` both print the host's address.
+2. **Firewall:** `sudo ufw allow 443/tcp`. Keep 80 open (ACME renewals and the redirect).
+3. **Certificate** (Let's Encrypt, free, 90 days, auto-renewed). With the HTTP site still up on port 80:
+   ```bash
+   sudo apt install -y certbot python3-certbot-nginx
+   sudo mkdir -p /var/www/letsencrypt
+   sudo certbot certonly --nginx -d <domain> -d www.<domain> -m <ops e-mail> --agree-tos -n
+   ```
+   `certonly` leaves the nginx config untouched; the cert lands in `/etc/letsencrypt/live/<domain>/`.
+4. **Site:** render the TLS config and swap it in for the HTTP one:
+   ```bash
+   sed 's/__DOMAIN__/<domain>/g' /srv/confidant/repo/backend/deploy/nginx/confidant-ui-tls.conf \
+     | sudo tee /etc/nginx/sites-available/confidant-ui >/dev/null
+   sudo ln -sf /etc/nginx/sites-available/confidant-ui /etc/nginx/sites-enabled/confidant-ui
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+   (`/etc/nginx/sites-enabled/` must hold only one `default_server` per port — remove the old UI
+   site's link if it has another name, and the distribution's `default` site.)
+5. **Renewals:** switch them to the webroot the new port-80 block serves and reload nginx after each
+   one:
+   ```bash
+   sudo certbot reconfigure --cert-name <domain> --webroot -w /var/www/letsencrypt \
+     --deploy-hook 'systemctl reload nginx'
+   sudo certbot renew --dry-run
+   ```
+6. **Verify:**
+   - `curl -sI https://<domain>/ | grep -i cross-origin` shows both COOP and COEP;
+   - `curl -sI http://<domain>/` is a 301 to `https://<domain>/`, and `https://www.<domain>/` is a 301 to the apex;
+   - `curl -s https://<domain>/api/config` answers with the pool, `quorum`, `signers` and `fees`;
+   - in a browser on another machine, the DevTools console prints `true` for `crossOriginIsolated`,
+     and the wallet card shows "N threads" with N > 1.
+7. **Clients:** the coordinator is reachable as `https://<domain>/api` (smoke, pre-population:
+   `COORDINATOR_URL=https://<domain>/api`). The plain `http://<host>:8787` port can stay for the CLI
+   harnesses, or be closed (`sudo ufw delete allow 8787/tcp`) once nothing uses it.
+
+The UI needs no change: it calls `/api/` and `/wallet/` on its own origin, so HTTPS covers them too
+(no mixed content) and the isolated page can use them without CORP. No HSTS on purpose: a testnet
+demo domain should be able to fall back to HTTP without browsers refusing it for months.
+
 **UI prototype** (`frontend/index.html`, static) + **demo wallet service** (fallback when WebAssembly is unavailable) (`confidant-wallet`, holds the
 demo wallets' spending keys under `data/wallets/` — a custodial convenience on the demo host, see
 `README.md`): `cargo build --release --bin confidant-wallet`, install the binary next to the node,

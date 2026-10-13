@@ -133,7 +133,9 @@ NODE_BIN=../../target/release/confidant-node DIR=../../data/quorum npm run start
 
 Серверное развёртывание (systemd-юниты на каждый узел/сайдкар/координатор, nginx с CORS на одном
 публичном порту) описано в `backend/deploy/README.md`; базовый URL и аккаунт пула общего testnet-
-инстанса передаются вне репозитория (никогда не коммитятся). `backend/quorum/smoke.mjs` — полный
+инстанса передаются вне репозитория (никогда не коммитятся). Когда поднят TLS-сайт
+(`backend/deploy/README.md`, «HTTPS on a domain»), публичный базовый URL — `https://confidant.im/api`;
+браузерный UI ходит в `/api/` своего же origin. `backend/quorum/smoke.mjs` — полный
 клиент контракта: shield, transfer, unshield, reveal против любого работающего координатора:
 
 ```bash

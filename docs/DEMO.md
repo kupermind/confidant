@@ -8,20 +8,21 @@ timings are from a rehearsal on a laptop (see the table at the end); re-measure 
 
 ## Before the session (T − 60 min)
 
-1. **Backend up.** `curl -s http://<host>:8787/config` answers with the pool, `quorum`, `signers`
-   and `fees`; `curl -s http://<host>:8787/state` shows `anchoredRoot == root`. If not:
+1. **Backend up.** `curl -s https://confidant.im/api/config` answers with the pool, `quorum`,
+   `signers` and `fees`; `curl -s https://confidant.im/api/state` shows `anchoredRoot == root`. If not:
    `sudo systemctl restart confidant.target` on the host and watch
    `journalctl -u 'confidant-*' -f` for `pool custody verified` and `fees: shield 25 bps…`.
 2. **Pool pre-populated** (`backend/quorum/prepopulate.mjs`, ≈ 25 s per holder): 8–12 holders with
    fixed denominations (5 / 10 / 25 XRP) and a few private transfers, run in the last hour so the
    explorer's recent history looks lived-in. Say on stage that it is a synthetic set funded from the
    faucet — never imply real users.
-3. **Two browser tabs**, both on the UI (`http://<host>/`): tab A = the live wallet, tab B = the
+3. **Two browser tabs**, both on the UI (`https://confidant.im/`): tab A = the live wallet, tab B = the
    XRPL testnet explorer on the pool account (`cfg.explorer/accounts/<pool>`), zoomed so the memo
    column is readable. A third tab with `?demo=1` is the fallback (simulated data, every button works
    offline).
-4. **Open the UI as a secure context** so the multithreaded wallet is used: `https://` once the
-   site has a domain and a certificate, or until then an SSH tunnel from the demo laptop
+4. **Open the UI as a secure context** so the multithreaded wallet is used: `https://confidant.im/`
+   (TLS setup: `backend/deploy/README.md`, "HTTPS on a domain"); if the domain or its certificate
+   fails on the day, an SSH tunnel from the demo laptop
    (`ssh -N -L 8080:127.0.0.1:80 <host>`, then `http://localhost:8080/`). Over plain `http://<ip>/`
    browsers ignore the COOP/COEP headers and the wallet silently runs on one thread (≈ 16 s per
    proof instead of ≈ 3 s); the wallet card says which ("N threads").
