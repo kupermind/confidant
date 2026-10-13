@@ -34,7 +34,7 @@ XRPL integration built on-site. Say so on stage.
 | **Quorum services**: Rust verifier node (`/submit/*`, `/endorse` idempotent, ledger-verified `/anchored`, `/log`, custody gate + scanner + `rebuild_checked` on start), Node signer sidecars (sign only what their own node endorsed; Fee/Sequence/LastLedgerSequence pinned from their own ledger reads), coordinator (k-of-N multisig, anchor then payout, payout blob returned) | ✅ built, audited and merged 2026-10-05 (PR #11); ✅ **deployed** the same night on a testnet host as systemd units behind nginx (`backend/deploy/`), 3 signers / quorum 2, smoke cycle green over the public address | `backend/`, `backend/deploy/README.md`, `docs/E2E.md` §2b |
 | **Boundary screening** (optional per-node policy): listed depositors / destinations and too-fresh deposits refused at submit and endorse (403); OFAC XRP list fetcher; replayable audit over the public log | ✅ built, audited (CONDITIONAL → IMPL-PASS, canonical addresses) and merged 2026-10-10 (PR #20); deployed on the testnet quorum with the OFAC XRP list and a 2-ledger standby | `backend/node/src/screening.rs`, `backend/quorum/screening/`, `SPEC.md` §6, `docs/audit/RESP-screening-gate-2026-10-10.md` |
 | **Protocol fee** (Railgun's economic model, server-side policy): configurable bps on shield and unshield, transfers free; shield credited net (deposit bound with `delivered = gross − fee`), payout net; per-node fee ledger replayable from the ledger; k-of-N sweep to a treasury the sidecars verify against their own node | ✅ built 2026-10-11 (branch `protocol-fees`, audit slice requested); UI shows the fee and builds the net note | `backend/node/src/fees.rs`, `SPEC.md` §6–7, `docs/API-BOUNDARY.md` §2 |
-| Front-end: UI over the coordinator, deposit from the user's XRPL account, explorer links | ✅ **prototype** 2026-10-10: `frontend/index.html` (static) with the wallet **in the browser** (`frontend/wasm`, core → WebAssembly in a worker; keys and proofs never leave the page; ≈ 25 s key build + ≈ 20 s per proof, single-threaded) and the demo wallet service as fallback · ⬜ FE team polish (threads for faster proving, key caching); pre-population; demo + pitch | `frontend/`, `backend/wallet/`, `scripts/` |
+| Front-end: UI over the coordinator, deposit from the user's XRPL account, explorer links | ✅ **prototype** 2026-10-10: `frontend/index.html` (static) with the wallet **in the browser** (`frontend/wasm`, core → WebAssembly in a worker; keys and proofs never leave the page) and the demo wallet service as fallback · ✅ 2026-10-13 **multithreaded proving in the browser** (`frontend/pkg-threads`, wasm-bindgen-rayon; page served with COOP/COEP; measured in headless Chrome on a 20-core laptop: proving keys 6.0 s and a 2-action proof 3.2 s on 16 threads vs ≈ 25 s / ≈ 20 s single-threaded; whole shield → transfer → unshield → reveal cycle 75 s vs 136–236 s), proving key built in the background right after the wallet exists, thread count and proof time shown · ✅ `backend/quorum/prepopulate.mjs` · ✅ `docs/DEMO.md` run-sheet · ⬜ FE team: presentation and design; rehearsal timings on the demo laptop | `frontend/`, `backend/wallet/`, `backend/quorum/prepopulate.mjs`, `docs/DEMO.md` |
 
 ---
 
@@ -211,19 +211,27 @@ XRPL integration built on-site. Say so on stage.
       to Zcash transparent scripts; XRPL has no such opcode and Orchard notes are not post-quantum
       either. Out of scope.
 7. **Browser performance and demo readiness (taken over from the FE team 2026-10-11, so they can
-   focus on presentation and design).** In order: **multithreaded proving in the browser**
-   (`wasm-bindgen-rayon` over `orchard/multicore`, a SharedArrayBuffer worker pool; needs
-   `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: require-corp` on the
-   nginx UI site and a `--target web` build with atomics; goal: ≈ 20 s → a few seconds per proof on a
-   laptop; single-threaded fallback kept) · **proving-key caching** (build once, keep the
-   `ProvingKey` across the worker's life; persist the circuit's parameters in IndexedDB so the
-   ≈ 25 s key build happens once per browser, not per session) · **UX for waits** (honest step
-   timers, "what is happening" copy per step, disabled double submits, resumable payout from
-   `payoutBlob`, fee shown before confirm) · **pool pre-population** (`scripts/prepopulate.mjs`: N
-   faucet accounts shield fixed denominations through the coordinator, some transfer, honest note
-   that the anonymity set on stage is synthetic) · **demo script** (SPEC §10 rehearsed with v2
-   wording and the fee shown; timings measured on the demo laptop). Holder-side/UI work: no audit
-   slice, FYI to the auditor if the submitted record format ever changes.
+   focus on presentation and design; built 2026-10-13, holder-side, auditor informed, no slice).**
+   ✅ **Multithreaded proving in the browser**: `frontend/pkg-threads` = the same crate with the
+   `threads` feature (`wasm-bindgen-rayon` over `orchard/multicore`), built by
+   `frontend/wasm/build-threads.sh` (nightly, atomics, shared imported memory, TLS exports — the
+   shared-memory linker flags are what make the thread pool work); the worker picks it when the page
+   is cross-origin isolated (nginx site sends COOP/COEP; the xrpl.js CDN carries CORP) and falls back
+   to `pkg/`. Measured (headless Chrome, 20-core laptop, 16 threads): proving keys 6.0 s, 2-action
+   proof 3.2 s; single-threaded ≈ 25 s / ≈ 20 s. ✅ **Proving key once per tab, in the background**:
+   core builds `pk`/`vk` lazily (`Params::pk()`/`vk()`), so creating or restoring a wallet is instant
+   and the worker's `warm()` builds the proving key while the user funds the account; the node warms
+   the verifying key at startup. ⬜ *Cross-session* key caching is not possible yet: orchard 0.15 has
+   no serialization for its `ProvingKey` (private fields over halo2's `ProvingKey`), so IndexedDB
+   persistence would need an orchard patch — on 16 threads the 6 s rebuild per tab is acceptable.
+   ✅ **UX for waits**: thread count in the wallet card, "proving keys ready (N threads, X s)",
+   "proved in X s on N threads" on every success line, fee and net amount shown before and after.
+   ⬜ Resume a failed payout from `payoutBlob` with one click (today: re-submit the same unshield;
+   `/endorse` is idempotent). ✅ **Pool pre-population**: `backend/quorum/prepopulate.mjs`
+   (`npm run prepopulate`: N faucet-funded holders shield fixed denominations through the coordinator,
+   some transfer; prints the honest "synthetic set" label). ✅ **Demo run-sheet**: `docs/DEMO.md`
+   (what to click, say and show for SPEC §10, fallbacks, timing table) — ⬜ rehearse and fill the
+   timings on the demo laptop.
 
 ## 5. To do — API/XRPL lead (user-facing layer, pitch)
 
@@ -279,7 +287,7 @@ blind-sign (`Verifier::endorse`). Upside vs. Railgun: Halo 2 has no trusted setu
   `Restart=on-failure`. The restart path is exercised (state files restored, custody gate re-checked);
   a cold rebuild from the ledger (`--rebuild --mirror`) is tested in the services harness.
 - **Proving cost is fine** (≈ 0.9 s per 2-action bundle on the wallet side) — natively. In the browser
-  it is ≈ 20 s single-threaded today (§4.7).
+  it is ≈ 3 s on a 16-thread browser and ≈ 20 s single-threaded (§4.7).
 - **The protocol fee is an operating fee, not a privacy feature.** Rates and the treasury are public;
   the treasury is an ordinary XRPL account under the same k-of-N as the pool, so the custody caveat
   covers it too. Different fee flags on different nodes split the quorum (roots diverge), and a rate change
