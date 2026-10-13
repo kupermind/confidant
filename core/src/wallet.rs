@@ -201,7 +201,7 @@ impl Wallet {
             OpTag::Shield,
             &external_ctx(OpTag::Shield, "", vb),
         );
-        let proven = unauthorized.create_proof(&self.replica.params().pk, OsRng)?;
+        let proven = unauthorized.create_proof(self.replica.params().pk(), OsRng)?;
         let bundle = proven.apply_signatures(OsRng, sh, &[])?;
         let record = record_from_bundle(&bundle, 0, OpTag::Shield, "", 0, 0);
         let hash = bundle_hash(&record)?;
@@ -299,7 +299,7 @@ impl Wallet {
         debug_assert_eq!(vb, withdraw as i64);
         let commitment: [u8; 32] = unauthorized.commitment(TxVersion::V5)?.into();
         let sh = sighash(&commitment, op, &external_ctx(op, external, vb));
-        let proven = unauthorized.create_proof(&self.replica.params().pk, OsRng)?;
+        let proven = unauthorized.create_proof(self.replica.params().pk(), OsRng)?;
         let bundle = proven.apply_signatures(OsRng, sh, &[self.keys.spend_authorizing_key()])?;
         let record = record_from_bundle(&bundle, 0, op, external, 0, 0);
         let hash = bundle_hash(&record)?;

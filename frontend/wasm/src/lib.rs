@@ -5,6 +5,11 @@
 use confidant_core::{BundleRecord, TransferOutput, Wallet, WalletSecret};
 use wasm_bindgen::prelude::*;
 
+/// Threaded build only: `await initThreadPool(n)` from JS before any proving, so rayon's global
+/// pool is backed by Web Workers instead of (unsupported) `std::thread::spawn`.
+#[cfg(feature = "threads")]
+pub use wasm_bindgen_rayon::init_thread_pool;
+
 #[wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
@@ -36,6 +41,12 @@ impl BrowserWallet {
         Ok(BrowserWallet {
             inner: Wallet::from_secret(&secret).map_err(js)?,
         })
+    }
+
+    /// Builds the proving key now (once per worker; the page calls it right after the wallet
+    /// exists, so the first bundle does not wait for it).
+    pub fn warm() {
+        confidant_core::Params::get().pk();
     }
 
     /// The JSON `WalletSecret` to persist (this is the spending key — keep it in the browser).

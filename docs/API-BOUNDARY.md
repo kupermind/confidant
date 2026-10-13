@@ -154,7 +154,14 @@ cd backend/quorum && POOL=<pool> COORDINATOR_URL=http://<host>:8787 CLI=../../ta
 build step. The wallet is **in the browser**: `frontend/wasm` (confidant-core behind wasm-bindgen,
 built with `wasm-pack build frontend/wasm --target web --out-dir ../pkg`) runs in
 `frontend/wallet-worker.js`; the page keeps the `WalletSecret` JSON in `localStorage`, syncs from
-`GET /api/log`, and the worker builds `{record, bundleHash}` for `POST /api/submit/*`. `xrpl.js` in
+`GET /api/log`, and the worker builds `{record, bundleHash}` for `POST /api/submit/*`. Two builds of
+the same crate: `pkg-threads/` proves on a Web-Worker thread pool and is picked when the page is
+cross-origin isolated (the nginx site sends COOP/COEP), `pkg/` is the single-threaded fallback. The
+proving key is built once per worker, in the background right after the wallet exists (`warm`), so
+the first operation does not wait for it; a build's answer carries `provingMs` and `threads`, which the
+page shows ("proved in X s on N threads"). Pre-population for a demo: `npm run prepopulate` in
+`backend/quorum` (fixed denominations, faucet-funded holders, a few private hops — a synthetic set, say
+so); the stage run-sheet is `docs/DEMO.md`. `xrpl.js` in
 the browser does the faucet and the deposit. Fallback when WebAssembly is unavailable: the demo
 wallet service (`backend/wallet`: `POST /wallets`, `GET /wallets/{id}`, `POST
 /wallets/{id}/{shield|transfer|unshield}`), which holds the demo wallets' spending keys on the demo

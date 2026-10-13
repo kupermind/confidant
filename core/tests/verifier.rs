@@ -302,11 +302,11 @@ fn unknown_anchor_is_refused() {
     let c: [u8; 32] = unauth.commitment(TxVersion::V5).unwrap().into();
     let sh = sighash(&c, OpTag::Shield, &[]);
     let bundle = unauth
-        .create_proof(&v.params().pk, OsRng)
+        .create_proof(v.params().pk(), OsRng)
         .unwrap()
         .apply_signatures(OsRng, sh, &[])
         .unwrap();
-    assert!(bundle.verify_proof(&v.params().vk).is_ok());
+    assert!(bundle.verify_proof(v.params().vk()).is_ok());
     let record = record_from_bundle(&bundle, 0, OpTag::Shield, "", 0, 0);
     let dep = DepositRef {
         tx_hash: "D2".into(),
@@ -475,7 +475,7 @@ fn proof_does_not_verify_under_another_circuit_version() {
     alice.sync(v.records()).unwrap();
     let p = alice.build_shield(1).unwrap();
     let bundle = bundle_from_record(&p.record, v.params().version).unwrap();
-    assert!(bundle.verify_proof(&v.params().vk).is_ok());
+    assert!(bundle.verify_proof(v.params().vk()).is_ok());
     let other = VerifyingKey::build(OrchardCircuitVersion::PostNu6_3);
     assert!(bundle.verify_proof(&other).is_err());
 }
@@ -976,7 +976,7 @@ fn record_roundtrip_is_exact_and_malformed_records_are_refused() {
             record.timestamp,
         );
         assert_eq!(record, &again);
-        assert!(bundle.verify_proof(&v.params().vk).is_ok());
+        assert!(bundle.verify_proof(v.params().vk()).is_ok());
     }
     let with = |f: &dyn Fn(&mut BundleRecord)| {
         let mut rec = v.records()[0].clone();

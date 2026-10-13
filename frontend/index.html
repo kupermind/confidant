@@ -287,15 +287,22 @@
       worker.onerror = (e) => { for (const p of pending.values()) p.rej(new Error("browser wallet failed to load: " + (e.message ?? "unknown"))); pending.clear(); worker = null; };
     }
     async function syncNow() { const { records } = await http("GET", `${API}/log?from=0`); return call("sync", { records }); }
+    let threads = 0, warmed = null;
+    // The proving keys are built once per worker; start that right after the wallet exists so the
+    // first operation does not wait for it (the worker serialises messages, so a build that arrives
+    // early simply queues behind the warm-up).
+    const warm = () => (warmed ??= call("warm").then((r) => { threads = r.threads; $("sync-hint").textContent = `proving keys ready (${r.threads} thread${r.threads === 1 ? "" : "s"}, ${(r.ms / 1000).toFixed(1)} s)`; return r; }).catch((e) => { warmed = null; throw e; }));
     return {
-      mode: "browser", label: "in this browser (WebAssembly) — never sent anywhere",
-      async create() { start(); const s = await call("create"); return { mode: "browser", secret: s.secret, address: s.address, viewingKey: s.viewingKey }; },
-      async restore(w) { start(); await call("restore", { secret: w.secret }); return w; },
+      mode: "browser", get label() { return `in this browser (WebAssembly${threads ? `, ${threads} thread${threads === 1 ? "" : "s"}` : ""}) — never sent anywhere`; },
+      async create() { start(); const s = await call("create"); threads = s.threads ?? 0; warm().catch(() => {}); return { mode: "browser", secret: s.secret, address: s.address, viewingKey: s.viewingKey }; },
+      async restore(w) { start(); const s = await call("restore", { secret: w.secret }); threads = s.threads ?? 0; warm().catch(() => {}); return w; },
       async summary() { return syncNow(); },
-      async build(w, op, body) { await syncNow(); return call(op, body); },
+      async build(w, op, body) { await warm(); await syncNow(); return call(op, body); },
       async forget() { if (worker) await call("forget"); },
+      get threads() { return threads; },
     };
   })();
+  const proved = (built) => (built?.provingMs ? ` · proved in ${(built.provingMs / 1000).toFixed(1)} s on ${built.threads} thread${built.threads === 1 ? "" : "s"}` : "");
   const wbFor = (w) => (DEMO || w?.mode === "service" ? serviceBackend : browserBackend);
   let walletReady = false;
 
@@ -396,7 +403,7 @@
       setSteps("steps-shield", 2);
       const acc = await submitWithStandby("shield", { record: built.record, depositTxHash }, (m) => setMsg("msg-shield", `<span class="spin"></span>${m} — waiting`, "warn"));
       setSteps("steps-shield", 2, true);
-      setMsg("msg-shield", `Shielded ${fmt(drops)} XRP (note ${fmt(net)} XRP after the ${pct(cfg.fees?.shieldBps ?? 0)} fee). ${link("deposit", depositTxHash)} · ${link("anchor", acc.anchorTx)} · signed by ${acc.signers?.length ?? "k"} of ${cfg.signers}`, "ok");
+      setMsg("msg-shield", `Shielded ${fmt(drops)} XRP (note ${fmt(net)} XRP after the ${pct(cfg.fees?.shieldBps ?? 0)} fee). ${link("deposit", depositTxHash)} · ${link("anchor", acc.anchorTx)} · signed by ${acc.signers?.length ?? "k"} of ${cfg.signers}${proved(built)}`, "ok");
       addActivity({ type: "shield", text: `${fmt(drops)} XRP into the pool (note ${fmt(net)} XRP)`, links: [["deposit", depositTxHash], ["anchor", acc.anchorTx]] });
     } catch (e) { setMsg("msg-shield", e.message, "err"); }
     finally { busy(btn, false); refreshWallet(); refreshStatus(); }
@@ -464,7 +471,7 @@
     try {
       let w;
       if (!DEMO && typeof WebAssembly === "object") {
-        setMsg("create-progress", `<span class="spin"></span>Generating your key and building the proving keys in this browser (~25 s, once per session)…`, "warn");
+        setMsg("create-progress", `<span class="spin"></span>Generating your spending key in this browser…`, "warn");
         try { w = await browserBackend.create(); }
         catch (e) { setMsg("create-progress", `Browser wallet unavailable (${e.message}); using the demo wallet service instead.`, "warn"); w = await serviceBackend.create(); }
       } else { w = await serviceBackend.create(); }
@@ -498,7 +505,7 @@
     if (w) {
       await refreshWallet();
       try {
-        if (w.mode === "browser") setMsg("wallet-progress", `<span class="spin"></span>Restoring your wallet: building the proving keys in this browser (~25 s)…`, "warn");
+        if (w.mode === "browser") setMsg("wallet-progress", `<span class="spin"></span>Restoring your wallet in this browser…`, "warn");
         await wbFor(w).restore(w); walletReady = true; setMsg("wallet-progress", "");
       } catch (e) { setMsg("wallet-progress", `could not restore the wallet: ${e.message}`, "err"); }
     }

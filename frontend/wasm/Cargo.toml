@@ -18,3 +18,15 @@ serde.workspace = true
 serde_json.workspace = true
 getrandom = { version = "0.2", features = ["js"] }
 console_error_panic_hook = "0.1"
+# `threads`: proving on a Web-Worker thread pool (wasm-bindgen-rayon over orchard/halo2's rayon
+# parallelism). Needs nightly + `-Z build-std=panic_abort,std` with atomics and a page that is
+# cross-origin isolated (COOP/COEP); the default build stays single-threaded and runs anywhere.
+wasm-bindgen-rayon = { version = "1.3", features = ["no-bundler"], optional = true }
+
+[features]
+default = []
+threads = ["dep:wasm-bindgen-rayon", "confidant-core/multicore"]
+
+[package.metadata.wasm-pack.profile.release]
+# wasm-opt must be told about the shared-memory features the threaded build uses.
+wasm-opt = ["-O", "--enable-threads", "--enable-bulk-memory", "--enable-mutable-globals"]

@@ -63,3 +63,4 @@ desktop.ini
 *.key.json
 # wasm-pack output of frontend/wasm (built at deploy time)
 frontend/pkg/
+frontend/pkg-threads/
