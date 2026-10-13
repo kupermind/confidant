@@ -68,25 +68,34 @@ On-site work: core (`pof` sighash domain, `Wallet::build_proof_of_funds`,
 `Verifier::verify_proof_of_funds`, tests to the 100% gate, mutation table, audit slice), wasm export,
 a lender page that verifies in the browser, credential issuance by xrpl.js.
 
-Current lean: **A as the headline, B as the second piece** ("compliant privacy built on XRPL
-Credentials"); C only if the feasibility check passes before the event. Not considered:
+Current lean (2026-10-14): **A + C** — "compliant privacy built on XRPL Credentials": A gates who
+enters the pool with an XLS-70 Credential; C lets a holder prove funds ≥ X to a lender, who checks
+it against the anchors on XRPL and can record the verdict as a Credential on the borrower's account.
+B (one-payment disclosure) is the next candidate if time remains. Not considered:
 RLUSD/issued tokens (deposit/payout/trust-line surface, risk), on-ledger verification (non-goal), a
 hardware signer in the quorum (liveness on stage).
 
-**Draft timeline (for A + B).**
+**C's prototype is pre-event work and is disclosed as such.** Draft PR #29 (branch
+`spike/proof-of-funds`, not for merge) carries it with open questions for an external design review
+(domain separation, the "≥ X" range argument, nullifier linkage, transferability, snapshot vs lock).
+If C is chosen, the on-site work is the full implementation (audit slice, coverage and mutation table,
+wasm export, lender page, Credential issuance); on stage the spike is named as pre-event.
+
+**Draft timeline for A + C.**
 
 | When | Crypto/ZK lead | API/XRPL lead |
 |---|---|---|
 | Sat 9–13 | credential check in node + sidecar | issuer page, issue/accept flow |
 | Sat 13–20 | tests, mutation table, audit REQ, deploy to the testnet quorum | refusal + status in the UI; deck skeleton |
-| Sat 20 – Sun 2 | one-payment disclosure in core + wasm | disclosure UI; re-populate the pool with credentialed holders |
+| Sat 20 – Sun 2 | proof of funds in core (from the reviewed design) + wasm; audit REQ | lender page: challenge, verify in the browser against the XRPL anchors, issue the Credential; re-populate the pool with credentialed holders |
 | Sun 9–14 | audit fixes; fillers if ahead | deck and story |
 | Sun 14–18 | freeze; two full rehearsals on the demo laptop; fill `docs/DEMO.md` timings; fallbacks | same |
 
 **Before Oct 24.** Rehearse on the demo laptop and fill the `docs/DEMO.md` timings table; FE team
 finishes design and deck structure; confirm Credentials and Permissioned Domains are enabled on
-testnet; write the A/B designs (no code); C's feasibility note; get pitch length and submission
-format from the organizers; decide where the public repo lives.
+testnet; write the A design (no code); external review of C (PR #29); get pitch length and submission
+format from the organizers; decide where the public repo lives; HTTPS on the demo domain
+(`confidant.im`, PR #28) so every visitor's browser proves on threads.
 
 ---
 
