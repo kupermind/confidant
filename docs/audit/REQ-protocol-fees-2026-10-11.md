@@ -45,3 +45,21 @@ Q-FEE-1 Net-note binding (fee enforced solely through `delivered == value_balanc
 Q-FEE-2 fee-sweep as a stand-alone sidecar kind (never combined with an anchor/payout in one request) and the sidecar reading its own node's /fees — agreed as the binding point?
 Q-FEE-3 Anything to add before IMPL-PASS? Merge on PASS + green CI; then a fresh pool on the testnet host with 25/25 bps from genesis (the running pool has no treasury and would not replay under a fee policy — it is retired, demo data only).
 ```
+
+## Supplement — the independent belt applied (2026-10-13)
+
+Sent after the auditor's PASS (merge + testnet) with one before-real-value addition, verbatim.
+
+```text
+REQ supplement — independent pool-excess bound applied (PR #23, branch protocol-fees, commit BELT_COMMIT). Your Q-FEE-3 addition, done now rather than later since it is cheap and the PR is still open.
+
+== What ==
+backend/node/src/node.rs: outstanding_backing() = −Σ value_balance over the verifier's accepted records (shields in minus unshields out, transfers zero; public value balances, nothing from the fee ledger); pool_excess() = account_info(pool).account_data.Balance (xrpl.rs account_balance, validated) − outstanding_backing, saturating. GET /fees (Node::fees, now async) reports poolExcess: Option<u64> and available = min(accrued − swept, poolExcess); when the ledger cannot be read (RPC error, or an account_info without a Balance) poolExcess = null and available = 0 — nothing sweepable, fail-closed. This is what the sidecars read before signing a fee-sweep (they bound Amount by their own node's available), so the independent bound binds at SIGNING time, not only at recording. fee_swept(hash): after sweep_facts, reads account_info(pool) again and refuses (NodeError::Fee → 409, nothing recorded) when the post-sweep balance is below outstanding_backing — the pool must still hold every note's value after the sweep; then the fee-ledger bound as before. Coordinator/sidecar JS unchanged (they consume `available`). Docs: SPEC §6 EN/RU, API-BOUNDARY (FeeReport.poolExcess) EN/RU, NODE-OPERATOR, backend/README, ROADMAP §3.
+
+== Tests ==
+protocol_fees_accrue_net_and_sweep_verified_on_ledger extended: outstanding_backing == 59_750_000 (99.75 XRP in − 40 out); with the pool balance set to outstanding + 20_000 the report shows poolExcess 20_000 and available 20_000 although the fee ledger has 50_000; a validated 30_000-drop sweep whose post-sweep balance is outstanding − 1 → NodeError::Fee, swept unchanged; ledger unreadable → poolExcess null, available 0, fee_swept → Ledger(Rpc); an account_info without Balance → poolExcess null. Node coverage 98.06 % lines (gate 95; fees.rs 100 %); clippy/fmt clean; 10/10 node tests.
+Mutations (alone, isolated target dir, restored from memory): X1 /fees available not capped by the pool excess → killed; X2 /fees falls back to the fee ledger when the ledger is unreadable → killed; X3 post-sweep solvency check removed → killed; X4 outstanding backing ignores unshields (sign dropped) → killed; X5 account_balance treats a missing Balance as 0 → killed. 5/5; the earlier 24/24 unchanged.
+
+== Testnet ==
+Run 2026-10-13T09-21-56-989Z through the services (same harness as above, every node with the belt): green in 201 s, every assertion of the previous run unchanged — shield net, two net payouts, accrued 124 843 on all four nodes, sidecar refusals of an excess and a misdirected sweep, POST /fees/sweep → 124 843 drops pool → treasury 2-of-3 recorded 4/4 (https://testnet.xrpl.org/transactions/64941050B8B7BFA48C661F21CA57A0EAFAC00C9FA7C45EB2C2E382A480B5D056), swept/available 124 843/0 everywhere, second sweep refused, rebuilt node reports the same fee ledger. The sweep went through because the pool's ledger balance (faucet funding + the refused listed deposit + fees − XRPL costs) exceeds its outstanding notes by far more than the fees; `available` was the fee ledger's value, capped by nothing.
+```
