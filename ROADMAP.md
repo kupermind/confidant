@@ -43,9 +43,30 @@ Rubric, pitch length and submission format are not published yet.
 |---|---|---|---|---|
 | A. Credential-gated shielding | shield only from accounts holding an accepted XLS-70 Credential from a trusted issuer (issuer set possibly via a Permissioned Domain); node checks at submit and endorse, sidecar refuses, issuer page + accept step in the UI | native compliance primitives (live on mainnet) | low | yes — same shape as the screening gate |
 | B. One-payment disclosure | note-opening report (§4.5.3): hand an auditor one payment, not the viewing key; optionally bound to the auditor's credentialed XRPL account | via A's credentials | medium (core + wasm) | yes |
-| C. ZK proof of shielded funds for lending | a holder proves "I control ≥ X in the pool" to a lender (XLS-66 / XLS-65 track) without revealing notes | lending track | high (likely a new Halo 2 circuit) | **feasibility check first** — Orchard unchanged may not express it |
+| C. ZK proof of shielded funds | a holder proves "I control unspent notes worth ≥ X" to a lender / underwriter (lending track) without revealing notes or the total; the verdict can become an XLS-70 Credential on the borrower's account | lending track; the lender checks the root and nullifiers against the anchors on XRPL | medium — **Orchard circuit unchanged** (see feasibility below) | **yes** — the prototype works |
 | D. Full data availability on the ledger | bundles published as chunked memos (§4.5.1); any node rebuilds from XRPL alone, no mirror | XRPL as the data layer | low | yes, but not visual |
 | Fillers | §4.3a refund for refused deposits; one-click payout resume from `payoutBlob` | — | — | yes |
+
+**Option C feasibility (2026-10-13, throwaway prototype, not merged).** No new circuit is needed.
+The proof is an ordinary Orchard bundle built like an unshield of X with change back to self, but
+signed over a separate sighash domain (personalization `ConfidantPoF_v1_`, context = lender
+challenge ‖ X) that no pool operation ever computes. A read-only check then confirms: known
+anchor, nullifiers unspent, valid proof, signatures under the proof-of-funds sighash, value balance
+= X. Prototype results (release, laptop): prove 1.3 s, verify 10 ms, 2 actions, ≈ 18.6 KB as JSON;
+reveals X, not the total; bound to the challenge and to X; `submit_unshield` / `submit_transfer` of the
+same record are refused (`InvalidSpendAuth`) and nothing is applied; a keyless verifier rebuilt from
+the public log reaches the same verdict; once the proven notes are spent the old proof fails
+(`DoubleSpend`). Honest limits, to state if C ships: (1) **a snapshot, not a lock** — funds can move
+right after; the pool cannot encumber notes without a quorum-enforced lock (a trust-path change);
+(2) **the lender sees the nullifiers**, so when those notes are later spent the lender knows that
+operation was the holder's — mitigated by the wallet rotating the notes to itself right after
+proving (the lender then learns only that one self-transfer is theirs); (3) **a proof can be lent
+out** — it proves someone who controls ≥ X answered the challenge, not that this person is the
+borrower; binding to the borrower's XRPL account signature narrows but does not close it
+(the §4.5.3 audit condition applies); (4) the action count hints at how many notes were used.
+On-site work: core (`pof` sighash domain, `Wallet::build_proof_of_funds`,
+`Verifier::verify_proof_of_funds`, tests to the 100% gate, mutation table, audit slice), wasm export,
+a lender page that verifies in the browser, credential issuance by xrpl.js.
 
 Current lean: **A as the headline, B as the second piece** ("compliant privacy built on XRPL
 Credentials"); C only if the feasibility check passes before the event. Not considered:
