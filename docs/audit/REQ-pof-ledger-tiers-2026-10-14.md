@@ -23,3 +23,21 @@ Q-PF-3 Is the scope cut realistic: A, plus C's core slice, plus Tier 1 only if A
 
 Your view on 1–3 (and anything you want written into the design before Saturday) goes to the owner verbatim; the REQ for whichever slices are built comes to you on-site, A first.
 ```
+
+## Supplement — the lead's objection: Tier 3 is escrow, not proof of funds (2026-10-14)
+
+Sent after the first RESP, verbatim.
+
+```text
+The project lead read the Tier 1–3 exchange and raises an Occam's-razor objection he wants your view on before anything reaches the slides:
+
+"Tier 3 is no different from a private transfer from the borrower to whoever lends them the funds — the collateral MOVES into a note the holder no longer controls alone. Proof-of-funds schemes are interesting precisely when they prove the funds exist WITHOUT moving them. Otherwise we are re-inventing (re-discovering) escrow."
+
+My read, for you to confirm, correct or sharpen:
+1. He is right about the category. Tier 3's "lock" is achieved by transferring control of the collateral to a 2-of-3 group {holder, lender, arbiter}; that is a private ESCROW (a joint-custody collateral account with an arbiter), not a proof of funds. It proves nothing about the holder's other funds and it moves the collateral. Its only differences from a plain private transfer to the lender are (a) neither side can act unilaterally (the arbiter rule), and (b) release/liquidation are driven by on-ledger loan state — both are exactly what escrow adds over a transfer. So: a legitimate product ("shielded collateral escrow", which XRPL's native Escrow cannot do for shielded notes), but a different product with a different name, and it should not be presented as the "lockable" evolution of proof of funds.
+2. The genuinely interesting object is the base PoF: an attestation that funds exist, without moving them (Tiers 0–2: snapshot, expiring Credential, tripwire). A lock WITHOUT moving funds would need either a quorum-enforced encumbrance on notes (trust-path change, you ruled out of scope) or a circuit with spending conditions (Tier 4) — i.e. within "Orchard reused unchanged" there is no PoF-lock; there is PoF (snapshot) or escrow (move). The honest framing for the deck: "proof of funds = underwriting signal, point-in-time; collateral = escrow under joint control, a separate construction".
+3. Consequence for the plan: Tier 3 leaves the PoF story (and the "tiers" ladder, which implies continuity); if the owner wants it at all it becomes its own option ("private escrow for collateral", post-event, with its two caveats you named). Tier 4 stays as the only true "lock without moving" and is post-event anyway.
+
+Questions: (Q-ESC-1) do you agree Tier 3 is escrow by another name and should be renamed/removed from the PoF ladder? (Q-ESC-2) is there ANY construction you can see, with the Orchard circuit unchanged and no quorum encumbrance, that locks funds without moving them — or is "PoF-lock" simply not a thing in our model? (Q-ESC-3) anything else the lead's point changes in your view on the scope cut (A + C core + Tier 1-if-A)? Your answer goes to the owner verbatim on PR #27.
+```
+
