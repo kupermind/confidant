@@ -94,6 +94,8 @@ proxies, served over TLS, so every visitor's browser is a secure context and get
    - `curl -s https://<domain>/api/config` answers with the pool, `quorum`, `signers` and `fees`;
    - in a browser on another machine, the DevTools console prints `true` for `crossOriginIsolated`,
      and the wallet card shows "N threads" with N > 1.
+   - after the swap the port-80 block is `default_server`, so `http://<ip>/` also redirects to
+     `https://<domain>/` (intended); the coordinator's own site on 8787 stays plain HTTP.
 7. **Clients:** the coordinator is reachable as `https://<domain>/api` (smoke, pre-population:
    `COORDINATOR_URL=https://<domain>/api`). The plain `http://<host>:8787` port can stay for the CLI
    harnesses, or be closed (`sudo ufw delete allow 8787/tcp`) once nothing uses it.
