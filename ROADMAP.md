@@ -25,7 +25,7 @@ XRPL integration built on-site. Say so on stage.
 | **v2 trust-minimized architecture** (client-side keys/proving, state on ledger, k-of-N SignerList, permissionless relaying) | ✅ core + harness (PR #8); ✅ quorum services (PR #11); ✅ deployed on a testnet host; ⬜ user-facing layer — §5 | `SPEC.md` §4–5, §16; `docs/audit/`; `docs/API-BOUNDARY.md` |
 | Reused circuit validated (M0 gate) | ✅ Zcash Orchard Action circuit unchanged, `orchard` 0.15.5 / `orchard_v2` / `FixedPostNu6_2` | `core/src/verifier.rs` (`BUNDLE_VERSION`) |
 | Core: `Wallet` + `Verifier`, deposit binding, anchor memos, `rebuild_checked`, `endorse`, reveal, key-free snapshots | ✅ | `core/` |
-| Tests | ✅ core: 29 tests, 27 guards mutation-tested, **100% line coverage, enforced in CI**; node: 10 tests against a fake ledger, 25 + fee guards mutation-tested, 95% gate (≈ 98%); sidecar guard: node:test suite (14 tests incl. `fee-sweep`), 20 guards mutation-tested | `core/tests/`, `backend/node/tests/`, `backend/quorum/test/`, CI `coverage` + `quorum` jobs |
+| Tests | ✅ core: 31 tests (incl. the apply-path signature-safety + hash-domain guards, 2026-10-14), 27 + 5 guards mutation-tested, **100% line coverage, enforced in CI**; node: 10 tests against a fake ledger, 25 + fee guards mutation-tested, 95% gate (≈ 98%); sidecar guard: node:test suite (14 tests incl. `fee-sweep`), 20 guards mutation-tested | `core/tests/`, `backend/node/tests/`, `backend/quorum/test/`, CI `coverage` + `quorum` jobs |
 | CI | ✅ fmt / clippy `-D warnings` / tests (release) / coverage gates (core 100%, node 95%) / sidecar unit tests / hygiene (no key-shaped files, label markers in SPEC/README/SPEC.ru, allow-listed over-claim grep) / manual testnet e2e (both harnesses) | `.github/workflows/check.yml` |
 | Security review | ✅ v1 DESIGN-PASS + IMPL-PASS (+2 slice PASSes); v2 core DESIGN-PASS + IMPL-PASS; quorum services DESIGN-PASS (C1–C5, all implemented) + IMPL-PASS; deployment manifests passed a security-delta look | `docs/audit/INDEX.md` |
 | Honest labels (v2 wording) | ✅ SPEC, SPEC.ru, README, crate docs | — |
@@ -108,6 +108,11 @@ XRPL integration built on-site. Say so on stage.
   (wrong mirror / root / actions / external / deposit facts), wallet sync, signer endorse (wrong
   root / hash / external / op / actions, re-pointed payout, lagging signer), snapshot restore.
 - 27 core guards mutation-tested (remove → red); tables in `docs/audit/REQ-v2-core-impl-2026-10-05.md`.
+- **Apply-path signature safety + hash-domain guard** (2026-10-14, `core/tests/apply_path_guards.rs`;
+  the audit's step (1) before any proof-of-funds work): a foreign-sighash bundle is refused at every
+  state-changing entrypoint before any nullifier is consumed, a swapped binding signature likewise,
+  state byte-identical; every BLAKE2b personalization and sighash context in `core/src` is enumerated
+  and pinned to an allow-list. 5 mutations killed.
 - 100% line coverage of the core, CI-enforced; regions ≈ 97% (unreachable `Err` arms of `?` on library calls).
 - Node: 8 tests against a fake ledger, 25 guards mutation-tested, 95% line gate (≈ 98.7%); sidecar
   guard: node:test suite in CI, 20 guards mutation-tested; services e2e on testnet green
@@ -134,6 +139,20 @@ XRPL integration built on-site. Say so on stage.
    3a. **Refund path for refused deposits:** a quorum-signed Payment back to the depositor of a
    shield the gate refused (sidecar shape rule: destination = the deposit's sender, amount = the
    delivered amount, deposit unconsumed) — a small trust-path slice; manual today.
+3b. **Logged by the audit with the apply-path guards (2026-10-14, PR #31; not part of step 1):**
+   (i) **authority over `set_anchored_root`** — a `&mut` entrypoint outside the apply path (it never
+   reaches `apply_verified`, so the signature invariant is untouched), but it mutates committed
+   state. Today the core only requires the root to be one the pool has had; the node calls it in
+   `POST /anchored` after reading the anchor Payment from the ledger itself and in `--rebuild` for the
+   last memo's root; nothing signs or verifies against `anchoredRoot` (it is reported state).
+   **Resolved firsthand by the audit the same day — a watch item, no slice:** `set_anchored_root`
+   refuses any root that is not already a known anchor (the same gate `verify` uses), so it cannot
+   inject a forged or new anchor, and `anchored_root` is inert (setter, `state()`/`snapshot()`,
+   `restore()` round-trip only; every apply path keys off `is_known_anchor`). Reopen only if
+   `anchored_root` ever becomes an input to a security decision.
+   (ii) **scope of the hash-domain guard** — `core/tests/apply_path_guards.rs` globs `core/src` only,
+   which is where every bundle sighash lives today; if another crate (node, sidecar, CLI) ever
+   computes a bundle sighash, extend the glob there so the guard's scope tracks the code.
 4. **Roadmap items from the audit (not for the hackathon):** pool-instance id in the sighash
    personalization; `external_ctx` taking the unshield amount as `u64`; bounded anchor history;
    XLS-56 Batch for atomic anchor + payout; FROST for the signer keys.
