@@ -106,35 +106,59 @@ whose spend key is a 2-of-3 FROST RedPallas group {holder, lender, arbiter = quo
 signers release or liquidate only after reading the loan's state on the ledger (presentation and
 post-event). Circuit-level options (no nullifier reveal, time-locked notes) stay post-event (Tier 4).
 
-**Scope check (2026-10-14): this is more than 36 hours.** Proposed cut, for discussion: event = A +
-C's core slice + C Tier 1 if A lands by Saturday evening (A and Tier 1 share one Credential module in
-node and sidecar); Tier 2 a stretch; Tier 3 and 4 on slides only; B dropped. UI surfaces are the FE
-team's: credential issue/accept, "prove funds" in the wallet, a lender page that reads the Credential.
+**Proof-of-funds tiers at a glance** (detail in [`docs/PROOF-OF-FUNDS.md`](./docs/PROOF-OF-FUNDS.md)):
 
-**Open for the owner:** (a) choose C or not (the audit advises A first, then C, sharing one
-Credential module in node and sidecar); (b) the framing: never "borrower B owns ≥ X", only
-"someone controlling ≥ X answered a challenge bound to B" — otherwise it is a blocker; (c) where the
-proof is verified: the proposal takes the read-only node endpoint `POST /pof/verify` (condition 6:
-the quorum sees the nullifiers, not the lender) and drops the browser-side verifier; (d) X in the
-Credential in clear or only as a hash; (e) the scope cut above.
+| Tier | What | On the ledger | Gives | Does not give | Plan |
+|---|---|---|---|---|---|
+| core slice | `Wallet::build_proof_of_funds`, `Verifier::verify_proof_of_funds`, own record type, audit conditions 2–4 | nothing | a proof a node can check read-only | anything a lender can read | event |
+| 1 | nodes verify via `POST /pof/verify` (not logged, never via the coordinator); the quorum multisigns an expiring `CredentialCreate` (`ConfidantPoF`, `URI = H(X ‖ L ‖ E)`) through a new sidecar kind `credential-pof`; the borrower signs `CredentialAccept` | borrower account, type, expiry, hash — no notes, no nullifiers, no proof | a verdict the lender reads on XRPL; account binding; visible freshness | a lock; liveness beyond the quorum | event, **if A lands by Saturday evening**; otherwise the diagram |
+| 2 | nodes keep the verified nullifiers in a private watch list; on spend the quorum multisigns `CredentialDelete` (sidecar kind `credential-revoke`) | the revocation | a tripwire the lender can watch | a lock; revocation timing leaks that the holder transacted (label it) | stretch, otherwise slides |
+| 3 | collateral moves into a note whose spend key is a 2-of-3 FROST RedPallas group {holder, lender, arbiter = quorum}; the arbiter releases or liquidates only after reading the loan's state on the ledger | ordinary anchors only | a real lock by key control, circuit unchanged | time locks; the arbiter widens what the quorum can do (state it next to the drain line) | slides; post-event |
+| 4 | a new circuit: proof of funds without revealing nullifiers; notes with spending conditions | — | the full answer | — | one line on a slide; post-event |
 
-**Draft timeline for A + C.**
+**Scope check (2026-10-14): all of this is more than 36 hours.** Proposed cut, for discussion:
+event = A + C's core slice + C Tier 1 if A lands by Saturday evening (A and Tier 1 share one
+Credential module in node and sidecar); Tier 2 a stretch; Tiers 3 and 4 on slides only; B dropped.
+UI surfaces are the FE team's: credential issue/accept, "prove funds" in the wallet, a lender page
+that reads the Credential.
+
+**Decisions required from the owner** (PR #27 merges only after these converge):
+
+| # | Decision | Options | Proposal / advice |
+|---|---|---|---|
+| a | choose C or not | A only · A + C | audit: A first, then C, one shared Credential module in node and sidecar |
+| b | framing on every surface | — | never "borrower B owns ≥ X", only "someone controlling ≥ X answered a challenge bound to B" — anything else is a blocker |
+| c | where the proof is verified | node endpoint `POST /pof/verify` · verifier in the lender's browser | node endpoint (condition 6: the quorum sees the nullifiers, not the lender) |
+| d | X in the Credential | clear in the URI · only a hash, X given off-ledger | open: clear is simpler for lenders, a hash keeps the threshold off the public ledger |
+| e | the scope cut above | — | as proposed |
+
+**Draft timeline for A + C** (assumes (c) = node endpoint; with a browser verifier the lender row
+moves back to wasm).
 
 | When | Crypto/ZK lead | API/XRPL lead |
 |---|---|---|
-| Sat 9–13 | credential check in node + sidecar | issuer page, issue/accept flow |
+| Sat 9–13 | Credential module in node + sidecar; credential check at submit and endorse | issuer page, issue/accept flow |
 | Sat 13–20 | tests, mutation table, audit REQ, deploy to the testnet quorum | refusal + status in the UI; deck skeleton |
-| Sat 20 – Sun 2 | proof of funds in core (from the reviewed design) + wasm; audit REQ | lender page: challenge, verify in the browser against the XRPL anchors, issue the Credential; re-populate the pool with credentialed holders |
-| Sun 9–14 | audit fixes; fillers if ahead | deck and story |
+| Sat 20 – Sun 2 | proof of funds in core (from the reviewed design); if A is in: `POST /pof/verify` + sidecar kind `credential-pof`; audit REQ | "prove funds" in the wallet; lender page reading the Credential; re-populate the pool with credentialed holders |
+| Sun 9–14 | audit fixes; Tier 2 or fillers if ahead | deck and story (Tiers 3–4 slides) |
 | Sun 14–18 | freeze; two full rehearsals on the demo laptop; fill `docs/DEMO.md` timings; fallbacks | same |
 
-**Before Oct 24.** Rehearse on the demo laptop and fill the `docs/DEMO.md` timings table; FE team
-finishes design and deck structure; confirm Credentials and Permissioned Domains are enabled on
-testnet; write the A design (no code); external review of C (PR #29); get pitch length and submission
-format from the organizers; decide where the public repo lives; ✅ HTTPS on the demo domain
-(`confidant.im`, PR #28, live 2026-10-14) so every visitor's browser proves on threads. Cut the
-`pre-hackathon` baseline tag only after #28 is merged and the deployed pool is re-populated, so
-the baseline is the state judges can actually open.
+**Other items and status (2026-10-14).**
+
+| Item | Status |
+|---|---|
+| HTTPS on the demo domain (`confidant.im`) | ✅ live, PR #28 merged |
+| Re-run the headless-browser cycle over HTTPS; fill the `docs/DEMO.md` threaded timings | open — offered by the crypto/ZK lead |
+| Re-populate the deployed pool, then cut the `pre-hackathon` baseline tag | open — the tag comes after re-population, so the baseline is what judges can open |
+| C spike, draft PR #29 | stays a draft, not for merge; disclosed as pre-event; its coverage CI fails on purpose |
+| Apply-path guards (audit condition 1) | ✅ PR #31 |
+| Which of XLS-65 / XLS-66 / XLS-80 are enabled on testnet or devnet; how a loan broker can require a Credential | open — check before the event |
+| Confirm Credentials and Permissioned Domains on testnet | open |
+| A design written (no code) | open |
+| Pitch length, rubric, submission format from the organizers | open |
+| Where the public repo lives | open |
+| FE team: design and deck structure | open (FE team) |
+| Rehearse on the demo laptop | open |
 
 ---
 
@@ -154,7 +178,7 @@ the baseline is the state judges can actually open.
 | **Quorum services**: Rust verifier node (`/submit/*`, `/endorse` idempotent, ledger-verified `/anchored`, `/log`, custody gate + scanner + `rebuild_checked` on start), Node signer sidecars (sign only what their own node endorsed; Fee/Sequence/LastLedgerSequence pinned from their own ledger reads), coordinator (k-of-N multisig, anchor then payout, payout blob returned) | ✅ built, audited and merged 2026-10-05 (PR #11); ✅ **deployed** the same night on a testnet host as systemd units behind nginx (`backend/deploy/`), 3 signers / quorum 2, smoke cycle green over the public address | `backend/`, `backend/deploy/README.md`, `docs/E2E.md` §2b |
 | **Boundary screening** (optional per-node policy): listed depositors / destinations and too-fresh deposits refused at submit and endorse (403); OFAC XRP list fetcher; replayable audit over the public log | ✅ built, audited (CONDITIONAL → IMPL-PASS, canonical addresses) and merged 2026-10-10 (PR #20); deployed on the testnet quorum with the OFAC XRP list and a 2-ledger standby | `backend/node/src/screening.rs`, `backend/quorum/screening/`, `SPEC.md` §6, `docs/audit/RESP-screening-gate-2026-10-10.md` |
 | **Protocol fee** (Railgun's economic model, server-side policy): configurable bps on shield and unshield, transfers free; shield credited net (deposit bound with `delivered = gross − fee`), payout net; per-node fee ledger replayable from the ledger, capped independently by the pool's ledger balance minus outstanding notes; k-of-N sweep to a treasury the sidecars verify against their own node | ✅ merged 2026-10-13 (PR #23; audit PASS + IMPL-PASS of the independent bound @ `f77775a`); ✅ **deployed** the same day on a fresh testnet pool with 25/25 bps from genesis (the fee policy is a genesis constant; the previous pool was retired), first real sweep verified on the ledger by all four nodes; UI shows the fee and builds the net note | `backend/node/src/fees.rs`, `SPEC.md` §6–7, `docs/API-BOUNDARY.md` §2, `docs/audit/REQ-protocol-fees-2026-10-11.md` |
-| Front-end: UI over the coordinator, deposit from the user's XRPL account, explorer links | ✅ **prototype** 2026-10-10: `frontend/index.html` (static) with the wallet **in the browser** (`frontend/wasm`, core → WebAssembly in a worker; keys and proofs never leave the page) and the demo wallet service as fallback · ✅ 2026-10-13 **multithreaded proving in the browser** (`frontend/pkg-threads`, wasm-bindgen-rayon; page served with COOP/COEP; measured in headless Chrome on a 20-core laptop: proving keys 6.0 s and a 2-action proof 3.2 s on 16 threads vs 12.1 s / 16.2 s single-threaded on the same machine; whole shield → transfer → unshield → reveal cycle 75 s vs 127 s), proving key built in the background right after the wallet exists, thread count and proof time shown · ✅ `backend/quorum/prepopulate.mjs` · ✅ `docs/DEMO.md` run-sheet · ✅ **deployed 2026-10-13** (PR #24) and verified in headless Chrome against the server: real path shield → transfer → unshield → reveal with fees green (note 4.9875 XRP from a 5 XRP deposit, payout 4.975032): 131 s single-threaded over plain http, 77 s with 16 threads through a localhost tunnel (proof 16.3 s vs 3.1 s); all 25 demo-mode buttons; **caveat:** browsers honour COOP/COEP only in a secure context, so over plain `http://<ip>/` the wallet runs single-threaded (16 s per proof) — threads need HTTPS (domain + TLS, pending) or `http://localhost` via an SSH tunnel to the host (documented in `docs/DEMO.md` and `backend/deploy/README.md`) · ⬜ domain + TLS for the UI site · ⬜ FE team: presentation and design; rehearsal timings on the demo laptop | `frontend/`, `backend/wallet/`, `backend/quorum/prepopulate.mjs`, `docs/DEMO.md` |
+| Front-end: UI over the coordinator, deposit from the user's XRPL account, explorer links | ✅ **prototype** 2026-10-10: `frontend/index.html` (static) with the wallet **in the browser** (`frontend/wasm`, core → WebAssembly in a worker; keys and proofs never leave the page) and the demo wallet service as fallback · ✅ 2026-10-13 **multithreaded proving in the browser** (`frontend/pkg-threads`, wasm-bindgen-rayon; page served with COOP/COEP; measured in headless Chrome on a 20-core laptop: proving keys 6.0 s and a 2-action proof 3.2 s on 16 threads vs 12.1 s / 16.2 s single-threaded on the same machine; whole shield → transfer → unshield → reveal cycle 75 s vs 127 s), proving key built in the background right after the wallet exists, thread count and proof time shown · ✅ `backend/quorum/prepopulate.mjs` · ✅ `docs/DEMO.md` run-sheet · ✅ **deployed 2026-10-13** (PR #24) and verified in headless Chrome against the server: real path shield → transfer → unshield → reveal with fees green (note 4.9875 XRP from a 5 XRP deposit, payout 4.975032): 131 s single-threaded over plain http, 77 s with 16 threads through a localhost tunnel (proof 16.3 s vs 3.1 s); all 25 demo-mode buttons; **caveat:** browsers honour COOP/COEP only in a secure context, so over plain `http://<ip>/` the wallet runs single-threaded (16 s per proof) — threads need HTTPS or `http://localhost` via an SSH tunnel to the host (documented in `docs/DEMO.md` and `backend/deploy/README.md`) · ✅ domain + TLS for the UI site (`confidant.im`, PR #28, live 2026-10-14) · ⬜ re-run the cycle over HTTPS · ⬜ FE team: presentation and design; rehearsal timings on the demo laptop | `frontend/`, `backend/wallet/`, `backend/quorum/prepopulate.mjs`, `docs/DEMO.md` |
 
 ---
 
@@ -379,10 +403,10 @@ the baseline is the state judges can actually open.
    some transfer; prints the honest "synthetic set" label). ✅ **Demo run-sheet**: `docs/DEMO.md`
    (what to click, say and show for SPEC §10, fallbacks, timing table) — ⬜ rehearse and fill the
    timings on the demo laptop. **Deployed 2026-10-13** (PR #24, nginx site with COOP/COEP, both
-   bundles shipped) and verified end to end against the server from headless Chrome. ⬜ **HTTPS for
-   the UI site** (domain pending): without a secure context browsers ignore COOP/COEP and the wallet
-   falls back to one thread; until then the demo laptop reaches the threaded wallet through an SSH
-   tunnel (`http://localhost:…` is a secure context).
+   bundles shipped) and verified end to end against the server from headless Chrome. ✅ **HTTPS for
+   the UI site** (`confidant.im`, PR #28): browsers ignore COOP/COEP without a secure context, so
+   before it the wallet fell back to one thread; the SSH tunnel (`http://localhost:…`) stays as a
+   fallback.
 
 ## 5. To do — API/XRPL lead (user-facing layer, pitch)
 
