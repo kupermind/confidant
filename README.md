@@ -91,7 +91,10 @@ What is done and what is left, per role: [`ROADMAP.md`](./ROADMAP.md). The v2 co
 services (verifier node, signer sidecars, coordinator) are merged, audited and exercised end to end on
 XRPL testnet with a 2-of-3 quorum; the user-facing layer (wallet UX, deposit from the user's account,
 UI over the coordinator, demo) is the API/XRPL lead's work for the hackathon —
-[`docs/API-BOUNDARY.md`](./docs/API-BOUNDARY.md) is the hand-off.
+[`docs/API-BOUNDARY.md`](./docs/API-BOUNDARY.md) is the hand-off. How this design compares with the
+closest production system, Starknet's STRK20 (same note-and-nullifier family; on-chain STARK
+verification there, a k-of-N quorum here; escrowed vs holder-initiated disclosure):
+[`docs/COMPARISON-STRK20.md`](./docs/COMPARISON-STRK20.md).
 
 ## Full technical task
 
