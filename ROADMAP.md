@@ -25,7 +25,7 @@ XRPL integration built on-site. Say so on stage.
 | **v2 trust-minimized architecture** (client-side keys/proving, state on ledger, k-of-N SignerList, permissionless relaying) | ✅ core + harness (PR #8); ✅ quorum services (PR #11); ✅ deployed on a testnet host; ⬜ user-facing layer — §5 | `SPEC.md` §4–5, §16; `docs/audit/`; `docs/API-BOUNDARY.md` |
 | Reused circuit validated (M0 gate) | ✅ Zcash Orchard Action circuit unchanged, `orchard` 0.15.5 / `orchard_v2` / `FixedPostNu6_2` | `core/src/verifier.rs` (`BUNDLE_VERSION`) |
 | Core: `Wallet` + `Verifier`, deposit binding, anchor memos, `rebuild_checked`, `endorse`, reveal, key-free snapshots | ✅ | `core/` |
-| Tests | ✅ core: 29 tests, 27 guards mutation-tested, **100% line coverage, enforced in CI**; node: 10 tests against a fake ledger, 25 + fee guards mutation-tested, 95% gate (≈ 98%); sidecar guard: node:test suite (14 tests incl. `fee-sweep`), 20 guards mutation-tested | `core/tests/`, `backend/node/tests/`, `backend/quorum/test/`, CI `coverage` + `quorum` jobs |
+| Tests | ✅ core: 31 tests (incl. the apply-path signature-safety + hash-domain guards, 2026-10-14), 27 + 5 guards mutation-tested, **100% line coverage, enforced in CI**; node: 10 tests against a fake ledger, 25 + fee guards mutation-tested, 95% gate (≈ 98%); sidecar guard: node:test suite (14 tests incl. `fee-sweep`), 20 guards mutation-tested | `core/tests/`, `backend/node/tests/`, `backend/quorum/test/`, CI `coverage` + `quorum` jobs |
 | CI | ✅ fmt / clippy `-D warnings` / tests (release) / coverage gates (core 100%, node 95%) / sidecar unit tests / hygiene (no key-shaped files, label markers in SPEC/README/SPEC.ru, allow-listed over-claim grep) / manual testnet e2e (both harnesses) | `.github/workflows/check.yml` |
 | Security review | ✅ v1 DESIGN-PASS + IMPL-PASS (+2 slice PASSes); v2 core DESIGN-PASS + IMPL-PASS; quorum services DESIGN-PASS (C1–C5, all implemented) + IMPL-PASS; deployment manifests passed a security-delta look | `docs/audit/INDEX.md` |
 | Honest labels (v2 wording) | ✅ SPEC, SPEC.ru, README, crate docs | — |
@@ -108,6 +108,11 @@ XRPL integration built on-site. Say so on stage.
   (wrong mirror / root / actions / external / deposit facts), wallet sync, signer endorse (wrong
   root / hash / external / op / actions, re-pointed payout, lagging signer), snapshot restore.
 - 27 core guards mutation-tested (remove → red); tables in `docs/audit/REQ-v2-core-impl-2026-10-05.md`.
+- **Apply-path signature safety + hash-domain guard** (2026-10-14, `core/tests/apply_path_guards.rs`;
+  the audit's step (1) before any proof-of-funds work): a foreign-sighash bundle is refused at every
+  state-changing entrypoint before any nullifier is consumed, a swapped binding signature likewise,
+  state byte-identical; every BLAKE2b personalization and sighash context in `core/src` is enumerated
+  and pinned to an allow-list. 5 mutations killed.
 - 100% line coverage of the core, CI-enforced; regions ≈ 97% (unreachable `Err` arms of `?` on library calls).
 - Node: 8 tests against a fake ledger, 25 guards mutation-tested, 95% line gate (≈ 98.7%); sidecar
   guard: node:test suite in CI, 20 guards mutation-tested; services e2e on testnet green

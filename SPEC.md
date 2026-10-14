@@ -478,6 +478,17 @@ graph is hidden but not the endpoints, ZK first, TEE a footnote.
   external / op / actions, re-pointed payout, lagging signer).
 - **Mutation testing:** 27 guards — each removed in turn makes its test red; tables in
   `docs/audit/REQ-v2-core-impl-2026-10-05.md`. One redundant check was found hollow and removed.
+- **Apply-path signature safety and hash-domain guard** (`core/tests/apply_path_guards.rs`,
+  2026-10-14, asked for by the audit before any proof-of-funds work): a structurally valid Orchard
+  bundle whose signatures are over a *foreign* sighash (another BLAKE2b personalization — what a
+  proof-of-funds record would be) is refused with `InvalidSpendAuth` at every entrypoint that can
+  change state — `submit_shield` / `submit_transfer` / `submit_unshield`, `endorse` for all three
+  submissions, `replay`, `restore`, `rebuild`, `rebuild_checked` — and a genuine bundle with a swapped
+  binding signature with `InvalidBindingSignature` likewise, the verifier byte-identical afterwards;
+  the honest counterparts are then accepted. A second test reads `core/src` and pins the set of
+  BLAKE2b personalizations (`ConfidantBundle`, `ConfidantSigHash`) and sighash context shapes
+  (`external_ctx`, `unshield_ctx`): a new hash domain must be added to that allow-list on purpose,
+  two call sites can never share one, and no BLAKE2b in the core is unpersonalized.
 - **Coverage:** lines 100%, functions 100% (`cargo llvm-cov`), gated in CI; regions ≈ 97%.
 - **CI**: fmt, clippy `-D warnings`, tests in release, coverage, hygiene (key-shaped files, honest
   label markers in three documents, over-claim words), manual e2e job on testnet.
