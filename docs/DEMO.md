@@ -71,5 +71,7 @@ on the ledger — transfers inside are free."
 
 Measured 2026-10-13 against the deployed testnet quorum from a laptop (local page); the same flow
 against the deployed UI itself: 131 s over plain `http://<ip>/` (1 thread, proof 16.3 s) and 77 s
-through the localhost tunnel (16 threads, proof 3.1 s). Re-measure on the demo machine (a 4-core
-laptop will land between the columns).
+through the localhost tunnel (16 threads, proof 3.1 s). **2026-10-14, over `https://confidant.im/`
+(TLS live, PR #28):** cross-origin isolated, 16 threads, proving keys 6.0 s, shield proof 3.2 s,
+whole cycle with fees 81 s — the production path, no tunnel needed. Re-measure on the demo machine
+(a 4-core laptop will land between the columns).

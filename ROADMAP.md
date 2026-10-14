@@ -253,16 +253,14 @@ XRPL integration built on-site. Say so on stage.
    `backend/deploy/nginx/confidant-ui-tls.conf` in place of the HTTP site (the HTTP site kept as a
    dated backup on the host), so every visitor's browser is a secure context and gets the thread pool
    (headless Chrome on another machine: `crossOriginIsolated === true`); steps and checks in
-   `backend/deploy/README.md`, "HTTPS on a domain". ⬜ Re-run the headless-Chrome cycle over
-   `https://confidant.im/` and record the threaded timings in `docs/DEMO.md`. ✅ **Pool pre-population**: `backend/quorum/prepopulate.mjs`
+   `backend/deploy/README.md`, "HTTPS on a domain". ✅ Headless-Chrome cycle over
+   `https://confidant.im/` (2026-10-14): cross-origin isolated, 16 threads, proving keys 6.0 s, shield
+   proof 3.2 s, whole cycle with fees 81 s — recorded in `docs/DEMO.md`. ✅ **Pool pre-population**: `backend/quorum/prepopulate.mjs`
    (`npm run prepopulate`: N faucet-funded holders shield fixed denominations through the coordinator,
    some transfer; prints the honest "synthetic set" label). ✅ **Demo run-sheet**: `docs/DEMO.md`
    (what to click, say and show for SPEC §10, fallbacks, timing table) — ⬜ rehearse and fill the
    timings on the demo laptop. **Deployed 2026-10-13** (PR #24, nginx site with COOP/COEP, both
-   bundles shipped) and verified end to end against the server from headless Chrome. ⬜ **HTTPS for
-   the UI site** (domain pending): without a secure context browsers ignore COOP/COEP and the wallet
-   falls back to one thread; until then the demo laptop reaches the threaded wallet through an SSH
-   tunnel (`http://localhost:…` is a secure context).
+   bundles shipped) and verified end to end against the server from headless Chrome. (HTTPS on the demo domain: live, see above.)
 
 ## 5. To do — API/XRPL lead (user-facing layer, pitch)
 
