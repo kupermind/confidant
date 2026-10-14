@@ -134,6 +134,7 @@ that reads the Credential.
 | d | X in the Credential | clear in the URI · only a hash, X given off-ledger | open: clear is simpler for lenders, a hash keeps the threshold off the public ledger |
 | e | the scope cut above | — | as proposed, under the ship rule below |
 | f | ✅ **track** (decided 2026-10-14) | Lending & Borrowing · Protocol Innovation · Why Not | **Lending & Borrowing.** Proof of funds is an underwriting signal for a loan broker, escrow is collateral, and both read loan state from the XRPL Lending Protocol (XLS-66) — the track asks for builds on it before it goes live. Protocol Innovation targets core infrastructure (rippled, C++), clients and tooling; nothing here touches rippled and on-ledger verification is a SPEC non-goal. Why Not is the fallback for the pool alone. |
+| g | network for the lending demo | pool and lending both on devnet · pool on testnet, vault + broker + loan on devnet (the broker reads the Credential on testnet) · wait for testnet | open. The Lending Protocol is enabled only on devnet. One network is the simpler story; devnet is reset from time to time, so the pool would need a re-deploy and re-population script that runs on demand. |
 
 **Ship rule, above the schedule** (audit, review on PR #27): a new **signing** path ships only with
 its own firsthand IMPL-PASS inside the window; a **read** gate does not carry that risk. A (a ledger
@@ -164,7 +165,7 @@ moves back to wasm).
 | Re-populate the deployed pool, then cut the `pre-hackathon` baseline tag | open — the tag comes after re-population, so the baseline is what judges can open |
 | C spike, draft PR #29 | stays a draft, not for merge; disclosed as pre-event; its coverage CI fails on purpose |
 | Apply-path guards (audit condition 1) | ✅ PR #31 |
-| Which of XLS-65 / XLS-66 / XLS-80 are enabled on testnet or devnet; how a loan broker can require a Credential | open — **top priority** now that the track is Lending & Borrowing (f) |
+| Which of XLS-65 / XLS-66 / XLS-80 are enabled on testnet or devnet; how a loan broker can require a Credential | ✅ checked 2026-10-14 (amendments object on each network, rippled 3.4.1). **Testnet:** Credentials, PermissionedDomains enabled; SingleAssetVault and LendingProtocol supported but **not enabled**. **Devnet:** all four enabled. XLS-66 has no on-ledger borrower gate (uncollateralized loans, off-chain underwriting; `LoanSet` is counter-signed by the broker), so the broker requires the Credential by policy before counter-signing; on-ledger Credential gating exists for depositors of a private vault (XLS-65 `tfVaultPrivate` + XLS-80 domain). XLS-70 reserve and delete rules confirmed. Detail in `docs/PROOF-OF-FUNDS.md` §2. Leads to decision (g). |
 | `credential-pof` operations: anyone-deletes-expired cleanup (pool reserve); bound `POST /pof/verify` cost per node | open — in the Tier 1 design |
 | Confirm Credentials and Permissioned Domains on testnet | open |
 | A design written (no code) | open |

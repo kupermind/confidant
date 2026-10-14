@@ -76,11 +76,16 @@ holder (browser wallet)            each verifier node (k of N)          pool acc
   spend", not the lender.
 - **Freshness:** `Expiration` makes the snapshot nature visible on the ledger; after E the
   Credential is dead and anyone may delete it.
-- **Lender side:** a loan broker accepts a borrower only with an accepted, unexpired
-  `ConfidantPoF` Credential from the pool account. Where the lending stack supports gating by a
-  Permissioned Domain (XLS-80), the domain lists this issuer and type. *To verify before the
-  event:* which of XLS-65 / XLS-66 / XLS-80 are enabled on testnet or devnet, and how a loan
-  broker can require a Credential.
+- **Lender side** (checked 2026-10-14 against the XLS-66 and XLS-65 specs): the Lending Protocol has
+  **no on-ledger borrower gate** — it issues uncollateralized fixed-term loans and "relies on
+  off-chain underwriting"; `LoanSet` is signed by both the borrower and the loan broker's owner
+  (`CounterpartySignature`). So the broker "requires" the Credential **by policy**: it counter-signs a
+  `LoanSet` only for a borrower holding an accepted, unexpired `ConfidantPoF` Credential from the
+  pool account. That is exactly the underwriting slot proof of funds fills. On-ledger gating by
+  Credential exists on the **lending side**: a private Single Asset Vault (`tfVaultPrivate` +
+  `DomainID`) admits depositors only through a Permissioned Domain (XLS-80) — the same shape as
+  option A. Loan state for an escrow arbiter (§4) is on the `Loan` object (`lsfLoanDefault`, set by
+  the broker via `LoanManage` after `GracePeriod`).
 - **Shared with option A:** reading Credentials from the ledger and multisigning
   `CredentialCreate`/`CredentialDelete` belong in one Credential module in the node and the sidecar,
   as the audit advises.
@@ -111,10 +116,11 @@ design view, not an authorization — the firsthand IMPL-PASS is owed on the bui
    list is kept, privately.
 
 **Operations** (not trust-path, but in the design):
-- **Reserve.** Every Credential the pool account issues takes owner reserve on it until it is
-  accepted or deleted. XLS-70 lets anyone delete an expired Credential; the quorum runs that cleanup
-  for expired and unaccepted ones, otherwise the reserve ratchets up with issuance and eats into the
-  pool account's excess.
+- **Reserve** (XLS-70, checked 2026-10-14): a Credential costs one owner reserve to the **issuer
+  until the subject accepts it**, then to the subject. Anyone may delete it once expired. So the
+  pool account carries reserve only for unaccepted Credentials; the quorum deletes expired
+  unaccepted ones, otherwise the reserve ratchets up with issuance and eats into the pool account's
+  excess.
 - **Ingress cost.** `POST /pof/verify` is new unauthenticated ingress that forces a proof
   verification (~10 ms) per request: bound it per node (size limit, rate limit per client, a
   concurrency cap), or a flood of bogus records griefs the verifiers.
