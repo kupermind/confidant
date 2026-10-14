@@ -97,14 +97,15 @@ mitigation), a snapshot not a lock. Conditions if C is chosen:
    lender);
 7. labels on the lender surface: "signal, not proof of ownership" and "snapshot, not lock".
 
-**On the ledger and lockable — proposal: [`docs/PROOF-OF-FUNDS.md`](./docs/PROOF-OF-FUNDS.md).**
+**On the ledger — proposal: [`docs/PROOF-OF-FUNDS.md`](./docs/PROOF-OF-FUNDS.md).**
 Condition 6 means the lender never holds the proof, so the verdict has to live on XRPL: an XLS-70
 Credential issued by the pool account k-of-N after each signer's node verified the proof itself
 (Tier 1, with an `Expiration`), revoked by the quorum when the proven notes move (Tier 2, a tripwire,
-not a lock). A **real lock with the circuit unchanged** (Tier 3): the collateral moves into a note
-whose spend key is a 2-of-3 FROST RedPallas group {holder, lender, arbiter = quorum}; the arbiter's
-signers release or liquidate only after reading the loan's state on the ledger (presentation and
-post-event). Circuit-level options (no nullifier reveal, time-locked notes) stay post-event (Tier 4).
+not a lock). **There is no "proof of funds that locks" with the circuit unchanged** (§1a there): a
+real lock is either **shielded collateral escrow** — the collateral moves into a note under a 2-of-3
+FROST group {holder, lender, arbiter = quorum}, a separate post-event product, not a PoF tier — or a
+**circuit-level** encumbrance (Tier 4, post-event). The deck presents proof of funds and escrow as two
+constructions, not a ladder (lead's objection, audit's agreement, 2026-10-14).
 
 **Proof-of-funds tiers at a glance** (detail in [`docs/PROOF-OF-FUNDS.md`](./docs/PROOF-OF-FUNDS.md)):
 
@@ -113,12 +114,13 @@ post-event). Circuit-level options (no nullifier reveal, time-locked notes) stay
 | core slice | `Wallet::build_proof_of_funds`, `Verifier::verify_proof_of_funds`, own record type, audit conditions 2–4 | nothing | a proof a node can check read-only | anything a lender can read | event |
 | 1 | nodes verify via `POST /pof/verify` (not logged, never via the coordinator); the quorum multisigns an expiring `CredentialCreate` (`ConfidantPoF`, `URI = H(X ‖ L ‖ E)`) through a new sidecar kind `credential-pof`; the borrower signs `CredentialAccept` | borrower account, type, expiry, hash — no notes, no nullifiers, no proof | a verdict the lender reads on XRPL; account binding; visible freshness | a lock; liveness beyond the quorum | event, **if A lands by Saturday evening**; otherwise the diagram |
 | 2 | nodes keep the verified nullifiers in a private watch list; on spend the quorum multisigns `CredentialDelete` (sidecar kind `credential-revoke`) | the revocation | a tripwire the lender can watch | a lock; revocation timing leaks that the holder transacted (label it) | stretch, otherwise slides |
-| 3 | collateral moves into a note whose spend key is a 2-of-3 FROST RedPallas group {holder, lender, arbiter = quorum}; the arbiter releases or liquidates only after reading the loan's state on the ledger | ordinary anchors only | a real lock by key control, circuit unchanged | time locks; the arbiter widens what the quorum can do (state it next to the drain line) | slides; post-event |
+| — (escrow, not a tier) | **shielded collateral escrow**: collateral moves into a note whose spend key is a 2-of-3 FROST RedPallas group {holder, lender, arbiter = quorum}; the arbiter releases or liquidates only after reading the loan's state on the ledger | ordinary anchors only | prevention by key control, circuit unchanged — a different product (funds move, holder gives up sole custody) | proof of funds; time locks; the arbiter widens what the quorum can do (state it next to the drain line) | slides; post-event |
 | 4 | a new circuit: proof of funds without revealing nullifiers; notes with spending conditions | — | the full answer | — | one line on a slide; post-event |
 
 **Scope check (2026-10-14): all of this is more than 36 hours.** Proposed cut, for discussion:
 event = A + C's core slice + C Tier 1 if A lands by Saturday evening (A and Tier 1 share one
-Credential module in node and sidecar); Tier 2 a stretch; Tiers 3 and 4 on slides only; B dropped.
+Credential module in node and sidecar); Tier 2 a stretch; escrow and Tier 4 on slides only, as two
+separate constructions; B dropped.
 UI surfaces are the FE team's: credential issue/accept, "prove funds" in the wallet, a lender page
 that reads the Credential.
 
@@ -140,7 +142,7 @@ moves back to wasm).
 | Sat 9–13 | Credential module in node + sidecar; credential check at submit and endorse | issuer page, issue/accept flow |
 | Sat 13–20 | tests, mutation table, audit REQ, deploy to the testnet quorum | refusal + status in the UI; deck skeleton |
 | Sat 20 – Sun 2 | proof of funds in core (from the reviewed design); if A is in: `POST /pof/verify` + sidecar kind `credential-pof`; audit REQ | "prove funds" in the wallet; lender page reading the Credential; re-populate the pool with credentialed holders |
-| Sun 9–14 | audit fixes; Tier 2 or fillers if ahead | deck and story (Tiers 3–4 slides) |
+| Sun 9–14 | audit fixes; Tier 2 or fillers if ahead | deck and story (escrow + Tier 4 slides, as separate constructions) |
 | Sun 14–18 | freeze; two full rehearsals on the demo laptop; fill `docs/DEMO.md` timings; fallbacks | same |
 
 **Other items and status (2026-10-14).**
