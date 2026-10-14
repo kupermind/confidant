@@ -144,9 +144,12 @@ XRPL integration built on-site. Say so on stage.
    reaches `apply_verified`, so the signature invariant is untouched), but it mutates committed
    state. Today the core only requires the root to be one the pool has had; the node calls it in
    `POST /anchored` after reading the anchor Payment from the ledger itself and in `--rebuild` for the
-   last memo's root; nothing signs or verifies against `anchoredRoot` (it is reported state). Open
-   question to answer explicitly: who may mark a root anchored, and whether a chosen *older* known
-   root could enable anything (anchor-history / "forged anchor known") — a small slice if it does.
+   last memo's root; nothing signs or verifies against `anchoredRoot` (it is reported state).
+   **Resolved firsthand by the audit the same day — a watch item, no slice:** `set_anchored_root`
+   refuses any root that is not already a known anchor (the same gate `verify` uses), so it cannot
+   inject a forged or new anchor, and `anchored_root` is inert (setter, `state()`/`snapshot()`,
+   `restore()` round-trip only; every apply path keys off `is_known_anchor`). Reopen only if
+   `anchored_root` ever becomes an input to a security decision.
    (ii) **scope of the hash-domain guard** — `core/tests/apply_path_guards.rs` globs `core/src` only,
    which is where every bundle sighash lives today; if another crate (node, sidecar, CLI) ever
    computes a bundle sighash, extend the glob there so the guard's scope tracks the code.
