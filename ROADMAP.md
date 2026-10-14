@@ -97,13 +97,26 @@ mitigation), a snapshot not a lock. Conditions if C is chosen:
    lender);
 7. labels on the lender surface: "signal, not proof of ownership" and "snapshot, not lock".
 
+**On the ledger and lockable — proposal: [`docs/PROOF-OF-FUNDS.md`](./docs/PROOF-OF-FUNDS.md).**
+Condition 6 means the lender never holds the proof, so the verdict has to live on XRPL: an XLS-70
+Credential issued by the pool account k-of-N after each signer's node verified the proof itself
+(Tier 1, with an `Expiration`), revoked by the quorum when the proven notes move (Tier 2, a tripwire,
+not a lock). A **real lock with the circuit unchanged** (Tier 3): the collateral moves into a note
+whose spend key is a 2-of-3 FROST RedPallas group {holder, lender, arbiter = quorum}; the arbiter's
+signers release or liquidate only after reading the loan's state on the ledger (presentation and
+post-event). Circuit-level options (no nullifier reveal, time-locked notes) stay post-event (Tier 4).
+
+**Scope check (2026-10-14): this is more than 36 hours.** Proposed cut, for discussion: event = A +
+C's core slice + C Tier 1 if A lands by Saturday evening (A and Tier 1 share one Credential module in
+node and sidecar); Tier 2 a stretch; Tier 3 and 4 on slides only; B dropped. UI surfaces are the FE
+team's: credential issue/accept, "prove funds" in the wallet, a lender page that reads the Credential.
+
 **Open for the owner:** (a) choose C or not (the audit advises A first, then C, sharing one
 Credential module in node and sidecar); (b) the framing: never "borrower B owns ≥ X", only
 "someone controlling ≥ X answered a challenge bound to B" — otherwise it is a blocker; (c) where the
-proof is verified: a read-only node endpoint `POST /pof/verify` over `verify_proof_of_funds` (a
-morning's work, thin lender page, and it fits condition 6 — the quorum sees the nullifiers, not the
-lender) or a wasm `Verifier` rebuilt in the browser from `GET /log` plus ledger reads (the purer
-story, more work). This decides which lead's column the work falls in.
+proof is verified: the proposal takes the read-only node endpoint `POST /pof/verify` (condition 6:
+the quorum sees the nullifiers, not the lender) and drops the browser-side verifier; (d) X in the
+Credential in clear or only as a hash; (e) the scope cut above.
 
 **Draft timeline for A + C.**
 
