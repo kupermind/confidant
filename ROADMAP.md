@@ -43,7 +43,7 @@ Rubric, pitch length and submission format are not published yet.
 |---|---|---|---|---|
 | A. Credential-gated shielding | shield only from accounts holding an accepted XLS-70 Credential from a trusted issuer (issuer set possibly via a Permissioned Domain); node checks at submit and endorse, sidecar refuses, issuer page + accept step in the UI | native compliance primitives (live on mainnet) | low | yes — same shape as the screening gate |
 | B. One-payment disclosure | note-opening report (§4.5.3): hand an auditor one payment, not the viewing key; optionally bound to the auditor's credentialed XRPL account | via A's credentials | medium (core + wasm) | yes |
-| C. ZK proof of shielded funds | a holder proves "I control unspent notes worth ≥ X" to a lender / underwriter (lending track) without revealing notes or the total; the verdict can become an XLS-70 Credential on the borrower's account | lending track; the lender checks the root and nullifiers against the anchors on XRPL | medium — **Orchard circuit unchanged** (see feasibility below) | **yes** — the prototype works |
+| C. ZK proof of shielded funds | a holder proves "I control unspent notes worth ≥ X" to a lender / underwriter (lending track) without revealing notes or the total; the verdict can become an XLS-70 Credential on the borrower's account | lending track; checked against a verifier rebuilt from the anchors on XRPL ("unspent now" needs the full nullifier set, not only `account_tx`) | medium — **Orchard circuit unchanged** (see feasibility below) | **yes** — the prototype works |
 | D. Full data availability on the ledger | bundles published as chunked memos (§4.5.1); any node rebuilds from XRPL alone, no mirror | XRPL as the data layer | low | yes, but not visual |
 | Fillers | §4.3a refund for refused deposits; one-click payout resume from `payoutBlob` | — | — | yes |
 
@@ -81,6 +81,30 @@ hardware signer in the quorum (liveness on stage).
 If C is chosen, the on-site work is the full implementation (audit slice, coverage and mutation table,
 wasm export, lender page, Credential issuance); on stage the spike is named as pre-event.
 
+**C's design review (2026-10-14): conditional DESIGN-PASS** (`docs/audit/REQ+RESP-pof-design-2026-10-14.md`,
+relayed on PR #29). Sound as an event-scope *underwriting signal*: domain separation holds, the
+"≥ X" argument holds, nullifier linkage is inherent (self-rotation is an acceptable labelled
+mitigation), a snapshot not a lock. Conditions if C is chosen:
+1. ✅ every pool apply-path re-verifies both signatures under the pool sighash before consuming a
+   nullifier, plus a guard that enumerates every hash domain and forbids collisions — landed (PR #31);
+2. a distinct record type, so a proof of funds is refused before any signature check;
+3. break tests in both directions with a mutation per site;
+4. coverage back to 100 % (every error arm);
+5. the challenge carries the lender's identity, the borrower's XRPL account and a ledger index or
+   expiry; the lender re-verifies at decision time;
+6. the record never goes to a coordinator and never enters the public log; as few parties as
+   possible see the nullifiers (preferably the quorum verifies and issues the Credential, not the
+   lender);
+7. labels on the lender surface: "signal, not proof of ownership" and "snapshot, not lock".
+
+**Open for the owner:** (a) choose C or not (the audit advises A first, then C, sharing one
+Credential module in node and sidecar); (b) the framing: never "borrower B owns ≥ X", only
+"someone controlling ≥ X answered a challenge bound to B" — otherwise it is a blocker; (c) where the
+proof is verified: a read-only node endpoint `POST /pof/verify` over `verify_proof_of_funds` (a
+morning's work, thin lender page, and it fits condition 6 — the quorum sees the nullifiers, not the
+lender) or a wasm `Verifier` rebuilt in the browser from `GET /log` plus ledger reads (the purer
+story, more work). This decides which lead's column the work falls in.
+
 **Draft timeline for A + C.**
 
 | When | Crypto/ZK lead | API/XRPL lead |
@@ -94,8 +118,10 @@ wasm export, lender page, Credential issuance); on stage the spike is named as p
 **Before Oct 24.** Rehearse on the demo laptop and fill the `docs/DEMO.md` timings table; FE team
 finishes design and deck structure; confirm Credentials and Permissioned Domains are enabled on
 testnet; write the A design (no code); external review of C (PR #29); get pitch length and submission
-format from the organizers; decide where the public repo lives; HTTPS on the demo domain
-(`confidant.im`, PR #28) so every visitor's browser proves on threads.
+format from the organizers; decide where the public repo lives; ✅ HTTPS on the demo domain
+(`confidant.im`, PR #28, live 2026-10-14) so every visitor's browser proves on threads. Cut the
+`pre-hackathon` baseline tag only after #28 is merged and the deployed pool is re-populated, so
+the baseline is the state judges can actually open.
 
 ---
 
