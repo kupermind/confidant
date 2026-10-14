@@ -248,7 +248,13 @@ XRPL integration built on-site. Say so on stage.
    ✅ **UX for waits**: thread count in the wallet card, "proving keys ready (N threads, X s)",
    "proved in X s on N threads" on every success line, fee and net amount shown before and after.
    ⬜ Resume a failed payout from `payoutBlob` with one click (today: re-submit the same unshield;
-   `/endorse` is idempotent). ✅ **Pool pre-population**: `backend/quorum/prepopulate.mjs`
+   `/endorse` is idempotent). ✅ **HTTPS on the demo domain** (`confidant.im`, live 2026-10-14): DNS → the testnet host,
+   Let's Encrypt certificate (webroot renewal with an nginx reload hook, dry run green), 443 open,
+   `backend/deploy/nginx/confidant-ui-tls.conf` in place of the HTTP site (the HTTP site kept as a
+   dated backup on the host), so every visitor's browser is a secure context and gets the thread pool
+   (headless Chrome on another machine: `crossOriginIsolated === true`); steps and checks in
+   `backend/deploy/README.md`, "HTTPS on a domain". ⬜ Re-run the headless-Chrome cycle over
+   `https://confidant.im/` and record the threaded timings in `docs/DEMO.md`. ✅ **Pool pre-population**: `backend/quorum/prepopulate.mjs`
    (`npm run prepopulate`: N faucet-funded holders shield fixed denominations through the coordinator,
    some transfer; prints the honest "synthetic set" label). ✅ **Demo run-sheet**: `docs/DEMO.md`
    (what to click, say and show for SPEC §10, fallbacks, timing table) — ⬜ rehearse and fill the

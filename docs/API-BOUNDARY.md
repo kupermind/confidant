@@ -130,7 +130,8 @@ Explorer pages worth a link: the pool account `https://testnet.xrpl.org/accounts
 
 A server deployment (systemd units per node/sidecar/coordinator, nginx with CORS on one public port) is
 described in `backend/deploy/README.md`; the shared testnet instance's base URL and pool account are
-handed over out of band (never committed). `backend/quorum/smoke.mjs` is a complete client of the
+handed over out of band (never committed). Once the TLS site is up (`backend/deploy/README.md`, "HTTPS
+on a domain") the public base URL is `https://confidant.im/api`; the browser UI uses its own origin's `/api/`. `backend/quorum/smoke.mjs` is a complete client of the
 contract — shield, transfer, unshield, reveal against any running coordinator:
 
 ```bash
