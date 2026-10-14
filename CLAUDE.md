@@ -41,8 +41,10 @@ Refer to people by role, never by name, in anything that reaches git (see hard r
   per-note proof of innocence — say so.
   CI checks the label markers in `SPEC.md`, `README.md`, `SPEC.ru.md`.
 - **TEE is a production footnote only** — never in the demo mechanics, never the lead.
-- **"Only what you build during the hackathon counts."** The core, the reused Orchard circuit and
-  the harness are pre-existing; the judged work is the XRPL integration built on-site. Be honest.
+- **"Only what you build during the hackathon counts."** The core, the reused Orchard circuit, the
+  harness and the XRPL integration already deployed on testnet are pre-existing (baseline tagged);
+  the judged work is the new features built on-site (ROADMAP §0). Any pre-event prototype of them
+  is named as pre-event. Be honest.
 - **Scope is fixed in SPEC.md.** Non-goals (multi-asset, AMM, ZKML, on-ledger verify, WASM) stay cut.
 
 ## Stack

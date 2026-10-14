@@ -40,7 +40,7 @@ stylized wordmark `C0nf!d@nt` only for the banner, demo and social flair; identi
 | Constraint | Consequence |
 |---|---|
 | AI & Fintech XRP Ledger Hackathon, NYC, Oct 24–25, 2026 | Simplifications allowed; scope fixed: one thing done well |
-| "Only what you build during the hackathon counts" | The core (`core/`) and the harness are pre-event preparation on a pre-existing library (the Zcash Orchard circuit). The judged work is the XRPL integration built on-site. Be honest about the split |
+| "Only what you build during the hackathon counts" | The core (`core/`), the harness and the XRPL integration already deployed on testnet (quorum services, deposit binding, browser wallet, fees, screening) are pre-event preparation on a pre-existing library (the Zcash Orchard circuit); the baseline is tagged. The judged work is the new features built on-site (ROADMAP §0); any pre-event prototype of them is named as such. Be honest about the split |
 | Testnet first | All Payments, accounts and keys are testnet. Mainnet only by decision after a solid testnet demo |
 | Honest labels | Never claim "fully anonymous / untraceable / trustless today / private from the operator". What to say and not to say: §4 |
 | TEE is a production footnote only | Never lead the demo with TEE; lead with ZK, which judges recognize |
