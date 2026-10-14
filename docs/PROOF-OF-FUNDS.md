@@ -1,4 +1,4 @@
-# Proof of shielded funds and lockable collateral — proposal
+# Proof of shielded funds, and collateral escrow as a separate construction — proposal
 
 **Status: PROPOSAL (2026-10-14), not built, nothing here is decided.** Input: the pre-event spike
 (draft PR #29), the audit's conditional DESIGN-PASS (`docs/audit/RESP-pof-design-2026-10-14.md`)
@@ -8,8 +8,26 @@ a **lock**. It doubles as the source for the pitch's "what comes next" slides. D
 ROADMAP §0.
 
 Honest line, everywhere this is shown: a proof of funds is an **underwriting signal** ("someone who
-controls ≥ X answered a challenge bound to account B"), **not proof that B owns ≥ X**, and until §4 is
-built it is a **snapshot, not a lock**.
+controls ≥ X answered a challenge bound to account B"), **not proof that B owns ≥ X**, and it is a
+**snapshot, not a lock** — by construction, not by scope (§1a).
+
+## 1a. Three constructions, not a ladder (2026-10-14, after the audit's answer to the lead's objection)
+
+With the Orchard circuit unchanged, spending a note is a unilateral act of its key holder: the circuit
+enforces validity (nullifier, value balance), not external spending conditions, and nothing outside
+the circuit can stop a valid spend from confirming. So "a proof of funds that locks the funds" does
+not exist in this model. There are exactly three distinct objects:
+
+| | What it does | Funds | Holder gives up | Lender's recourse |
+|---|---|---|---|---|
+| **Proof of funds** (§2 core slice, Tier 1 credential, Tier 2 tripwire) | attests that the holder controlled ≥ X as of ledger index L; detects and reacts when the proven notes move | **never move** | nothing — can still spend | detection (revocation, expiry), not prevention |
+| **Shielded collateral escrow** (§4, formerly "Tier 3") | the collateral is moved into a note under joint control {holder, lender, arbiter}; release and liquidation follow on-ledger loan state | **move** into joint custody | sole custody of the collateral, and permanent visibility of that note to the lender via the joint viewing key | prevention by key control — an escrow, with an arbiter |
+| **Circuit-level encumbrance** (§5, "Tier 4") | spending conditions or a no-nullifier-reveal proof inside a new circuit | never move | nothing | prevention without moving — the only "lock without moving", and it needs a new circuit |
+
+Escrow is a legitimate and novel product on XRPL (the native Escrow cannot hold shielded notes), but
+it is **not** proof of funds and is not presented as its evolution: the two do different things and
+cost the holder different things. The deck shows them as two constructions. The event builds only
+the first.
 
 ---
 
@@ -84,7 +102,12 @@ have moved. The quorum then multisigns **`CredentialDelete`** for that Credentia
 - It is only as live as the quorum: if fewer than k signers act, no revocation happens before E.
   Expiration remains the backstop.
 
-## 4. Tier 3 — a real lock with the Orchard circuit unchanged: jointly controlled collateral notes
+## 4. Shielded collateral escrow — a separate construction, post-event (formerly "Tier 3")
+
+**This is escrow, not proof of funds** (§1a): the collateral moves into a note the holder no longer
+controls alone. Kept here because it is the honest answer to "how would a real lock work with the
+circuit unchanged", and because it reuses the same wallet and quorum; it leaves the proof-of-funds
+ladder and the tiers table (§6).
 
 **Idea:** a lock is not a proof about a note — it is **who can spend it**. The holder moves X into a
 note whose **spend-authorization key is shared** between the holder, the lender and an arbiter, using
@@ -120,14 +143,18 @@ be k-of-N in production".
 
 **What this gives:** a real lock enforced by key control, not by a promise and not by the pool's
 rules; the on-ledger loan state (an XLS-66 loan, or any ledger object both sides agree on) drives the
-arbiter, so the release and liquidation policy is checkable by anyone. No proof of funds and no
-nullifier reveal is needed — the lender sees exactly one note, the collateral, and nothing else of
-the holder's.
+arbiter, so the release and liquidation policy is checkable by anyone. No proof of funds is involved
+and no nullifier is revealed — the lender sees exactly one note, the collateral, and nothing else of
+the holder's. It is an escrow: what the holder gives up is sole custody of the collateral.
 
-**Honest limits**
+**Honest limits** (the audit's two lines, to be stated next to the custody caveat, as the defining
+properties of this product)
 - Two of three can move the collateral: lender + arbiter can liquidate, holder + arbiter can
-  release. The arbiter is the quorum, so it adds to what the quorum can do, which must be said next
-  to "collusion of k signers can drain the pool account".
+  release. The arbiter is the quorum, so **the same k signers can now also co-sign, with either the
+  lender or the holder, the spend of a specific shielded collateral note** — a materially larger
+  blast radius than "drain the pool account's public XRP"; its own line next to that caveat.
+- **The joint viewing key gives the lender permanent sight of that one note**, past the loan term. The
+  pool's privacy claim must say it does not cover escrowed collateral.
 - Orchard has no time locks; "release after T if nobody acts" needs the arbiter.
 - Key generation is interactive (three parties online once), and the joint viewing key lets the
   lender see that one note forever.
@@ -135,7 +162,7 @@ the holder's.
   round; the quorum gets an arbiter service with ledger-checked policies; all of it is trust-path
   work with its own audit cycle. **Not event scope.**
 
-## 5. Tier 4 — circuit-level (post-event)
+## 5. Tier 4 — circuit-level (post-event): the only lock without moving
 
 - A proof of funds that reveals **no nullifiers** (a membership-and-unspent proof against a
   nullifier-set accumulator) — needs a new circuit.
@@ -151,7 +178,7 @@ Both are outside the "Orchard reused unchanged" line (ROADMAP §4.5) and stay ro
 | C core slice (audit conditions 2–4: own record type, break tests both directions, coverage 100 %) | ✅ | | |
 | C Tier 1: `POST /pof/verify` on nodes, sidecar kind `credential-pof`, quorum-issued expiring Credential | ✅ if A lands by Saturday evening | otherwise the flow diagram (§2) | |
 | C Tier 2: revoke on spend | stretch | ✅ | |
-| Tier 3: jointly controlled collateral (FROST) | | ✅ — the "lockable" answer | ✅ |
+| Shielded collateral escrow (§4; not a PoF tier) | | ✅ — one slide, as a separate construction | ✅ |
 | Tier 4: circuit-level | | one line | ✅ |
 | UI surfaces (FE team): credential issue/accept (A), "prove funds" in the wallet, lender page reading the Credential | ✅ minimal | | |
 
