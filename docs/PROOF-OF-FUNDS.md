@@ -3,8 +3,8 @@
 **Status: PROPOSAL (2026-10-14), not built, nothing here is decided.** Input: the pre-event spike
 (draft PR #29), the audit's conditional DESIGN-PASS (`docs/audit/RESP-pof-design-2026-10-14.md`)
 and the apply-path guards it required first (PR #31, PASS). This document fills what the spike
-leaves out — the part that lives **on the XRP Ledger** — and proposes how a proof of funds becomes
-a **lock**. It doubles as the source for the pitch's "what comes next" slides. Decisions are in
+leaves out — the part that lives **on the XRP Ledger** — and sets proof of funds apart from
+collateral escrow, the construction that actually locks (§1a). It doubles as the source for the pitch's "what comes next" slides. Decisions are in
 ROADMAP §0.
 
 Honest line, everywhere this is shown: a proof of funds is an **underwriting signal** ("someone who
@@ -43,7 +43,7 @@ onto the ledger:
 | 5: the lender re-verifies at decision time | a lender without the proof cannot re-verify | **freshness on the ledger**: the Credential's `Expiration`, plus **revocation** when the proven notes move (§3) |
 | 5: the challenge binds the borrower's XRPL account | the account has to be proven, not just named | **account binding on the ledger**: the borrower's `CredentialAccept` is a transaction signed by that account |
 | quorum rule (SPEC §5): signers never blind-sign | each signer must verify the proof itself before the pool account issues anything | **a new sidecar transaction kind** (`credential-pof`), checked against the signer's own node — a security-critical (trust-path) slice |
-| 5 / Q-POF-5: a snapshot, not a lock | a quorum-enforced lock is out of scope for the event | **a lock** — §4 |
+| 5 / Q-POF-5: a snapshot, not a lock | with the circuit unchanged no proof of funds can lock (§1a) | nothing to add on the ledger: a lock is escrow (§4) or a new circuit (§5) |
 
 ## 2. Tier 1 — a quorum-issued, expiring Credential (event candidate)
 
@@ -84,6 +84,40 @@ holder (browser wallet)            each verifier node (k of N)          pool acc
 - **Shared with option A:** reading Credentials from the ledger and multisigning
   `CredentialCreate`/`CredentialDelete` belong in one Credential module in the node and the sidecar,
   as the audit advises.
+
+**What the Credential means** (on the object, not only in the Tier 2 note): "the borrower
+**controlled** ≥ X as of ledger index L", **not** "controls it now". Between signing and the
+lender's read the holder can spend; without Tier 2 that window is unguarded. A lender who treats an
+unexpired Credential as current solvency is trusting the borrower not to have spent. This line goes
+on the lender surface next to "signal, not proof of ownership".
+
+**Requirements for the `credential-pof` signing path** (review on PR #27, 2026-10-14; the audit's
+design view, not an authorization — the firsthand IMPL-PASS is owed on the built slice):
+1. **Ask your own node.** A sidecar signs only on its own node's verdict for exactly
+   (borrower, X, L, E), computed from that node's state — never on the coordinator's claim (the same
+   shape as `fee-sweep`).
+2. **Stand-alone kind.** Never combined with an anchor or a payout in one request; no memos; `Fee`,
+   `Sequence` and `LastLedgerSequence` pinned as for payouts.
+3. **Shape pinned against the verdict:** `Account` = pool, `TransactionType` = `CredentialCreate`,
+   `Subject`, `CredentialType`, `Expiration` = E, and `URI` = **the node's own recomputation** of
+   H(X ‖ L ‖ E) from the values it verified — never the coordinator's hash echoed back. The node signs
+   its own computation or refuses.
+4. **Freshness checked by the node** against the validated ledger index it reads itself: L within a
+   window, E ≤ L + max.
+5. **Unspent re-checked at signing time — mandatory.** The gap between `POST /pof/verify` and the
+   signature is a live window; a cached verdict replayed after the funds moved is the attack this
+   closes. A verdict cache is safe only behind this re-check.
+6. **Never persisted, never logged** — a hard invariant of the endpoint. Only the nullifier watch
+   list is kept, privately.
+
+**Operations** (not trust-path, but in the design):
+- **Reserve.** Every Credential the pool account issues takes owner reserve on it until it is
+  accepted or deleted. XLS-70 lets anyone delete an expired Credential; the quorum runs that cleanup
+  for expired and unaccepted ones, otherwise the reserve ratchets up with issuance and eats into the
+  pool account's excess.
+- **Ingress cost.** `POST /pof/verify` is new unauthenticated ingress that forces a proof
+  verification (~10 ms) per request: bound it per node (size limit, rate limit per client, a
+  concurrency cap), or a flood of bogus records griefs the verifiers.
 
 ## 3. Tier 2 — live Credential: revoke when the funds move (cheap, not a lock)
 
@@ -183,3 +217,17 @@ Both are outside the "Orchard reused unchanged" line (ROADMAP §4.5) and stay ro
 | UI surfaces (FE team): credential issue/accept (A), "prove funds" in the wallet, lender page reading the Credential | ✅ minimal | | |
 
 The shared Credential module is what makes A and C Tier 1 one piece of work rather than two.
+
+**Ship rule, above the schedule** (audit, 2026-10-14): a **new signing path ships only with its own
+firsthand IMPL-PASS inside the window**; a read gate does not carry that risk.
+- **A** is a ledger read plus refuse-at-submit-and-endorse, fail-closed — the screening gate's shape,
+  already IMPL-PASS'd once; the sidecar needs nothing new. A's REQ goes to the audit first.
+- **Tier 1** (`credential-pof`) is a new signing path: it ships only if A lands **and** Tier 1 gets its
+  own IMPL-PASS in-window. Otherwise the flow diagram on the slide is the correct outcome, not a
+  failure. A demo deadline never ships an unverified signing path.
+- **Tier 2** (`credential-revoke`) is another signing path plus a node state change (watch list,
+  revocation): stretch at most, under the same rule.
+
+**Track: Lending & Borrowing** (decided 2026-10-14, ROADMAP §0 (f)). Proof of funds is an
+underwriting signal a loan broker on the XRPL Lending Protocol checks before lending; escrow and
+Tier 4 are the "what comes next" for collateral.

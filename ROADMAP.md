@@ -132,7 +132,17 @@ that reads the Credential.
 | b | framing on every surface | — | never "borrower B owns ≥ X", only "someone controlling ≥ X answered a challenge bound to B" — anything else is a blocker |
 | c | where the proof is verified | node endpoint `POST /pof/verify` · verifier in the lender's browser | node endpoint (condition 6: the quorum sees the nullifiers, not the lender) |
 | d | X in the Credential | clear in the URI · only a hash, X given off-ledger | open: clear is simpler for lenders, a hash keeps the threshold off the public ledger |
-| e | the scope cut above | — | as proposed |
+| e | the scope cut above | — | as proposed, under the ship rule below |
+| f | ✅ **track** (decided 2026-10-14) | Lending & Borrowing · Protocol Innovation · Why Not | **Lending & Borrowing.** Proof of funds is an underwriting signal for a loan broker, escrow is collateral, and both read loan state from the XRPL Lending Protocol (XLS-66) — the track asks for builds on it before it goes live. Protocol Innovation targets core infrastructure (rippled, C++), clients and tooling; nothing here touches rippled and on-ledger verification is a SPEC non-goal. Why Not is the fallback for the pool alone. |
+
+**Ship rule, above the schedule** (audit, review on PR #27): a new **signing** path ships only with
+its own firsthand IMPL-PASS inside the window; a **read** gate does not carry that risk. A (a ledger
+read, fail-closed, the screening gate's shape) fits; Tier 1 (`credential-pof`) ships only if A lands
+**and** it gets its own IMPL-PASS in-window, otherwise the flow diagram is the correct outcome; Tier 2
+is a stretch under the same rule. The six `credential-pof` requirements (own node's verdict,
+stand-alone kind, node-recomputed `URI`, node-checked freshness, mandatory unspent re-check at
+signing, never persisted or logged) and the Credential's meaning ("controlled ≥ X as of L", not
+"controls now") are in [`docs/PROOF-OF-FUNDS.md`](./docs/PROOF-OF-FUNDS.md) §2.
 
 **Draft timeline for A + C** (assumes (c) = node endpoint; with a browser verifier the lender row
 moves back to wasm).
@@ -150,11 +160,12 @@ moves back to wasm).
 | Item | Status |
 |---|---|
 | HTTPS on the demo domain (`confidant.im`) | ✅ live, PR #28 merged |
-| Re-run the headless-browser cycle over HTTPS; fill the `docs/DEMO.md` threaded timings | open — offered by the crypto/ZK lead |
+| Re-run the headless-browser cycle over HTTPS; fill the `docs/DEMO.md` threaded timings | ✅ done by the crypto/ZK lead: cross-origin isolated, 16 threads, proving keys 6.0 s, shield proof 3.2 s, whole cycle with fees 81 s (PR #34, green, awaiting merge) |
 | Re-populate the deployed pool, then cut the `pre-hackathon` baseline tag | open — the tag comes after re-population, so the baseline is what judges can open |
 | C spike, draft PR #29 | stays a draft, not for merge; disclosed as pre-event; its coverage CI fails on purpose |
 | Apply-path guards (audit condition 1) | ✅ PR #31 |
-| Which of XLS-65 / XLS-66 / XLS-80 are enabled on testnet or devnet; how a loan broker can require a Credential | open — check before the event |
+| Which of XLS-65 / XLS-66 / XLS-80 are enabled on testnet or devnet; how a loan broker can require a Credential | open — **top priority** now that the track is Lending & Borrowing (f) |
+| `credential-pof` operations: anyone-deletes-expired cleanup (pool reserve); bound `POST /pof/verify` cost per node | open — in the Tier 1 design |
 | Confirm Credentials and Permissioned Domains on testnet | open |
 | A design written (no code) | open |
 | Pitch length, rubric, submission format from the organizers | open |
