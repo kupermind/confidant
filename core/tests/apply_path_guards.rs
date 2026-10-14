@@ -399,7 +399,9 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 /// Completeness guard on hash domains: enumerates every BLAKE2b personalization and every sighash
-/// context function in `core/src`, by reading the sources, and pins them to an allow-list. Adding
+/// context function in `core/src`, by reading the sources, and pins them to an allow-list. Scope:
+/// `core/src` is where every bundle sighash lives today; if another crate (node, sidecar, CLI) ever
+/// computes one, extend the walk to it (audit note, 2026-10-14, ROADMAP §4.3b). Adding
 /// a domain (e.g. a proof-of-funds sighash) means extending the list here, on purpose — a new
 /// `.personal(...)` or `*_ctx` that is not listed, a personalization shared by two call sites, or a
 /// BLAKE2b without a personalization fails this test.

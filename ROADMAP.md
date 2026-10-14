@@ -139,6 +139,17 @@ XRPL integration built on-site. Say so on stage.
    3a. **Refund path for refused deposits:** a quorum-signed Payment back to the depositor of a
    shield the gate refused (sidecar shape rule: destination = the deposit's sender, amount = the
    delivered amount, deposit unconsumed) — a small trust-path slice; manual today.
+3b. **Logged by the audit with the apply-path guards (2026-10-14, PR #31; not part of step 1):**
+   (i) **authority over `set_anchored_root`** — a `&mut` entrypoint outside the apply path (it never
+   reaches `apply_verified`, so the signature invariant is untouched), but it mutates committed
+   state. Today the core only requires the root to be one the pool has had; the node calls it in
+   `POST /anchored` after reading the anchor Payment from the ledger itself and in `--rebuild` for the
+   last memo's root; nothing signs or verifies against `anchoredRoot` (it is reported state). Open
+   question to answer explicitly: who may mark a root anchored, and whether a chosen *older* known
+   root could enable anything (anchor-history / "forged anchor known") — a small slice if it does.
+   (ii) **scope of the hash-domain guard** — `core/tests/apply_path_guards.rs` globs `core/src` only,
+   which is where every bundle sighash lives today; if another crate (node, sidecar, CLI) ever
+   computes a bundle sighash, extend the glob there so the guard's scope tracks the code.
 4. **Roadmap items from the audit (not for the hackathon):** pool-instance id in the sighash
    personalization; `external_ctx` taking the unshield amount as `u64`; bounded anchor history;
    XLS-56 Batch for atomic anchor + payout; FROST for the signer keys.
