@@ -417,7 +417,7 @@ backend/quorum/ signer.mjs (сайдкар: ключ подписанта, по�
                coordinator.mjs (мультиподпись k-из-N, сначала анкор, затем выплата), setup-pool.mjs, start-all.mjs, lib.mjs
 e2e/testnet/ харнесы на XRPL testnet (xrpl.js): run.mjs (через CLI), run-services.mjs (через backend/)
 docs/audit/  REQ/RESP всех раундов, INDEX.md
-docs/CORE-API.md, docs/E2E.md, docs/NODE-OPERATOR.md
+docs/CORE-API.md, docs/E2E.md, docs/NODE-OPERATOR.md, docs/COMPARISON-STRK20.md (+ .ru: сравнение со STRK20 на Starknet)
 .github/workflows/check.yml  CI: fmt / clippy / тесты (release) / покрытие 100% / hygiene / ручной e2e
 frontend/      index.html + wallet-worker.js — прототип UI (статика); wasm/ = ядро за wasm-bindgen (ключи и доказательства в браузере)
 backend/wallet/ confidant-wallet: демо-сервис кошелька (HTTP над Wallet; хранит демо-ключи трат на своём хосте;
