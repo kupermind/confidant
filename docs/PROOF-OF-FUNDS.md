@@ -97,7 +97,7 @@ unexpired Credential as current solvency is trusting the borrower not to have sp
 on the lender surface next to "signal, not proof of ownership".
 
 **Requirements for the `credential-pof` signing path** (review on PR #27, 2026-10-14; the audit's
-design view, not an authorization — the firsthand IMPL-PASS is owed on the built slice):
+design view in `docs/audit/RESP-pof-ledger-tiers-2026-10-14.md`, not an authorization — the firsthand IMPL-PASS is owed on the built slice):
 1. **Ask your own node.** A sidecar signs only on its own node's verdict for exactly
    (borrower, X, L, E), computed from that node's state — never on the coordinator's claim (the same
    shape as `fee-sweep`).
