@@ -18,7 +18,7 @@ already built is pre-event too; the judged work is what §0 decides to build on-
 
 ---
 
-## 0. Hackathon plan — PRELIMINARY (2026-10-13, under discussion, nothing here is decided)
+## 0. Hackathon plan — DECIDED 2026-10-16 (plan of record for Oct 24–25; drafted 2026-10-13)
 
 **The problem.** The event rule (organizer's page): *"Bring an existing project … and use the 36
 hours to ship a new feature on XRP Ledger. Only what you build during the hackathon counts toward
@@ -27,7 +27,7 @@ judging."* Sat Oct 24, 8:30 AM → Sun Oct 25, 8:00 PM. The XRPL integration thi
 and deployed, so it is pre-event work too. Unless something new is built on-site, nothing is judged.
 Rubric, pitch length and submission format are not published yet.
 
-**Working rules until Oct 24 (proposed).**
+**Working rules until Oct 24 (in force).**
 - **Feature freeze on `main`.** Pre-event work is ops, rehearsal, design and the deck only. Open items
   that are good on-site material (§4.3a refund path, payout resume, §4.5.3 one-payment disclosure) wait
   for the event.
@@ -117,24 +117,25 @@ constructions, not a ladder (lead's objection, audit's agreement, 2026-10-14).
 | — (escrow, not a tier) | **shielded collateral escrow**: collateral moves into a note whose spend key is a 2-of-3 FROST RedPallas group {holder, lender, arbiter = quorum}; the arbiter releases or liquidates only after reading the loan's state on the ledger | ordinary anchors only | prevention by key control, circuit unchanged — a different product (funds move, holder gives up sole custody) | proof of funds; time locks; the arbiter widens what the quorum can do (state it next to the drain line) | slides; post-event |
 | 4 | a new circuit: proof of funds without revealing nullifiers; notes with spending conditions | — | the full answer | — | one line on a slide; post-event |
 
-**Scope check (2026-10-14): all of this is more than 36 hours.** Proposed cut, for discussion:
+**Scope check (2026-10-14): all of this is more than 36 hours.** The cut, decided 2026-10-16 (e):
 event = A + C's core slice + C Tier 1 if A lands by Saturday evening (A and Tier 1 share one
 Credential module in node and sidecar); Tier 2 a stretch; escrow and Tier 4 on slides only, as two
 separate constructions; B dropped.
 UI surfaces are the FE team's: credential issue/accept, "prove funds" in the wallet, a lender page
 that reads the Credential.
 
-**Decisions required from the owner** (PR #27 merges only after these converge):
+**Decisions — all taken by the owner on 2026-10-16 ((f) on 2026-10-14).** Nothing below is built yet;
+the build happens on-site under the ship rule.
 
-| # | Decision | Options | Proposal / advice |
+| # | Decision | Options | Decided |
 |---|---|---|---|
-| a | choose C or not | A only · A + C | audit: A first, then C, one shared Credential module in node and sidecar |
-| b | framing on every surface | — | never "borrower B owns ≥ X", only "someone controlling ≥ X answered a challenge bound to B" — anything else is a blocker |
-| c | where the proof is verified | node endpoint `POST /pof/verify` · verifier in the lender's browser | node endpoint (condition 6: the quorum sees the nullifiers, not the lender) |
-| d | X in the Credential | clear in the URI · only a hash, X given off-ledger | open: clear is simpler for lenders, a hash keeps the threshold off the public ledger |
-| e | the scope cut above | — | as proposed, under the ship rule below |
+| a | ✅ choose C or not | A only · A + C | **A + C.** A first, then C, one shared Credential module in node and sidecar (the audit's advice). |
+| b | ✅ framing on every surface | — | **Confirmed.** Never "borrower B owns ≥ X", only "someone controlling ≥ X answered a challenge bound to B"; the Credential means "controlled ≥ X as of ledger L", not "controls it now". Anything else is a blocker. |
+| c | ✅ where the proof is verified | node endpoint `POST /pof/verify` · verifier in the lender's browser | **Node endpoint.** Condition 6: the quorum sees the nullifiers, not the lender; the lender reads a Credential on the ledger instead of holding the record. The browser-side verifier is dropped. |
+| d | ✅ X in the Credential | clear in the URI · only a hash, X given off-ledger | **Clear in the URI** for the event: a loan broker reads one field and the slide explains itself. Hash-only (threshold off the public ledger) stays an option to add later. |
+| e | ✅ the scope cut above | — | **As proposed**, under the ship rule below: A + C core slice + Tier 1 only if A lands by Saturday evening and gets its own IMPL-PASS in-window; Tier 2 stretch; escrow and Tier 4 slides only; B dropped. |
 | f | ✅ **track** (decided 2026-10-14) | Lending & Borrowing · Protocol Innovation · Why Not | **Lending & Borrowing.** Proof of funds is an underwriting signal for a loan broker, escrow is collateral, and both read loan state from the XRPL Lending Protocol (XLS-66) — the track asks for builds on it before it goes live. Protocol Innovation targets core infrastructure (rippled, C++), clients and tooling; nothing here touches rippled and on-ledger verification is a SPEC non-goal. Why Not is the fallback for the pool alone. |
-| g | network for the lending demo | pool and lending both on devnet · pool on testnet, vault + broker + loan on devnet (the broker reads the Credential on testnet) · wait for testnet | open. The Lending Protocol is enabled only on devnet. One network is the simpler story; devnet is reset from time to time, so the pool would need a re-deploy and re-population script that runs on demand. |
+| g | ✅ network for the lending demo | pool and lending both on devnet · pool on testnet, vault + broker + loan on devnet · wait for testnet | **Everything on devnet.** The Lending Protocol and Vaults are enabled only there (checked 2026-10-14), and one network keeps the story simple. Cost: devnet is reset from time to time, so the pool needs a redeploy-and-repopulate script that runs on demand (pre-event ops, not a feature). Devnet is a test network like testnet; the "testnet first, never mainnet" constraint is unchanged in substance — SPEC's deployment wording is updated in the PR that moves the quorum. |
 
 **Ship rule, above the schedule** (audit, review on PR #27): a new **signing** path ships only with
 its own firsthand IMPL-PASS inside the window; a **read** gate does not carry that risk. A (a ledger
@@ -145,13 +146,12 @@ stand-alone kind, node-recomputed `URI`, node-checked freshness, mandatory unspe
 signing, never persisted or logged) and the Credential's meaning ("controlled ≥ X as of L", not
 "controls now") are in [`docs/PROOF-OF-FUNDS.md`](./docs/PROOF-OF-FUNDS.md) §2.
 
-**Draft timeline for A + C** (assumes (c) = node endpoint; with a browser verifier the lender row
-moves back to wasm).
+**Timeline for A + C** ((c) node endpoint, (g) devnet).
 
 | When | Crypto/ZK lead | API/XRPL lead |
 |---|---|---|
 | Sat 9–13 | Credential module in node + sidecar; credential check at submit and endorse | issuer page, issue/accept flow |
-| Sat 13–20 | tests, mutation table, audit REQ, deploy to the testnet quorum | refusal + status in the UI; deck skeleton |
+| Sat 13–20 | tests, mutation table, audit REQ, deploy to the devnet quorum | refusal + status in the UI; deck skeleton |
 | Sat 20 – Sun 2 | proof of funds in core (from the reviewed design); if A is in: `POST /pof/verify` + sidecar kind `credential-pof`; audit REQ | "prove funds" in the wallet; lender page reading the Credential; re-populate the pool with credentialed holders |
 | Sun 9–14 | audit fixes; Tier 2 or fillers if ahead | deck and story (escrow + Tier 4 slides, as separate constructions) |
 | Sun 14–18 | freeze; two full rehearsals on the demo laptop; fill `docs/DEMO.md` timings; fallbacks | same |
@@ -162,13 +162,14 @@ moves back to wasm).
 |---|---|
 | HTTPS on the demo domain (`confidant.im`) | ✅ live, PR #28 merged |
 | Re-run the headless-browser cycle over HTTPS; fill the `docs/DEMO.md` threaded timings | ✅ done by the crypto/ZK lead: cross-origin isolated, 16 threads, proving keys 6.0 s, shield proof 3.2 s, whole cycle with fees 81 s (PR #34, merged) |
-| Re-populate the deployed pool, then cut the `pre-hackathon` baseline tag | open — the tag comes after re-population, so the baseline is what judges can open |
+| Move the quorum to devnet (decision g): redeploy-and-repopulate script runnable on demand (pool account + SignerList, nodes, sidecars, coordinator, UI config); SPEC/DEMO/deploy docs updated in the same PR | open — pre-event ops; owner: API/XRPL lead with the crypto/ZK lead for the quorum scripts |
+| Re-populate the pool on devnet, then cut the `pre-hackathon` baseline tag | open — the tag comes after re-population, so the baseline is what judges can open |
 | C spike, draft PR #29 | stays a draft, not for merge; disclosed as pre-event; its coverage CI fails on purpose |
 | Apply-path guards (audit condition 1) | ✅ PR #31 |
 | Which of XLS-65 / XLS-66 / XLS-80 are enabled on testnet or devnet; how a loan broker can require a Credential | ✅ checked 2026-10-14 (amendments object on each network, rippled 3.4.1). **Testnet:** Credentials, PermissionedDomains enabled; SingleAssetVault and LendingProtocol supported but **not enabled**. **Devnet:** all four enabled. XLS-66 has no on-ledger borrower gate (uncollateralized loans, off-chain underwriting; `LoanSet` is counter-signed by the broker), so the broker requires the Credential by policy before counter-signing; on-ledger Credential gating exists for depositors of a private vault (XLS-65 `tfVaultPrivate` + XLS-80 domain). XLS-70 reserve and delete rules confirmed. Detail in `docs/PROOF-OF-FUNDS.md` §2. Leads to decision (g). |
 | `credential-pof` operations: anyone-deletes-expired cleanup (pool reserve); bound `POST /pof/verify` cost per node | open — in the Tier 1 design |
-| Confirm Credentials and Permissioned Domains on testnet | open |
-| A design written (no code) | open |
+| Confirm Credentials and Permissioned Domains on testnet | ✅ enabled on testnet and devnet (same check, 2026-10-14) |
+| A design written (no code) | open — next docs PR; the audit wants A's REQ first on-site |
 | Pitch length, rubric, submission format from the organizers | open |
 | Where the public repo lives | open |
 | FE team: design and deck structure | open (FE team) |

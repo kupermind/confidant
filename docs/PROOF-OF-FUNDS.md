@@ -1,11 +1,12 @@
 # Proof of shielded funds, and collateral escrow as a separate construction — proposal
 
-**Status: PROPOSAL (2026-10-14), not built, nothing here is decided.** Input: the pre-event spike
+**Status: design of record for the event (proposed 2026-10-14, decided 2026-10-16 in ROADMAP §0), not built.** Input: the pre-event spike
 (draft PR #29), the audit's conditional DESIGN-PASS (`docs/audit/RESP-pof-design-2026-10-14.md`)
 and the apply-path guards it required first (PR #31, PASS). This document fills what the spike
 leaves out — the part that lives **on the XRP Ledger** — and sets proof of funds apart from
-collateral escrow, the construction that actually locks (§1a). It doubles as the source for the pitch's "what comes next" slides. Decisions are in
-ROADMAP §0.
+collateral escrow, the construction that actually locks (§1a). It doubles as the source for the pitch's "what comes next" slides. The decisions
+(ROADMAP §0 (a)–(g)): A + C; the node endpoint verifies; X in clear; everything on devnet; track
+Lending & Borrowing.
 
 Honest line, everywhere this is shown: a proof of funds is an **underwriting signal** ("someone who
 controls ≥ X answered a challenge bound to account B"), **not proof that B owns ≥ X**, and it is a
@@ -69,9 +70,9 @@ holder (browser wallet)            each verifier node (k of N)          pool acc
 ```
 
 - **What reaches the ledger:** the borrower's account, the type, the expiry and a hash of
-  (X, L, E). No notes, no nullifiers, no proof. X can be in the URI in clear text, or only as a hash
-  with X given off-ledger — the owner's choice (a clear X is simpler for a lender, a hashed X keeps
-  the threshold off the public ledger).
+  (X, L, E). No notes, no nullifiers, no proof. **Decided (d): X is in the URI in clear** for the
+  event — a loan broker reads one field. Hash-only, with X given off-ledger, keeps the threshold off
+  the public ledger and stays an option to add later.
 - **Who sees the nullifiers:** the nodes only (audit Q-POF-3 (i)): "only the quorum can link the later
   spend", not the lender.
 - **Freshness:** `Expiration` makes the snapshot nature visible on the ledger; after E the
@@ -234,6 +235,7 @@ firsthand IMPL-PASS inside the window**; a read gate does not carry that risk.
 - **Tier 2** (`credential-revoke`) is another signing path plus a node state change (watch list,
   revocation): stretch at most, under the same rule.
 
-**Track: Lending & Borrowing** (decided 2026-10-14, ROADMAP §0 (f)). Proof of funds is an
+**Track: Lending & Borrowing** (decided 2026-10-14, ROADMAP §0 (f)); **network: devnet** (decided
+2026-10-16, (g)), where the Lending Protocol is enabled. Proof of funds is an
 underwriting signal a loan broker on the XRPL Lending Protocol checks before lending; escrow and
 Tier 4 are the "what comes next" for collateral.
