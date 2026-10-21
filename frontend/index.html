@@ -6,7 +6,7 @@
 <title>Confidant</title>
 <!--
   Confidant UI prototype (static, no build step). Talks to:
-    /api/    the coordinator (public, holds nothing): config, state, submit/*, audit/reveal
+    /api/    the coordinator (public, holds nothing): config, state, fees, submit/*, audit/reveal
     ./pkg/   the browser wallet: confidant-core compiled to WebAssembly, run in a Web Worker
              (wallet-worker.js) — keys, notes, proving and signing stay in this browser (primary)
     /wallet/ the demo wallet service — fallback only when WebAssembly is unavailable (holds demo
@@ -122,6 +122,7 @@
       <div id="haswallet" hidden>
         <div class="balance"><span id="priv-balance">0</span><small>XRP private</small></div>
         <div class="hint" id="sync-hint">synced 0 of 0 bundles</div>
+        <div class="row" title="Public by construction: every shield and unshield is a Payment on the ledger, so the pool's total is public. Only how it is split among holders, and who paid whom inside, is private."><span class="k">Pool total</span><span class="v" id="pool-total">—</span></div>
         <div class="row"><span class="k">Keys</span><span class="v" id="keys-mode" style="font-family:inherit"></span></div>
         <div class="row"><span class="k">Orchard address</span><span class="v" id="orchard-addr"></span><button class="small ghost copy" data-copy="orchard-addr">copy</button></div>
         <div class="row"><span class="k">Viewing key</span><span class="v" id="viewing-key">••••••••</span><button class="small ghost copy" id="btn-vk">show</button></div>
@@ -206,6 +207,7 @@
   <footer>
     <div class="status">
       <span>pool: <b id="st-bundles">—</b> bundles</span>
+      <span title="public: shields in minus unshields out, from the ledger">holds: <b id="st-pool">—</b> XRP</span>
       <span>anchored root: <span class="mono" id="st-root">—</span></span>
       <span>quorum: <b id="st-quorum">—</b></span>
       <span><a id="st-pool-link" href="#" target="_blank" rel="noopener">pool account on the explorer</a></span>
@@ -246,6 +248,7 @@
   const real = {
     config: () => http("GET", `${API}/config`),
     state: () => http("GET", `${API}/state`),
+    fees: () => http("GET", `${API}/fees`),
     createWallet: () => http("POST", `${WALLET}/wallets`),
     wallet: (id) => http("GET", `${WALLET}/wallets/${id}`),
     build: (id, op, body) => http("POST", `${WALLET}/wallets/${id}/${op}`, body),
@@ -255,14 +258,15 @@
   // Simulated backend for design review (no network).
   const fakeHex = (n) => Array.from({ length: n }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
   const mock = (() => {
-    let bundles = 12, balance = 0, notes = [];
+    let bundles = 12, balance = 0, notes = [], pool = 1_234_500_000;
     return {
       config: async () => ({ network: "testnet (demo data)", explorer: "https://testnet.xrpl.org", xrplWs: null, pool: "r45VYa4BuuKYFTbiLzomvLWTLjpg15bJcH", quorum: 2, signers: 3, fees: { shieldBps: 25, unshieldBps: 25, treasury: "rTreasuryDemo" } }),
       state: async () => ({ bundleCount: bundles, anchoredRoot: fakeHex(64) }),
+      fees: async () => ({ outstandingBacking: pool, poolExcess: 3_000_000 }),
       createWallet: async () => ({ id: fakeHex(32), address: fakeHex(86), viewingKey: fakeHex(192), balance: 0, synced: bundles }),
       wallet: async () => ({ balance, synced: bundles }),
       build: async (_id, op, body) => { await sleep(900); return { record: { op, _amount: body.amount }, bundleHash: fakeHex(64) }; },
-      submit: async (op, body) => { await sleep(1400); bundles++; const amt = Number(body.record?._amount ?? 0); if (op === "shield") { balance += amt; notes.push({ direction: "incoming", amount: amt, spent: false }); } if (op === "transfer" || op === "unshield") { balance -= amt; } return { newRoot: fakeHex(64), anchorTx: fakeHex(64).toUpperCase(), payoutTx: op === "unshield" ? fakeHex(64).toUpperCase() : null, payout: op === "unshield" ? { amount: amt - Math.floor(amt * 25 / 10000), destination: body.destination } : undefined, signers: ["rA", "rB"] }; },
+      submit: async (op, body) => { await sleep(1400); bundles++; const amt = Number(body.record?._amount ?? 0); if (op === "shield") { pool += amt; } if (op === "unshield") { pool -= amt; } if (op === "shield") { balance += amt; notes.push({ direction: "incoming", amount: amt, spent: false }); } if (op === "transfer" || op === "unshield") { balance -= amt; } return { newRoot: fakeHex(64), anchorTx: fakeHex(64).toUpperCase(), payoutTx: op === "unshield" ? fakeHex(64).toUpperCase() : null, payout: op === "unshield" ? { amount: amt - Math.floor(amt * 25 / 10000), destination: body.destination } : undefined, signers: ["rA", "rB"] }; },
       reveal: async () => ({ balance, notes }),
     };
   })();
@@ -375,6 +379,11 @@
       $("st-bundles").textContent = s.bundleCount; $("st-root").textContent = short(s.anchoredRoot ?? s.root);
       $("netpill").classList.remove("off"); $("nettext").textContent = DEMO ? "demo data" : "coordinator online";
     } catch (e) { $("netpill").classList.add("off"); $("nettext").textContent = "backend unreachable"; }
+    // The pool total: the value of every note the pool backs (GET /fees.outstandingBacking) — public
+    // by construction, every shield and unshield being a Payment on the ledger. Shown next to the
+    // holder's private balance so the two are never confused.
+    try { const f = await be.fees(); const total = `${fmt(f.outstandingBacking ?? 0)} XRP`; $("st-pool").textContent = fmt(f.outstandingBacking ?? 0); $("pool-total").textContent = `${total} (public)`; }
+    catch { $("st-pool").textContent = "—"; $("pool-total").textContent = "—"; }
   }
 
   // ---- flows ------------------------------------------------------------------------------

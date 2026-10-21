@@ -47,7 +47,7 @@ Shapes (camelCase on the wire):
 ```jsonc
 PoolState   { root, anchoredRoot | null, leafCount, nullifierCount, bundleCount, consumedDeposits }
 Accepted    { bundleIndex, firstLeaf, newRoot, bundleHash, nullifiers[], commitments[], fee, payout?: { destination, amount } }
-FeeReport   { shieldBps, unshieldBps, treasury | null, accrued, swept, available, poolExcess | null }   // available = min(accrued − swept, poolExcess); poolExcess = pool balance − outstanding notes, from the ledger
+FeeReport   { shieldBps, unshieldBps, treasury | null, accrued, swept, available, poolExcess | null, outstandingBacking }   // available = min(accrued − swept, poolExcess); poolExcess = pool balance − outstanding notes, from the ledger
 quorum      { memoHex, anchorTx, payoutTx | null, payoutBlob | null, payoutError | null, signers: [rAddr…], refusals: [string…] }
 RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, leafIndex, bundleIndex, timestamp, spent, recipient? }] }
 ```
@@ -67,6 +67,11 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
   (`gross − floor(gross · unshieldBps / 10000)`); show both. **Transfers are free.** `Accepted.fee` is
   the fee the quorum took, in drops. Fees are never configured, shown as editable, or paid separately
   in the UI; the treasury is public and the whole fee ledger is verifiable from the ledger.
+- **Pool total (shown by the UI, public).** `GET /fees.outstandingBacking` is the value of every note
+  the pool backs, in drops (shields in minus unshields out, from the public value balances). It is
+  public by construction — every shield and unshield is a Payment on the ledger — so the UI shows it
+  as "pool total (public)" next to the holder's private balance, never the other way round; only
+  how the total is split among holders, and who paid whom inside, is private.
 - **The viewing key is the authorization for `/audit/reveal`** and reveals that holder's whole history
   (read-only, nothing else). The UI sends it only to the coordinator the user chose, over the URL the
   user configured, and says so before sending; it never stores or forwards it elsewhere. CORS is `*`
@@ -148,6 +153,8 @@ cd backend/quorum && POOL=<pool> COORDINATOR_URL=http://<host>:8787 CLI=../../ta
 - The contract above is frozen for the hackathon unless both leads agree in a PR.
 - 2026-10-11: protocol fee added (`Accepted.fee`, net `payout.amount`, `GET /config.fees`,
   `GET /fees`, `POST /fees/sweep`); the UI builds the shield note net of the fee (§2).
+- 2026-10-21: `GET /fees.outstandingBacking` (the public pool total); the UI shows it in the status
+  bar and under the private balance (§2).
 
 ## 6a. The prototype (2026-10-10)
 

@@ -148,9 +148,9 @@ impl<L: Ledger> Node<L> {
         Ok(account_balance(&info)?.saturating_sub(self.outstanding_backing()))
     }
 
-    /// `GET /fees`: the policy, this node's ledger, and the sweepable amount — the fee ledger's
-    /// `available` capped by the pool's excess over outstanding notes; nothing when the ledger
-    /// cannot be read.
+    /// `GET /fees`: the policy, this node's ledger, the value the pool backs (the public pool
+    /// total), and the sweepable amount — the fee ledger's `available` capped by the pool's excess
+    /// over outstanding notes; nothing when the ledger cannot be read.
     pub async fn fees(&self) -> FeeReport {
         let excess = self.pool_excess().await.ok();
         let l = self.lock_fees();
@@ -158,6 +158,7 @@ impl<L: Ledger> Node<L> {
             shield_bps: self.fees.shield_bps,
             unshield_bps: self.fees.unshield_bps,
             pool_excess: excess,
+            outstanding_backing: self.outstanding_backing(),
             treasury: self.fees.treasury.clone(),
             accrued: l.accrued,
             swept: l.swept,
