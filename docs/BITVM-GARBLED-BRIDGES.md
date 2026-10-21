@@ -93,3 +93,53 @@ asset, no exit window, native finality.**
    bridge is cheap and 1-of-n, what remains is a claim on BTC somewhere else, a two-week exit and
    fixed denominations — so is moving the BTC the right primitive, or is bringing the logic to the
    BTC? Ask it as a question.
+
+## 6. Addendum (2026-10-21): the final seminar list
+
+The published list ([bitdevs.org/2026-10-22-socratic-seminar-163](https://bitdevs.org/2026-10-22-socratic-seminar-163))
+adds three items that matter more to this repo than the two garbling papers.
+
+### Shielded Bitcoin vs Confidant — the sibling in the room
+
+Two Research items form a live Bitcoin-privacy debate: the "Glass Coins vs Shielded Bitcoin"
+whiteboard session, and the Delving thread
+[Shielded Bitcoin: Private Transfers on the Bitcoin L1](https://delvingbitcoin.org/t/shielded-bitcoin-private-transfers-on-the-bitcoin-l1)
+(Shikhelman, Komarov, Moskvin, [paper](https://www.allocinit.xyz/uploads/shielded-bitcoin.pdf)).
+Shielded Bitcoin is this repo's architecture on a different base chain.
+
+| | Shielded Bitcoin (Bitcoin L1 metaprotocol) | Confidant (XRPL) |
+| --- | --- | --- |
+| Value model | Encrypted notes + nullifiers + ZK proofs **published on Bitcoin** (witness / OP_RETURN / annex); indexers re-derive state | Encrypted notes + nullifiers + ZK proofs; bundles anchored by memo; verifiers re-derive state from the ledger |
+| Proof system | **Groth16 — trusted setup** (one honest party needed) | **Orchard Action circuit, Halo 2 — no trusted setup** |
+| Boundary (in/out) | **PIPEs** (witness-encrypted signing keys), "no operators"; fixed-denomination vaults; companion paper pending | **k-of-N SignerList** pool account; independent verifiers each re-verify before signing. Weaker than PIPEs — concede it; the honest trade on a chain with no script |
+| Disclosure | Read-only viewing keys; no global disclosure key | Holder's full viewing key (README "honest labels") |
+| Known limits (both) | Entry/exit visible; anonymity set; fee-payer linkage | Same; an empty pool has no privacy — pre-populate |
+| Verification | Any indexer; dishonest indexer can stall but not spend | Any verifier; the k-of-N can drain the pool account but cannot spend notes |
+
+Glass Coins (the Argo authors' project) is the client-side-validation alternative: private data
+and proofs are passed between parties, Bitcoin used only for double-spend detection. The thread's
+peg-out discussion (ZmnSCPxj, AdamISZ) lands on an SPV-proof-like condition — see BitVM2 paper §4.
+
+### The SPV-anchoring thread is this bridge family's own problem list
+
+[Anchoring an SPV light client on another chain](https://delvingbitcoin.org/t/anchoring-an-spv-light-client-on-another-chain-checkpoint-trust-retargeting-and-reorg-handling)
+is Writz Protocol: native BTC collateral stays on Bitcoin, USDC loans on Stellar, an SPV light
+client on Soroban, Groth16-hidden positions — "no bridge, no custodian, no wrapped tokens." Its six
+open questions are the ones any in-enclave SPV must answer: (1) checkpoint trust, (2) confirmation
+depth vs amount, (3) absolute CLTV vs relative CSV for the exit, (4) fee bumping on a co-signed
+release, (5) header-submission / retarget cost, (6) the reorg re-pointing bound. ZmnSCPxj's replies:
+a stateless minimum-`bits` floor (re-tuned every four years) instead of a stateful client; depth
+scaled to amount (~6 near a Lightning channel, ~100 at coinbase-size, log in between). Writz is also
+a native-BTC-collateral-lending analog worth tracking.
+
+Also on the list: the **Co-signer Spending Policies** BIP draft (policy-constrained co-signers —
+the same idea as a quorum that can only sign against a verified condition), an open-source
+**multisig coordinator** thread, Compact Shielded CSV (post-quantum + private), Flame confidential
+transactions, and secp256k1-zkp side-channel hygiene PRs (clear secrets on rewind paths;
+constant-time Pedersen commits).
+
+### Wording
+
+Say **"enclave"** or **"attested enclave"** — never a vendor or product name — in every artifact
+and conversation. It is accurate, it does not date the stack, and it keeps the conversation on
+what the system proves rather than which chip you believe.
