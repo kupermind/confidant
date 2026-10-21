@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Confidant — How it works</title>
+<meta name="description" content="Confidant is a shielded pool for the XRP Ledger that hides the whole transaction graph — amounts and counterparties — with zero-knowledge notes. Credential-gated entry and proofs of shielded funds for lenders are being built at the XRPL hackathon; an attested enclave cluster is the production horizon.">
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#0D0B18; --bg-2:#161326; --bg-3:#1D1932;
+    --line:#2C2743; --line-2:#3A3357;
+    --ink:#EEEAF8; --ink-dim:#B2A9CF; --ink-faint:#7E759B;
+    --accent:#A78BFA; --accent-deep:#6E54C8; --on-accent:#1A0F33;
+    --live:#4FD08A; --dev:#E3A54E; --loss:#DB8A8A;
+    --maxw:1080px;
+    --f-display:"Sora","Segoe UI",system-ui,sans-serif;
+    --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+    --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1100px 520px at 50% -8%, rgba(167,139,250,.16), transparent 60%),
+      var(--bg);
+    color:var(--ink);
+    font-family:var(--f-body);
+    font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  img{max-width:100%}
+
+  .wrap{max-width:var(--maxw);margin:0 auto;padding-inline:20px}
+
+  header.bar{
+    position:sticky; top:env(safe-area-inset-top,0px); z-index:20;
+    background:rgba(13,11,24,.82); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .bar-in{display:flex;align-items:center;justify-content:space-between;gap:16px;
+    max-width:var(--maxw);margin:0 auto;padding:14px 20px}
+  .brand{display:flex;align-items:center;gap:11px;min-width:0}
+  .mark{font-family:var(--f-display);font-weight:700;letter-spacing:.14em;font-size:1.06rem;color:var(--ink)}
+  .mark b{color:var(--accent)}
+  .brand .sep{width:1px;height:20px;background:var(--line-2)}
+  .brand small{font-family:var(--f-mono);font-size:.66rem;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--ink-faint);white-space:nowrap}
+  @media(max-width:560px){ .brand .sep,.brand small{display:none} }
+  .bar a.app{font-family:var(--f-mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--accent);text-decoration:none;white-space:nowrap;border:1px solid var(--line-2);
+    border-radius:999px;padding:7px 12px}
+  .bar a.app:hover{border-color:var(--accent)}
+
+  /* hero */
+  .hero{padding-block:58px 34px;max-width:780px}
+  .eyebrow{font-family:var(--f-mono);font-size:.72rem;letter-spacing:.24em;text-transform:uppercase;
+    color:var(--accent);margin:0 0 18px}
+  h1{font-family:var(--f-display);font-weight:700;font-size:clamp(2.05rem,5.6vw,3.35rem);
+    line-height:1.08;letter-spacing:-.015em;text-wrap:balance;margin:0 0 20px;max-width:18ch}
+  h1 .hl{color:var(--accent)}
+  .lede{font-size:clamp(1.02rem,2.1vw,1.2rem);color:var(--ink-dim);max-width:60ch;margin:0}
+  .fade{opacity:0;transform:translateY(10px);animation:rise .7s ease forwards}
+  @keyframes rise{to{opacity:1;transform:none}}
+  @media(prefers-reduced-motion:reduce){ .fade{animation:none;opacity:1;transform:none} }
+
+  section{padding-block:30px}
+  .kicker{font-family:var(--f-mono);font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--ink-faint);margin:0 0 16px;display:flex;align-items:center;gap:12px}
+  .kicker::after{content:"";height:1px;flex:1;background:var(--line)}
+  h2{font-family:var(--f-display);font-weight:600;font-size:clamp(1.4rem,3vw,1.85rem);
+    letter-spacing:-.01em;margin:0 0 6px;text-wrap:balance}
+  .sech{color:var(--ink-dim);margin:0 0 22px;max-width:62ch}
+
+  /* reveal band (what a public ledger shows) */
+  .reveal{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:640px){ .reveal{grid-template-columns:1fr} }
+  .rcard{background:var(--bg-2);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .rcard.bad{border-left:3px solid var(--loss)}
+  .rcard.good{border-left:3px solid var(--accent)}
+  .rcard h3{font-family:var(--f-display);font-weight:600;font-size:1.04rem;margin:0 0 8px}
+  .rcard.bad h3{color:var(--loss)}
+  .rcard.good h3{color:var(--accent)}
+  .rcard p{margin:0;color:var(--ink-dim);font-size:.92rem}
+  .rcard .cls{display:inline-block;margin-top:12px;font-family:var(--f-mono);font-size:.68rem;
+    letter-spacing:.04em;color:var(--ink-faint)}
+  .hnote{margin:18px 0 0;color:var(--ink);font-size:1rem;max-width:66ch}
+  .hnote b{color:var(--accent);font-weight:600}
+
+  /* flow: shield / transfer / unshield */
+  .flow{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:760px){ .flow{grid-template-columns:1fr} }
+  .step{background:linear-gradient(180deg,var(--bg-3),var(--bg-2));border:1px solid var(--line);
+    border-radius:14px;padding:20px}
+  .step .n{font-family:var(--f-mono);font-size:.7rem;color:var(--accent);letter-spacing:.14em;text-transform:uppercase}
+  .step h3{font-family:var(--f-display);font-weight:600;font-size:1.12rem;margin:9px 0 8px}
+  .step p{margin:0;color:var(--ink-dim);font-size:.92rem}
+  .flead{color:var(--ink-dim);margin:0 0 20px;max-width:64ch}
+  .flead b{color:var(--ink)}
+
+  /* pillars */
+  .pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:760px){ .pillars{grid-template-columns:1fr} }
+  .pillar{background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:22px 20px}
+  .pillar .n{font-family:var(--f-mono);font-size:.72rem;color:var(--accent);letter-spacing:.08em}
+  .pillar h3{font-family:var(--f-display);font-weight:600;font-size:1.12rem;margin:9px 0 8px;
+    letter-spacing:-.005em;text-wrap:balance}
+  .pillar p{margin:0;color:var(--ink-dim);font-size:.92rem}
+
+  /* compare (today → on the cluster) */
+  .compare{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg-2)}
+  .chead{display:grid;grid-template-columns:1fr 1fr;background:var(--bg-3)}
+  .chead div{padding:13px 20px;font-family:var(--f-mono);font-size:.72rem;letter-spacing:.1em;text-transform:uppercase}
+  .chead .a{color:var(--ink-faint)}
+  .chead .b{color:var(--accent);border-left:1px solid var(--line)}
+  .crow{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
+  .cell{padding:15px 20px;font-size:.92rem}
+  .cell .k{font-family:var(--f-mono);font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-faint);display:block;margin-bottom:5px}
+  .cell.old{color:var(--ink-dim)}
+  .cell.new{color:var(--ink);border-left:1px solid var(--line);background:rgba(167,139,250,.05)}
+  .cell.new::before{content:"→ ";color:var(--accent)}
+  @media(max-width:640px){
+    .chead{grid-template-columns:1fr} .chead .b{border-left:0;border-top:1px solid var(--line)}
+    .crow{grid-template-columns:1fr}
+    .cell.new{border-left:0;border-top:1px dashed var(--line)}
+  }
+  .thesis{margin:18px 0 0;color:var(--ink);font-size:1.02rem;max-width:66ch}
+  .thesis b{color:var(--accent);font-weight:600}
+
+  /* status */
+  .status{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:720px){ .status{grid-template-columns:1fr} }
+  .col{border:1px solid var(--line);border-radius:14px;padding:20px;background:var(--bg-2)}
+  .col h3{font-family:var(--f-display);font-weight:600;font-size:1.02rem;margin:0 0 3px;
+    display:flex;align-items:center;gap:10px}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .col.live .dot{background:var(--live);box-shadow:0 0 0 4px color-mix(in srgb,var(--live) 22%,transparent)}
+  .col.dev .dot{background:var(--dev);box-shadow:0 0 0 4px color-mix(in srgb,var(--dev) 22%,transparent)}
+  .col .sub{font-family:var(--f-mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-faint);margin:0 0 13px}
+  ul.items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+  ul.items li{position:relative;padding-left:22px;color:var(--ink-dim);font-size:.9rem}
+  ul.items li::before{position:absolute;left:0;top:.05em;font-family:var(--f-mono);font-size:.9em}
+  .col.live ul.items li::before{content:"✓";color:var(--live)}
+  .col.dev ul.items li::before{content:"›";color:var(--dev);font-weight:700}
+  .note{color:var(--ink-faint);font-size:.84rem;margin-top:18px;max-width:68ch}
+  .note em{color:var(--ink-dim);font-style:normal}
+
+  .closing{text-align:center;padding-block:52px 36px}
+  .closing p.big{font-family:var(--f-display);font-weight:600;font-size:clamp(1.5rem,3.6vw,2.1rem);
+    letter-spacing:-.01em;text-wrap:balance;margin:0 auto 14px;max-width:22ch}
+  .closing p.big .hl{color:var(--accent)}
+  .closing .sig{font-family:var(--f-mono);font-size:.78rem;letter-spacing:.1em;color:var(--ink-dim)}
+
+  footer{border-top:1px solid var(--line);padding-block:24px 40px}
+  footer p{margin:0;color:var(--ink-faint);font-size:.79rem;max-width:74ch}
+
+  a{color:var(--accent)}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="bar-in">
+    <div class="brand">
+      <span class="mark"><b>CONFIDANT</b></span>
+      <span class="sep"></span>
+      <small>Shielded XRPL</small>
+    </div>
+    <a class="app" href="/">Open the app →</a>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- HERO -->
+  <section class="hero fade">
+    <p class="eyebrow">Shielded pool · XRP Ledger</p>
+    <h1>Public ledgers leak everything. <span class="hl">Confidant hides the graph.</span></h1>
+    <p class="lede">Confidant is a shielded pool for the XRP Ledger. Value goes in, moves privately, and comes
+      out — without exposing amounts or who paid whom. An auditor can still open it; no single operator can betray it.</p>
+  </section>
+
+  <!-- WHY -->
+  <section>
+    <p class="kicker">The problem</p>
+    <h2>On a public ledger, every payment is a disclosure</h2>
+
+    <div class="reveal">
+      <div class="rcard bad">
+        <h3>What the ledger shows</h3>
+        <p>Every XRPL payment reveals sender, receiver, and amount — and links them over time. Balances,
+          counterparties, strategy and timing are all in the open, for anyone, forever.</p>
+        <span class="cls">the whole graph is public</span>
+      </div>
+      <div class="rcard good">
+        <h3>What Confidant shows</h3>
+        <p>A deposit in, a withdrawal out, and periodic commitments — nothing that links one to the other.
+          The ledger's own confidential-transfer work (XLS-96) hides amounts but, by its specification, gives
+          <em>no sender or receiver anonymity.</em> Confidant hides the amount <b>and</b> the graph.</p>
+        <span class="cls">amounts and links stay private</span>
+      </div>
+    </div>
+
+    <p class="hnote">Confidant does this with the same zero-knowledge technology behind Zcash —
+      <b>without changing anything in the XRP Ledger</b>.</p>
+  </section>
+
+  <!-- HOW -->
+  <section>
+    <p class="kicker">How it works</p>
+    <h2>Shield, transact, unshield</h2>
+    <p class="flead">Value enters the pool as a private <b>note</b> (a Zcash Orchard commitment, proven with
+      zero-knowledge — no trusted setup). Inside the pool, notes move by proof alone; on the ledger you see only
+      an anchor, never a link.</p>
+
+    <div class="flow">
+      <div class="step">
+        <span class="n">01 · Shield</span>
+        <h3>Deposit becomes a note</h3>
+        <p>You pay the pool on XRPL; the pool issues you a private note of equal value, less the protocol fee. The deposit is public;
+          the note is yours alone.</p>
+      </div>
+      <div class="step">
+        <span class="n">02 · Transfer</span>
+        <h3>Move value, privately</h3>
+        <p>Notes are spent and re-created by zero-knowledge proof. Nothing on-ledger reveals the amount, the
+          sender, or the recipient — only a commitment that the math checked out.</p>
+      </div>
+      <div class="step">
+        <span class="n">03 · Unshield</span>
+        <h3>Note becomes a payout</h3>
+        <p>Burn a note to withdraw to any XRPL address. The payout is bound to the burned note, so nothing can
+          be paid out that was not first shielded in.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHAT MAKES IT SAFE -->
+  <section>
+    <p class="kicker">What makes it safe to use</p>
+    <div class="pillars">
+      <article class="pillar">
+        <span class="n">01</span>
+        <h3>Private by construction</h3>
+        <p>Privacy comes from the zero-knowledge notes themselves (Zcash Orchard / Halo 2), not from a promise
+          to look away. The links between deposits and withdrawals are broken in the mathematics.</p>
+      </article>
+      <article class="pillar">
+        <span class="n">02</span>
+        <h3>Backed, and no single operator</h3>
+        <p>Every note is bound to a real on-ledger deposit — nothing unbacked can be minted. The pool account
+          is held by a threshold quorum of independent nodes (XRPL SignerList, master key disabled); no one node
+          can move funds, and each re-checks every step on its own state before it signs.</p>
+      </article>
+      <article class="pillar">
+        <span class="n">03</span>
+        <h3>Compliant by design</h3>
+        <p>A screening gate refuses listed senders and destinations at the door — a check against public lists at
+          the public boundary, not a proof of innocence per note — and per-holder viewing keys give an auditor
+          selective disclosure: privacy with an off-switch regulators can live with.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- HACKATHON: LENDING ON SHIELDED CAPITAL -->
+  <section>
+    <p class="kicker">This weekend · XRPL hackathon, Lending &amp; Borrowing track</p>
+    <h2>Compliant lending on shielded capital</h2>
+    <p class="flead">Two features, built on-site on Oct 24–25 on top of the running pool (designs written in advance,
+      code written at the event), using the ledger's own compliance primitives — <b>XLS-70 Credentials</b> and the
+      <b>XRPL Lending Protocol</b>.</p>
+
+    <div class="flow">
+      <div class="step">
+        <span class="n">01 · Credential-gated entry</span>
+        <h3>Only credentialed accounts shield</h3>
+        <p>A deposit is accepted only from an XRPL account holding an accepted XLS-70 Credential from a trusted issuer
+          (KYC, accreditation, a permissioned domain). Every verifier node checks it before it signs — native XRPL
+          compliance, not a promise.</p>
+      </div>
+      <div class="step">
+        <span class="n">02 · Proof of shielded funds</span>
+        <h3>Prove ≥ X without showing anything</h3>
+        <p>A holder proves they control at least X inside the pool — without revealing the notes, the total, or any
+          history. The proof is bound to the lender's challenge, the holder's XRPL account and a ledger index; the
+          quorum verifies it and issues an <em>expiring</em> XLS-70 Credential on that account.</p>
+      </div>
+      <div class="step">
+        <span class="n">03 · A loan against it</span>
+        <h3>The lender reads the ledger, not the proof</h3>
+        <p>A loan broker on the XRPL Lending Protocol requires that Credential before it counter-signs the loan. The
+          lender never sees the proof, the notes or the balance — only a verdict on the ledger, with an expiry.</p>
+      </div>
+    </div>
+
+    <p class="hnote">Honest line: the Credential says <b>someone controlling ≥ X answered a challenge bound to this
+      account</b> as of that ledger — an underwriting signal, a snapshot, not a lock. Revoking it when the proven notes
+      move, shielded collateral escrow under joint control, and circuit-level locks are the steps after the weekend.</p>
+  </section>
+
+  <!-- THE TEE MOVE -->
+  <section>
+    <p class="kicker">Where it goes next</p>
+    <h2>From pure zero-knowledge to the attested cluster</h2>
+    <p class="sech">Confidant runs today on client-side proofs and a quorum of independent nodes. Because the
+      TRUST stack is an attested TEE co-processor, the <em>same</em> pool can run inside the attested enclave cluster
+      that already powers the TRUST bridge. This is what &ldquo;shielded XRPL on TEE&rdquo; means.</p>
+
+    <div class="compare">
+      <div class="chead">
+        <div class="a">Today — pure zero-knowledge</div>
+        <div class="b">On the TRUST cluster — TEE</div>
+      </div>
+      <div class="crow">
+        <div class="cell old"><span class="k">Custody</span>A threshold quorum of independent nodes holds the pool — social trust in their independence.</div>
+        <div class="cell new"><span class="k">Custody</span>Keys sealed inside attested enclaves; not even an operator sees them in the clear.</div>
+      </div>
+      <div class="crow">
+        <div class="cell old"><span class="k">Backing</span>Each node re-checks every deposit from the ledger before it signs.</div>
+        <div class="cell new"><span class="k">Backing</span>Backing enforced cryptographically in-enclave (light-client / SPV) — the same machinery as the bridge.</div>
+      </div>
+      <div class="crow">
+        <div class="cell old"><span class="k">Compute</span>Proofs built client-side; heavy or private policy runs off to the side.</div>
+        <div class="cell new"><span class="k">Compute</span>Private, heavy logic runs inside confidential compute, measured and attested.</div>
+      </div>
+    </div>
+
+    <p class="thesis"><b>Confidant is the application; the attested cluster is the technology.</b> The privacy
+      design does not change — what changes is how little you have to trust the people running it. The same move
+      turns any app on the stack into its TEE-hardened version.</p>
+  </section>
+
+  <!-- STATUS -->
+  <section>
+    <p class="kicker">Honest status</p>
+    <h2>Live today, and what comes next</h2>
+
+    <div class="status" style="margin-top:6px">
+      <div class="col live">
+        <h3><span class="dot"></span><span>Live on testnet</span></h3>
+        <p class="sub">Built, tested, running</p>
+        <ul class="items">
+          <li>Shield · private transfer · unshield on XRPL (Zcash Orchard notes)</li>
+          <li>Threshold quorum of independent verifier nodes holds the pool (XRPL SignerList, master key disabled)</li>
+          <li>Every note bound to a real on-ledger deposit — no unbacked notes</li>
+          <li>OFAC-style screening gate, auditor viewing keys, protocol fees</li>
+        </ul>
+      </div>
+      <div class="col dev">
+        <h3><span class="dot"></span><span>In development</span></h3>
+        <p class="sub">Designed, grounded, not yet live</p>
+        <ul class="items">
+          <li>Credential-gated shielding and proofs of shielded funds for lenders — XRPL hackathon, Oct 24–25</li>
+          <li>Running the pool inside the attested TRUST enclave cluster — &ldquo;shielded XRPL on TEE&rdquo;</li>
+          <li>Per-note proof-of-innocence and richer selective disclosure</li>
+          <li>Mainnet, with in-browser (wasm) client-side proving as the production path</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="note">Privacy comes from the zero-knowledge notes; the quorum — and, later, the enclave — protects
+      <em>integrity</em>, i.e. who can move funds. Honest limits: a pool offers little privacy until it is used by
+      many; today's safety rests on the independence of the quorum (a dishonest threshold could drain the pool's
+      funds — stated plainly, on today's XRPL); and endpoint timing and amounts can still correlate a deposit with a
+      withdrawal. Confidant is a shielded pool, not a claim of perfect anonymity.</p>
+  </section>
+
+  <!-- CLOSING -->
+  <section class="closing">
+    <p class="big">Privacy an auditor can <span class="hl">open</span> — and no operator can <span class="hl">betray.</span></p>
+    <p class="sig">Confidant — shielded XRPL · zero-knowledge today · lending next · enclave-ready later</p>
+  </section>
+</main>
+
+<footer class="wrap">
+  <p>Conceptual overview for discussion — not investment advice and not a guarantee of security. Confidant
+    currently runs on testnet; the parameters above describe the current design and testnet deployment. A dishonest
+    threshold quorum can move the pool's funds; this is stated as a known limit of the current (non-TEE) model.
+    Named technologies (Zcash Orchard, Halo 2, FROST / threshold signatures, hardware enclaves (TEE), XRPL XLS-96 Confidential
+    Transfer / XLS-70 Credentials / XLS-66 Lending Protocol) are industry-standard building blocks referenced for context; specifics are
+    current as of the testnet stage.</p>
+</footer>
+
+</body>
+</html>

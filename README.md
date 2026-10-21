@@ -53,6 +53,9 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
   faucet and the deposit Payment with the bundle-hash memo; the coordinator is called through
   `/api/`. Only if WebAssembly is unavailable does the page fall back to the **demo wallet service**
   (`backend/wallet`, holds demo keys on the host). The contract: `docs/API-BOUNDARY.md`.
+  A one-page overview for visitors, judges and lenders — `frontend/how-it-works.html`, served at
+  `/how-it-works.html` and linked from the app's header — explains the pool, the quorum, the hackathon
+  lending features and the honest limits.
 - No Solidity, no WASM, no `xrpl-rust`.
 
 ## Privacy and trust — what we claim, what we don't
