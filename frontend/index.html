@@ -382,8 +382,11 @@
     // The pool total: the value of every note the pool backs (GET /fees.outstandingBacking) — public
     // by construction, every shield and unshield being a Payment on the ledger. Shown next to the
     // holder's private balance so the two are never confused.
-    try { const f = await be.fees(); const total = `${fmt(f.outstandingBacking ?? 0)} XRP`; $("st-pool").textContent = fmt(f.outstandingBacking ?? 0); $("pool-total").textContent = `${total} (public)`; }
-    catch { $("st-pool").textContent = "—"; $("pool-total").textContent = "—"; }
+    try {
+      const f = await be.fees();
+      if (f.outstandingBacking == null) throw new Error("node without outstandingBacking");
+      $("st-pool").textContent = fmt(f.outstandingBacking); $("pool-total").textContent = `${fmt(f.outstandingBacking)} XRP (public)`;
+    } catch { $("st-pool").textContent = "—"; $("pool-total").textContent = "—"; }
   }
 
   // ---- flows ------------------------------------------------------------------------------
