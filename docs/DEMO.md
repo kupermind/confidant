@@ -56,7 +56,9 @@ on the ledger — transfers inside are free."
 
 ## If something stalls
 
-- **Shield says "standby"**: the deposit is younger than two ledgers; it retries by itself (≈ 8 s).
+- **Shield lingers on step 3 with "Anchoring — the verifiers wait until the deposit is 2 ledgers old (≈ 8 s)"**:
+  that is the screening standby, not an error; the page retries by itself (the node's refusal text is in the
+  tooltip). Say: "the verifiers only accept a deposit once it is two ledgers deep."
 - **Payout error after the anchor**: the note is spent and the user unpaid — say so, click **Withdraw**
   again (same amount, same address): `/endorse` is idempotent, the sidecars re-sign, the payout lands.
 - **Backend offline** (status pill red): switch to the `?demo=1` tab and narrate the same six steps on

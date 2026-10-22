@@ -362,7 +362,9 @@
   // ---- UI state ---------------------------------------------------------------------------
   const wallet = () => store.get("wallet");
   function setMsg(id, text, kind) { const el = $(id); el.innerHTML = text ? `<div class="msg ${kind ?? ""}">${text}</div>` : ""; }
-  function setSteps(id, n, done) { [...$(id).children].forEach((s, i) => { s.classList.toggle("on", i === n && !done); s.classList.toggle("done", i < n || (done && i <= n)); }); }
+  // Step n is "on" (accent border) while it runs and "done" (✓) once passed; `done` marks the last
+  // step finished. The flags must be real booleans: `classList.toggle(cls, undefined)` flips the class.
+  function setSteps(id, n, done = false) { [...$(id).children].forEach((s, i) => { s.classList.toggle("on", i === n && !done); s.classList.toggle("done", i < n || (done && i <= n)); }); }
   function busy(btn, on) { btn.disabled = on; btn.innerHTML = on ? `<span class="spin"></span>${btn.dataset.label ?? btn.textContent}` : (btn.dataset.label ?? btn.textContent); }
   function link(label, hash) { return hash ? `<a href="${cfg.explorer}/transactions/${hash}" target="_blank" rel="noopener">${label}</a>` : ""; }
   function addActivity(a) { const list = store.get("activity", []); list.unshift({ ...a, when: new Date().toISOString() }); store.set("activity", list.slice(0, 50)); renderActivity(); }
@@ -406,6 +408,14 @@
   }
 
   // ---- flows ------------------------------------------------------------------------------
+  // The verifiers refuse a deposit younger than their standby (screening policy, HTTP 403) and the
+  // page retries by itself, so the user sees progress, not the refusal text; the node's own words
+  // stay in the tooltip.
+  function standbyText(m) {
+    const k = Number((m.match(/standby of (\d+) ledger/) || [])[1]);
+    const wait = k ? `${k} ledger${k === 1 ? "" : "s"} old (≈ ${k * 4} s)` : "a few ledgers old";
+    return `<span class="spin"></span><span title="${m.replace(/"/g, "&quot;")}">Anchoring — the verifiers wait until the deposit is ${wait}, then the quorum signs…</span>`;
+  }
   async function submitWithStandby(op, body, onWait) {
     for (let t = 0; t < 60; t++) {
       try { return await be.submit(op, body); }
@@ -429,7 +439,7 @@
       setSteps("steps-shield", 0); const built = await wbFor(w).build(w, "shield", { amount: net });
       setSteps("steps-shield", 1); const depositTxHash = await deposit(drops, built.bundleHash);
       setSteps("steps-shield", 2);
-      const acc = await submitWithStandby("shield", { record: built.record, depositTxHash }, (m) => setMsg("msg-shield", `<span class="spin"></span>${m} — waiting`, "warn"));
+      const acc = await submitWithStandby("shield", { record: built.record, depositTxHash }, (m) => setMsg("msg-shield", standbyText(m), "warn"));
       setSteps("steps-shield", 2, true);
       setMsg("msg-shield", `Shielded ${fmt(drops)} XRP (note ${fmt(net)} XRP after the ${pct(cfg.fees?.shieldBps ?? 0)} fee). ${link("deposit", depositTxHash)} · ${link("anchor", acc.anchorTx)} · signed by ${acc.signers?.length ?? "k"} of ${cfg.signers}${proved(built)}`, "ok");
       addActivity({ type: "shield", text: `${fmt(drops)} XRP into the pool (note ${fmt(net)} XRP)`, links: [["deposit", depositTxHash], ["anchor", acc.anchorTx]] });
