@@ -67,10 +67,12 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
   (`gross − floor(gross · unshieldBps / 10000)`); show both. **Transfers are free.** `Accepted.fee` is
   the fee the quorum took, in drops. Fees are never configured, shown as editable, or paid separately
   in the UI; the treasury is public and the whole fee ledger is verifiable from the ledger.
-- **Pool total (shown by the UI, public).** `GET /fees.outstandingBacking` is the value of every note
+- **Total shielded (shown by the UI, public).** `GET /fees.outstandingBacking` is the value of every note
   the pool backs, in drops (shields in minus unshields out, from the public value balances). It is
   public by construction — every shield and unshield is a Payment on the ledger — so the UI shows it
-  as "pool total (public)" next to the holder's private balance, never the other way round; only
+  as "Total shielded — N XRP (backed, public)" next to the holder's private balance, never the other
+  way round. It is the note-backing total, not the pool account's whole XRPL balance (which also holds
+  operator funding, unswept fees and refused deposits awaiting refund), and the tooltip says so; only
   how the total is split among holders, and who paid whom inside, is private.
 - **The viewing key is the authorization for `/audit/reveal`** and reveals that holder's whole history
   (read-only, nothing else). The UI sends it only to the coordinator the user chose, over the URL the
