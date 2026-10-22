@@ -11,7 +11,7 @@
     --bg:#0D0B18; --bg-2:#161326; --bg-3:#1D1932;
     --line:#2C2743; --line-2:#3A3357;
     --ink:#EEEAF8; --ink-dim:#B2A9CF; --ink-faint:#7E759B;
-    --accent:#A78BFA; --accent-deep:#6E54C8; --on-accent:#1A0F33;
+    --accent:#7919FF; --accent-deep:#5B10C7; --on-accent:#FFFFFF;
     --live:#4FD08A; --dev:#E3A54E; --loss:#DB8A8A;
     --maxw:1080px;
     --f-display:"Sora","Segoe UI",system-ui,sans-serif;
@@ -23,7 +23,7 @@
   html,body{margin:0}
   body{
     background:
-      radial-gradient(1100px 520px at 50% -8%, rgba(167,139,250,.16), transparent 60%),
+      radial-gradient(1100px 520px at 50% -8%, rgba(121,25,255,.20), transparent 60%),
       var(--bg);
     color:var(--ink);
     font-family:var(--f-body);
@@ -119,7 +119,7 @@
   .cell .k{font-family:var(--f-mono);font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;
     color:var(--ink-faint);display:block;margin-bottom:5px}
   .cell.old{color:var(--ink-dim)}
-  .cell.new{color:var(--ink);border-left:1px solid var(--line);background:rgba(167,139,250,.05)}
+  .cell.new{color:var(--ink);border-left:1px solid var(--line);background:rgba(121,25,255,.08)}
   .cell.new::before{content:"→ ";color:var(--accent)}
   @media(max-width:640px){
     .chead{grid-template-columns:1fr} .chead .b{border-left:0;border-top:1px solid var(--line)}
