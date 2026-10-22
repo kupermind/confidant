@@ -200,7 +200,8 @@
         <h3>What Confidant shows</h3>
         <p>A deposit in, a withdrawal out, and periodic commitments — nothing that links one to the other.
           The ledger's own confidential-transfer work (XLS-96) hides amounts but, by its specification, gives
-          <em>no sender or receiver anonymity.</em> Confidant hides the amount <b>and</b> the graph.</p>
+          <em>no sender or receiver anonymity.</em> Confidant hides the amount <b>and</b> the graph of every transfer
+          inside the pool; the entry and the exit stay public (see the limits below).</p>
         <span class="cls">amounts and links stay private</span>
       </div>
     </div>
@@ -247,7 +248,8 @@
         <span class="n">01</span>
         <h3>Private by construction</h3>
         <p>Privacy comes from the zero-knowledge notes themselves (Zcash Orchard / Halo 2), not from a promise
-          to look away. The links between deposits and withdrawals are broken in the mathematics.</p>
+          to look away. The internal links are broken by the math; the entry and the exit are public (see the
+          limits below).</p>
       </article>
       <article class="pillar">
         <span class="n">02</span>
@@ -307,13 +309,14 @@
     <p class="kicker">Where it goes next</p>
     <h2>From pure zero-knowledge to the attested cluster</h2>
     <p class="sech">Confidant runs today on client-side proofs and a quorum of independent nodes. Because the
-      TRUST stack is an attested TEE co-processor, the <em>same</em> pool can run inside the attested enclave cluster
-      that already powers the TRUST bridge. This is what &ldquo;shielded XRPL on TEE&rdquo; means.</p>
+      TRUST stack is an attested TEE co-processor, the <em>same</em> pool is planned to run inside the attested enclave
+      cluster that already powers the TRUST bridge. This is what &ldquo;shielded XRPL on TEE&rdquo; would mean — none of
+      it is live.</p>
 
     <div class="compare">
       <div class="chead">
         <div class="a">Today — pure zero-knowledge</div>
-        <div class="b">On the TRUST cluster — TEE</div>
+        <div class="b">Planned — when the pool runs in the TRUST cluster (TEE)</div>
       </div>
       <div class="crow">
         <div class="cell old"><span class="k">Custody</span>A threshold quorum of independent nodes holds the pool — social trust in their independence.</div>
@@ -330,8 +333,9 @@
     </div>
 
     <p class="thesis"><b>Confidant is the application; the attested cluster is the technology.</b> The privacy
-      design does not change — what changes is how little you have to trust the people running it. The same move
-      turns any app on the stack into its TEE-hardened version.</p>
+      design does not change — what changes is <em>whom</em> you trust: less the people running it, and instead the
+      enclave manufacturer and its attestation — a hardware trust base, stated plainly. The same move would turn any
+      app on the stack into its TEE-hardened version.</p>
   </section>
 
   <!-- STATUS -->
@@ -371,7 +375,7 @@
 
   <!-- CLOSING -->
   <section class="closing">
-    <p class="big">Privacy an auditor can <span class="hl">open</span> — and no operator can <span class="hl">betray.</span></p>
+    <p class="big">Privacy an auditor can <span class="hl">open</span> — and no single operator can <span class="hl">betray.</span></p>
     <p class="sig">Confidant — shielded XRPL · zero-knowledge today · lending next · enclave-ready later</p>
   </section>
 </main>
