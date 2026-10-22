@@ -98,7 +98,9 @@ UI over the coordinator, demo) is the API/XRPL lead's work for the hackathon —
 [`docs/API-BOUNDARY.md`](./docs/API-BOUNDARY.md) is the hand-off. How this design compares with the
 closest production system, Starknet's STRK20 (same note-and-nullifier family; on-chain STARK
 verification there, a k-of-N quorum here; escrowed vs holder-initiated disclosure):
-[`docs/COMPARISON-STRK20.md`](./docs/COMPARISON-STRK20.md).
+[`docs/COMPARISON-STRK20.md`](./docs/COMPARISON-STRK20.md). Why the proof system is Halo 2 with the Zcash
+Orchard circuit reused unchanged — requirements, alternatives, costs accepted:
+[`docs/WHY-HALO2.md`](./docs/WHY-HALO2.md).
 
 ## Full technical task
 
