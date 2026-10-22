@@ -418,7 +418,7 @@ backend/quorum/ signer.mjs (sidecar: holds a signer key, signs only what its nod
                coordinator.mjs (k-of-N multisig, anchor then payout), setup-pool.mjs, start-all.mjs, lib.mjs
 e2e/testnet/ XRPL testnet harnesses (xrpl.js): run.mjs (CLI-driven), run-services.mjs (through backend/)
 docs/audit/  REQ/RESP of every round, INDEX.md
-docs/CORE-API.md, docs/E2E.md, docs/NODE-OPERATOR.md, docs/WHY-HALO2.md (the proof-system decision), docs/COMPARISON-STRK20.md (+ .ru: vs Starknet's STRK20)
+docs/CORE-API.md, docs/E2E.md, docs/NODE-OPERATOR.md, docs/WHY-HALO2.md (the proof-system decision), docs/DATA-AVAILABILITY.md (where the log lives; roadmap), docs/COMPARISON-STRK20.md (+ .ru: vs Starknet's STRK20)
 .github/workflows/check.yml  CI: fmt / clippy / tests (release) / 100% line coverage / hygiene / manual e2e
 frontend/      index.html + wallet-worker.js — the UI prototype (static); wasm/ = the core behind wasm-bindgen (keys and proofs in the browser)
 backend/wallet/ confidant-wallet: demo wallet service (HTTP over Wallet; holds demo spending keys on its host;

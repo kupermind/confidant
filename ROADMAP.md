@@ -328,7 +328,10 @@ signing, never persisted or logged) and the Credential's meaning ("controlled �
       chunks across several Payments for a fraction of a cent, making any node rebuildable from
       the ledger alone with no mirror (the paper's assumption A2). Design: `confidant/bundle` memo
       type with `bundle hash ‖ chunk index ‖ count ‖ bytes`, anchored by the existing bundle hash;
-      `rebuild_checked` reassembles and hash-checks before use. *Audit condition:* availability
+      `rebuild_checked` reassembles and hash-checks before use. The full data-availability design —
+      layers, what dies with what, mirrors vs on-ledger chunks vs IPFS vs Filecoin/Arweave, holder-side
+      persistence, the staged plan (stage 0 = off-host backup + a second node before the event) and the
+      honest label per stage — is `docs/DATA-AVAILABILITY.md`. *Audit condition:* availability
       only — backing stays "release bound to a verified consumed deposit", never "the bytes were
       published"; the moment rebuild-without-mirror gates a value path it is a trust-path slice.
    2. **Bounded anchor window** (the audit's "bounded anchor history", now with a concrete rule).

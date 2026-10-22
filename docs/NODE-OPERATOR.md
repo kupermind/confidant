@@ -55,6 +55,14 @@ and the mirror. The reference implementation of a coordinator and three signers 
 `e2e/testnet/run.mjs`.
 
 
+## Keep a second copy of the log
+
+Every node is a full mirror of the bundle bytes (`verifier-state.json`); the ledger holds only their
+hashes. A pool whose nodes all run on one host has one copy. Before anything real rides on a pool:
+back up `data/quorum` (states *and* signer keys) off the host, and run at least one node on another
+machine, joined with `--rebuild --mirror`. What survives which failure, and the roadmap for on-ledger and
+public mirrors: `docs/DATA-AVAILABILITY.md`.
+
 ## Running it as services (`backend/`)
 
 - **Verifier node** (Rust): `confidant-node --listen 127.0.0.1:7001 --state data/n1.verifier-state.json --xrpl-rpc https://s.altnet.rippletest.net:51234 --pool <pool> --signers r1,r2,r3 --quorum 2`; add `--rebuild --mirror http://<any node>/log` to join from the ledger. It holds no keys. It **refuses to start** when the pool's on-ledger SignerList is not exactly `--signers` with `SignerQuorum == --quorum` and the master key disabled; when rebuilding, also when the `account_tx` scan does not start at the pool account's creation (partial-history server), when a memo's bundle is missing from the mirror or hashes differently, when a shield's deposit is missing or short, or when any root differs from its memo.
