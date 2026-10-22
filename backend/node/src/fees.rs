@@ -101,6 +101,12 @@ pub struct FeeReport {
     /// ledger. `None` when the ledger could not be read (then nothing is sweepable).
     #[serde(default)]
     pub pool_excess: Option<u64>,
+    /// The value of every note the pool still backs, in drops: shields in minus unshields out,
+    /// from the public value balances of the accepted bundles. Public by construction (every
+    /// shield and unshield is a Payment on the ledger); only how it is split among holders is
+    /// private. Shown by the UI as the pool total.
+    #[serde(default)]
+    pub outstanding_backing: u64,
     pub treasury: Option<String>,
     pub accrued: u64,
     pub swept: u64,

@@ -47,7 +47,7 @@
 ```jsonc
 PoolState   { root, anchoredRoot | null, leafCount, nullifierCount, bundleCount, consumedDeposits }
 Accepted    { bundleIndex, firstLeaf, newRoot, bundleHash, nullifiers[], commitments[], fee, payout?: { destination, amount } }
-FeeReport   { shieldBps, unshieldBps, treasury | null, accrued, swept, available, poolExcess | null }   // available = min(accrued − swept, poolExcess); poolExcess = баланс пула − стоимость нот, с леджера
+FeeReport   { shieldBps, unshieldBps, treasury | null, accrued, swept, available, poolExcess | null, outstandingBacking }   // available = min(accrued − swept, poolExcess); poolExcess = баланс пула − стоимость нот, с леджера
 кворум      { memoHex, anchorTx, payoutTx | null, payoutBlob | null, payoutError | null, signers: [rAddr…], refusals: [string…] }
 RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, leafIndex, bundleIndex, timestamp, spent, recipient? }] }
 ```
@@ -68,6 +68,13 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
   (`gross − floor(gross · unshieldBps / 10000)`); показывать обе. **Переводы бесплатны.**
   `Accepted.fee` — комиссия, взятая кворумом, в дропах. В UI комиссия не настраивается, не
   редактируется и не платится отдельно; казна публична, весь учёт комиссий проверяем по леджеру.
+- **Всего в пуле / total shielded (показывает UI, публично).** `GET /fees.outstandingBacking` — стоимость всех нот,
+  которые обеспечивает пул, в дропах (shield'ы минус unshield'ы по публичным value balance). Она
+  публична по построению — каждый shield и unshield есть Payment на леджере, — поэтому UI показывает
+  её как «Total shielded — N XRP (backed, public)» рядом с приватным балансом держателя и никогда
+  наоборот. Это стоимость обеспеченных нот, а не весь XRPL-баланс аккаунта пула (там ещё средства
+  оператора, невыведенные комиссии и отклонённые депозиты до возврата) — об этом говорит подсказка; приватно
+  только то, как сумма разделена между держателями и кто кому платил внутри.
 - **Ключ просмотра — это авторизация для `/audit/reveal`**, он раскрывает всю историю держателя
   (только чтение, ничего более). UI отправляет его только тому координатору, которого выбрал
   пользователь, по настроенному пользователем URL, и предупреждает перед отправкой; никогда не
@@ -152,6 +159,8 @@ cd backend/quorum && POOL=<pool> COORDINATOR_URL=http://<host>:8787 CLI=../../ta
 - Контракт выше заморожен до конца хакатона, если оба лида не договорятся об ином в PR.
 - 2026-10-11: добавлена протокольная комиссия (`Accepted.fee`, нетто `payout.amount`,
   `GET /config.fees`, `GET /fees`, `POST /fees/sweep`); UI строит ноту shield за вычетом комиссии (§2).
+- 2026-10-21: `GET /fees.outstandingBacking` (публичная сумма пула); UI показывает её в строке
+  статуса и под приватным балансом (§2).
 
 ## 6a. Прототип (2026-10-10)
 

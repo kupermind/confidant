@@ -43,6 +43,10 @@ timings are from a rehearsal on a laptop (see the table at the end); re-measure 
 | 5 | "Compliance: we hand a regulator one viewing key. It reveals exactly Bob's activity and balance — nothing else." | (Bob) Audit → **my key** → **Reveal** | the two notes (received, spent) and balance 0 |
 | 6 | "Private on XRPL, auditable on demand, state on the ledger. Today it's a quorum; here's the XLS that makes verification native." | — | tab B again: the anchors; the footer's honest label |
 
+The wallet card shows **Total shielded — N XRP (backed, public)** under the private balance (and the status bar "shielded: N XRP"):
+say "the pool's total is public — every shield and unshield is a Payment on the ledger; what's private
+is who holds what and who paid whom inside."
+
 Keep the fee line short: "the pool takes 0.25 % on the way in and out — public policy, every sweep is
 on the ledger — transfers inside are free."
 

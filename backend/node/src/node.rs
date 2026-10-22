@@ -93,6 +93,9 @@ impl<L: Ledger> Node<L> {
         state_path.with_extension("fees.json")
     }
 
+    /// Lock-order invariant: a caller that needs both mutexes acquires the verifier lock
+    /// (`lock()`) FIRST and the fee ledger (`lock_fees()`) second — `submit_*` / `endorse` hold `v`
+    /// and then `accrue()`. Never call anything that takes `lock()` while holding this guard.
     fn lock_fees(&self) -> std::sync::MutexGuard<'_, FeeLedger> {
         self.fee_ledger.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -148,16 +151,22 @@ impl<L: Ledger> Node<L> {
         Ok(account_balance(&info)?.saturating_sub(self.outstanding_backing()))
     }
 
-    /// `GET /fees`: the policy, this node's ledger, and the sweepable amount — the fee ledger's
-    /// `available` capped by the pool's excess over outstanding notes; nothing when the ledger
-    /// cannot be read.
+    /// `GET /fees`: the policy, this node's ledger, the value the pool backs (the public pool
+    /// total), and the sweepable amount — the fee ledger's `available` capped by the pool's excess
+    /// over outstanding notes; nothing when the ledger cannot be read.
     pub async fn fees(&self) -> FeeReport {
         let excess = self.pool_excess().await.ok();
+        // Read the backing (verifier lock, released inside the call) BEFORE taking the fee-ledger
+        // lock: the apply paths hold the verifier lock and then take the fee ledger, so taking them
+        // in the other order here could deadlock a node under a concurrent submit (lock-order
+        // invariant on `lock` / `lock_fees`).
+        let backing = self.outstanding_backing();
         let l = self.lock_fees();
         FeeReport {
             shield_bps: self.fees.shield_bps,
             unshield_bps: self.fees.unshield_bps,
             pool_excess: excess,
+            outstanding_backing: backing,
             treasury: self.fees.treasury.clone(),
             accrued: l.accrued,
             swept: l.swept,
@@ -219,6 +228,8 @@ impl<L: Ledger> Node<L> {
         &self.pool
     }
 
+    /// Lock-order invariant: verifier lock before fee-ledger lock (see `lock_fees`). Holding this
+    /// guard and then calling `lock_fees()` is fine; the reverse order can deadlock the node.
     fn lock(&self) -> std::sync::MutexGuard<'_, Verifier> {
         self.verifier.lock().unwrap_or_else(|e| e.into_inner())
     }

@@ -1331,6 +1331,17 @@ async fn protocol_fees_accrue_net_and_sweep_verified_on_ledger() {
         (Some(20_000), 20_000),
         "excess binds below the fee ledger's 50_000"
     );
+    // The pool total the UI shows: the same backing figure, reported in the clear (it is public by
+    // construction) and under its camelCase wire name.
+    assert_eq!(
+        r.outstanding_backing, 59_750_000,
+        "GET /fees reports the backing"
+    );
+    assert_eq!(
+        serde_json::to_value(&r).unwrap()["outstandingBacking"],
+        json!(59_750_000),
+        "wire name"
+    );
     sweep("SW9", TREASURY, "30000");
     ledger.set_info(balance(59_750_000 - 1));
     assert!(

@@ -341,7 +341,9 @@ ledger** (audit, 2026-10-13: a conservation check must not be computed in the ac
 guards): `GET /fees` reports `poolExcess` = the pool account's validated XRP balance minus the value
 of every note it backs (shields in minus unshields out, from the public value balances), and
 `available` is the fee ledger's balance capped by it — nothing is sweepable when the ledger cannot
-be read; and a node refuses to record a sweep after which the pool account holds less than its
+be read; the backing itself is reported as `outstandingBacking` and shown by the UI as the pool
+total (public by construction: every shield and unshield is a Payment on the ledger; only the split
+among holders is private); and a node refuses to record a sweep after which the pool account holds less than its
 outstanding notes. The fee ledger is **replayable**: `--rebuild`
 recomputes accruals from the deposit facts and the anchored unshields and the sweeps from the
 pool's `account_tx`, so a rebuilt node reports the same `accrued`/`swept` — which also makes the policy a constant of the
