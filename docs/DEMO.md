@@ -47,7 +47,9 @@ The header link **How Confidant works →** opens `/how-it-works.html`, a one-pa
 unshield, what makes it safe, this weekend's lending features, the enclave horizon, honest limits) — send it to
 judges and lenders; it is phone-friendly.
 
-The wallet card shows **Total shielded — N XRP (backed, public)** under the private balance (and the status bar "shielded: N XRP"):
+The header shows **N XRP shielded in the pool · public** as a headline stat left of the status pill, with
+"pool account B = N + E float & unswept fees · how it is counted →" under it; that link opens `/balances.html`, which
+reconciles the two figures live from the ledger and answers the usual questions (memo, stray XRP, fees, float, anchors):
 say "the pool's total is public — every shield and unshield is a Payment on the ledger; what's private
 is who holds what and who paid whom inside."
 

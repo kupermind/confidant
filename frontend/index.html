@@ -43,6 +43,13 @@
   .wordmark { font-weight: 700; font-size: 22px; letter-spacing: .02em; }
   .tagline { color: var(--muted); font-size: 14px; }
   .learn { font-size: 14px; white-space: nowrap; }
+  .right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .stat { display: flex; flex-direction: column; align-items: flex-end; text-align: right; color: var(--text); line-height: 1.25; }
+  .stat:hover { text-decoration: none; }
+  .stat b { font-size: 22px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  .stat #pool-breakdown { color: var(--link); }
+  @media (max-width: 560px) { .right { width: 100%; justify-content: space-between; } .stat { align-items: flex-start; text-align: left; } }
   .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--muted); background: var(--surface); }
   .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
   .pill.off .dot { background: var(--danger); }
@@ -111,7 +118,14 @@
       <div class="tagline">shielded pool on the XRP Ledger · testnet</div>
       <a class="learn" href="how-it-works.html">How Confidant works →</a>
     </div>
-    <div class="pill" id="netpill"><span class="dot"></span><span id="nettext">connecting…</span></div>
+    <div class="right">
+      <a class="stat" id="pool-stat" href="balances.html" title="What the notes in the pool are worth: shields in minus unshields out, from the public value balances. Public by construction; only the split among holders is private. Not the pool account's whole balance — see how it is counted.">
+        <b><span id="st-pool-big">—</span> XRP</b>
+        <span>shielded in the pool · public</span>
+        <span id="pool-breakdown">how it is counted →</span>
+      </a>
+      <div class="pill" id="netpill"><span class="dot"></span><span id="nettext">connecting…</span></div>
+    </div>
   </header>
 
   <div class="grid">
@@ -125,8 +139,6 @@
       <div id="haswallet" hidden>
         <div class="balance"><span id="priv-balance">0</span><small>XRP private</small></div>
         <div class="hint" id="sync-hint">synced 0 of 0 bundles</div>
-        <div class="row" title="The value of all notes the pool backs (shields in minus unshields out) — not the pool account's whole XRPL balance, which also holds operator funding and unswept fees. Public by construction: every shield and unshield is a Payment on the ledger. Only how it is split among holders, and who paid whom inside, is private."><span class="k">Total shielded</span><span class="v" id="pool-total">—</span></div>
-        <div class="hint" id="pool-breakdown" title="public: the pool account's whole XRPL balance is the note backing plus the operator's funding at genesis, protocol fees not yet swept to the treasury, and any refused deposit awaiting refund"></div>
         <div class="row"><span class="k">Keys</span><span class="v" id="keys-mode" style="font-family:inherit"></span></div>
         <div class="row"><span class="k">Orchard address</span><span class="v" id="orchard-addr"></span><button class="small ghost copy" data-copy="orchard-addr">copy</button></div>
         <div class="row"><span class="k">Viewing key</span><span class="v" id="viewing-key">••••••••</span><button class="small ghost copy" id="btn-vk">show</button></div>
@@ -216,6 +228,7 @@
       <span>quorum: <b id="st-quorum">—</b></span>
       <span><a id="st-pool-link" href="#" target="_blank" rel="noopener">pool account on the explorer</a></span>
       <span><a href="how-it-works.html">how Confidant works</a></span>
+      <span><a href="balances.html">balances explained</a></span>
     </div>
     <div>Notes are non-custodial: this wallet's spending key never reaches the pool. The pool account is held by a k-of-N quorum of independent verifiers; collusion of k can drain the pool account but cannot spend anyone's notes. Shield and unshield amounts and addresses are public by nature; the transfer graph inside the pool is not. Your wallet runs in this browser (WebAssembly): the spending key, your notes and the proofs never leave it. Only if WebAssembly is unavailable does the page fall back to the demo wallet service on the demo host — testnet demo only, never for real value.</div>
   </footer>
@@ -404,12 +417,12 @@
     try {
       const f = await be.fees();
       if (f.outstandingBacking == null) throw new Error("node without outstandingBacking");
-      $("st-pool").textContent = fmt(f.outstandingBacking); $("pool-total").textContent = `${fmt(f.outstandingBacking)} XRP (backed, public)`;
+      $("st-pool").textContent = fmt(f.outstandingBacking); $("st-pool-big").textContent = fmt(f.outstandingBacking);
       // Why the explorer shows more: the account also holds the operator's float and unswept fees.
       // poolExcess is the node's own read of balance − backing (null when the ledger is unreadable).
-      $("pool-breakdown").textContent = f.poolExcess == null ? "pool account balance: ledger not readable right now"
-        : `pool account ${fmt(f.outstandingBacking + f.poolExcess)} XRP = ${fmt(f.outstandingBacking)} shielded + ${fmt(f.poolExcess)} operator float and unswept fees`;
-    } catch { $("st-pool").textContent = "—"; $("pool-total").textContent = "—"; $("pool-breakdown").textContent = ""; }
+      $("pool-breakdown").textContent = f.poolExcess == null ? "pool account balance: ledger not readable · how it is counted →"
+        : `pool account ${fmt(f.outstandingBacking + f.poolExcess)} = ${fmt(f.outstandingBacking)} + ${fmt(f.poolExcess)} float & unswept fees · how it is counted →`;
+    } catch { $("st-pool").textContent = "—"; $("st-pool-big").textContent = "—"; $("pool-breakdown").textContent = "how it is counted →"; }
   }
 
   // ---- flows ------------------------------------------------------------------------------

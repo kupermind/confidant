@@ -74,7 +74,9 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
   way round. It is the note-backing total, not the pool account's whole XRPL balance (which also holds
   operator funding, unswept fees and refused deposits awaiting refund), and the tooltip says so; only
   how the total is split among holders, and who paid whom inside, is private.
-- **Pool account balance vs. shielded total.** The UI shows a second line from the same `GET /fees` answer:
+- **Pool account balance vs. shielded total.** The UI shows the total as a headline stat in the header (left of the
+  status pill) with a second line from the same `GET /fees` answer, and `frontend/balances.html` reconciles both
+  figures live from the ledger with a FAQ (memo, stray XRP, fees, float, anchors). The line:
   "pool account B XRP = `outstandingBacking` shielded + `poolExcess` operator float and unswept fees"
   (B = the two added; `poolExcess` is the node's own read of balance − backing, `null` when the ledger is
   unreadable). The excess is the operator's funding at genesis, protocol fees not yet swept to the treasury,
