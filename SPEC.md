@@ -154,7 +154,8 @@ The "reused Halo 2 circuits" are the **Zcash Orchard Action circuit, unchanged**
 | Proving/verifying keys | built from the circuit at process start; no trusted key artifact |
 
 Why `orchard_v2`: `orchard_v3` forbids cross-address outputs; `ironwood_v3` only matters for interop
-with another project's in-enclave prover. Audit: Q-POOL-1, no objection.
+with another project's in-enclave prover. Audit: Q-POOL-1, no objection. Why Halo 2 and a reused
+circuit at all — the requirements, the alternatives weighed and the costs accepted: `docs/WHY-HALO2.md`.
 
 Per action the circuit and bundle enforce: membership of the spent commitment under the anchor
 (Sinsemilla tree, depth 32); knowledge of the spending key (`rk`, spend-auth signature over the
@@ -417,7 +418,7 @@ backend/quorum/ signer.mjs (sidecar: holds a signer key, signs only what its nod
                coordinator.mjs (k-of-N multisig, anchor then payout), setup-pool.mjs, start-all.mjs, lib.mjs
 e2e/testnet/ XRPL testnet harnesses (xrpl.js): run.mjs (CLI-driven), run-services.mjs (through backend/)
 docs/audit/  REQ/RESP of every round, INDEX.md
-docs/CORE-API.md, docs/E2E.md, docs/NODE-OPERATOR.md, docs/COMPARISON-STRK20.md (+ .ru: vs Starknet's STRK20)
+docs/CORE-API.md, docs/E2E.md, docs/NODE-OPERATOR.md, docs/WHY-HALO2.md (the proof-system decision), docs/COMPARISON-STRK20.md (+ .ru: vs Starknet's STRK20)
 .github/workflows/check.yml  CI: fmt / clippy / tests (release) / 100% line coverage / hygiene / manual e2e
 frontend/      index.html + wallet-worker.js — the UI prototype (static); wasm/ = the core behind wasm-bindgen (keys and proofs in the browser)
 backend/wallet/ confidant-wallet: demo wallet service (HTTP over Wallet; holds demo spending keys on its host;
