@@ -126,6 +126,7 @@
         <div class="balance"><span id="priv-balance">0</span><small>XRP private</small></div>
         <div class="hint" id="sync-hint">synced 0 of 0 bundles</div>
         <div class="row" title="The value of all notes the pool backs (shields in minus unshields out) — not the pool account's whole XRPL balance, which also holds operator funding and unswept fees. Public by construction: every shield and unshield is a Payment on the ledger. Only how it is split among holders, and who paid whom inside, is private."><span class="k">Total shielded</span><span class="v" id="pool-total">—</span></div>
+        <div class="hint" id="pool-breakdown" title="public: the pool account's whole XRPL balance is the note backing plus the operator's funding at genesis, protocol fees not yet swept to the treasury, and any refused deposit awaiting refund"></div>
         <div class="row"><span class="k">Keys</span><span class="v" id="keys-mode" style="font-family:inherit"></span></div>
         <div class="row"><span class="k">Orchard address</span><span class="v" id="orchard-addr"></span><button class="small ghost copy" data-copy="orchard-addr">copy</button></div>
         <div class="row"><span class="k">Viewing key</span><span class="v" id="viewing-key">••••••••</span><button class="small ghost copy" id="btn-vk">show</button></div>
@@ -404,7 +405,11 @@
       const f = await be.fees();
       if (f.outstandingBacking == null) throw new Error("node without outstandingBacking");
       $("st-pool").textContent = fmt(f.outstandingBacking); $("pool-total").textContent = `${fmt(f.outstandingBacking)} XRP (backed, public)`;
-    } catch { $("st-pool").textContent = "—"; $("pool-total").textContent = "—"; }
+      // Why the explorer shows more: the account also holds the operator's float and unswept fees.
+      // poolExcess is the node's own read of balance − backing (null when the ledger is unreadable).
+      $("pool-breakdown").textContent = f.poolExcess == null ? "pool account balance: ledger not readable right now"
+        : `pool account ${fmt(f.outstandingBacking + f.poolExcess)} XRP = ${fmt(f.outstandingBacking)} shielded + ${fmt(f.poolExcess)} operator float and unswept fees`;
+    } catch { $("st-pool").textContent = "—"; $("pool-total").textContent = "—"; $("pool-breakdown").textContent = ""; }
   }
 
   // ---- flows ------------------------------------------------------------------------------
