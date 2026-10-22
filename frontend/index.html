@@ -331,12 +331,21 @@
     try { const r = await c.request({ command: "account_info", account: w.address, ledger_index: "validated" }); return r.result.account_data.Balance; }
     catch { return "0"; }
   }
-  async function fund() {
-    if (DEMO) { const w = xrpl.Wallet.generate(); store.set("xrpl", { seed: w.seed, address: w.address }); return; }
-    const c = await xrpl_();
-    const existing = xrplWallet();
-    const { wallet } = await c.fundWallet(existing ?? undefined);
-    store.set("xrpl", { seed: wallet.seed, address: wallet.address });
+  // One faucet call at a time: a second press while the first is running waits for it instead of
+  // creating a second account. The account is generated and stored before the faucet is asked, so a
+  // retry (or a reload mid-way) funds the same address rather than orphaning a funded one.
+  let funding = null;
+  function fund() {
+    if (funding) return funding;
+    funding = (async () => {
+      let x = store.get("xrpl");
+      if (!x) { const w = xrpl.Wallet.generate(); x = { seed: w.seed, address: w.address, funded: false }; store.set("xrpl", x); }
+      if (DEMO) { await sleep(2500); store.set("xrpl", { ...x, funded: true }); return; }
+      const c = await xrpl_();
+      await c.fundWallet(xrpl.Wallet.fromSeed(x.seed));
+      store.set("xrpl", { ...x, funded: true });
+    })().finally(() => { funding = null; });
+    return funding;
   }
   async function deposit(drops, bundleHash) {
     if (DEMO) { await sleep(1200); return fakeHex(64).toUpperCase(); }
@@ -373,8 +382,11 @@
       catch (e) { $("sync-hint").textContent = `sync failed: ${e.message}`; }
     }
     const x = store.get("xrpl");
-    $("xrpl-addr").textContent = x ? x.address : "not funded yet";
-    $("xrpl-balance").textContent = x ? `${fmt(await xrplBalance() ?? 0)} XRP` : "—";
+    $("xrpl-addr").textContent = x ? x.address : "none yet — press fund (faucet)";
+    busy($("btn-fund"), !!funding);
+    if (!x) $("xrpl-balance").textContent = "—";
+    else if (funding) $("xrpl-balance").textContent = "funding… (10–30 s)";
+    else { const b = await xrplBalance(); $("xrpl-balance").textContent = `${fmt(b ?? 0)} XRP${Number(b) > 0 ? "" : " — empty; press fund (faucet)"}`; }
     $("audit-vk").value ||= w.viewingKey;
   }
   async function refreshStatus() {
@@ -482,20 +494,26 @@
   const flash = (b, ok) => { const was = b.dataset.idle ?? b.textContent; b.dataset.idle = was; b.textContent = ok ? "copied" : "copy failed"; setTimeout(() => (b.textContent = b.dataset.idle), 1200); };
   document.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => flash(b, await copyText($(b.dataset.copy).textContent))));
   $("btn-vk").addEventListener("click", async () => { const w = wallet(); if (!w) return; const el = $("viewing-key"); if (el.textContent.startsWith("•")) { el.textContent = w.viewingKey; $("btn-vk").textContent = "copy"; $("btn-vk").dataset.idle = "copy"; } else { flash($("btn-vk"), await copyText(w.viewingKey)); } });
+  // Creation has two steps the user must not confuse: the spending key (instant) and the faucet
+  // (10–30 s). The card is shown as soon as the key exists, with the XRPL rows saying what is still
+  // happening, and the message lives in both sections so it stays visible whichever is shown.
+  const setCreateMsg = (text, kind) => { setMsg("create-progress", text, kind); setMsg("wallet-progress", text, kind); };
   $("btn-create").addEventListener("click", async () => {
     const btn = $("btn-create"); busy(btn, true);
     try {
       let w;
       if (!DEMO && typeof WebAssembly === "object") {
-        setMsg("create-progress", `<span class="spin"></span>Generating your spending key in this browser…`, "warn");
+        setCreateMsg(`<span class="spin"></span>Generating your spending key in this browser…`, "warn");
         try { w = await browserBackend.create(); }
-        catch (e) { setMsg("create-progress", `Browser wallet unavailable (${e.message}); using the demo wallet service instead.`, "warn"); w = await serviceBackend.create(); }
+        catch (e) { setCreateMsg(`Browser wallet unavailable (${e.message}); using the demo wallet service instead.`, "warn"); w = await serviceBackend.create(); }
       } else { w = await serviceBackend.create(); }
       store.set("wallet", w); walletReady = true;
-      setMsg("create-progress", `<span class="spin"></span>Funding an XRPL testnet account from the faucet…`, "warn");
-      await fund();
-      setMsg("create-progress", "");
-    } catch (e) { setMsg("create-progress", e.message, "err"); }
+      const funded = fund();
+      setCreateMsg(`<span class="spin"></span>Wallet created. Funding your XRPL testnet account from the faucet — 10–30 s, nothing to press.`, "warn");
+      await refreshWallet();
+      await funded;
+      setCreateMsg("");
+    } catch (e) { setCreateMsg(`${e.message} — press fund (faucet) to retry.`, "err"); }
     finally { busy(btn, false); refreshWallet(); }
   });
   $("btn-fund").addEventListener("click", async () => { const b = $("btn-fund"); busy(b, true); try { await fund(); } catch (e) { alert(e.message); } finally { busy(b, false); refreshWallet(); } });
