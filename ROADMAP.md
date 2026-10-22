@@ -331,7 +331,10 @@ signing, never persisted or logged) and the Credential's meaning ("controlled �
       `rebuild_checked` reassembles and hash-checks before use. The full data-availability design —
       layers, what dies with what, mirrors vs on-ledger chunks vs IPFS vs Filecoin/Arweave, holder-side
       persistence, the staged plan (stage 0 = off-host backup + a second node before the event) and the
-      honest label per stage — is `docs/DATA-AVAILABILITY.md`. *Audit condition:* availability
+      honest label per stage; stage 0 = a one-time demonstrative public IPFS snapshot of the log
+      (`npm run log:snapshot`, proposed to the owner 2026-10-23, rehearsed locally: a node rebuilt from the
+      ledger + the snapshot file reproduced the live state exactly) — is `docs/DATA-AVAILABILITY.md`.
+      *Audit condition:* availability
       only — backing stays "release bound to a verified consumed deposit", never "the bytes were
       published"; the moment rebuild-without-mirror gates a value path it is a trust-path slice.
    2. **Bounded anchor window** (the audit's "bounded anchor history", now with a concrete rule).

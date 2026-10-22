@@ -60,7 +60,10 @@ and the mirror. The reference implementation of a coordinator and three signers 
 Every node is a full mirror of the bundle bytes (`verifier-state.json`); the ledger holds only their
 hashes. A pool whose nodes all run on one host has one copy. Before anything real rides on a pool:
 back up `data/quorum` (states *and* signer keys) off the host, and run at least one node on another
-machine, joined with `--rebuild --mirror`. What survives which failure, and the roadmap for on-ledger and
+machine, joined with `--rebuild --mirror`. A public copy of the log takes one command:
+`COORDINATOR_URL=https://<host>/api npm run log:snapshot` (in `backend/quorum`) writes the log in the
+shape `--mirror` reads and, with an `ipfs` CLI on the path, adds and pins it; any node can then rebuild
+with `--mirror https://<gateway>/ipfs/<CID>`. What survives which failure, and the roadmap for on-ledger and
 public mirrors: `docs/DATA-AVAILABILITY.md`.
 
 ## Running it as services (`backend/`)
