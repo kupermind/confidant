@@ -176,7 +176,24 @@ the same crate: `pkg-threads/` proves on a Web-Worker thread pool and is picked 
 cross-origin isolated (the nginx site sends COOP/COEP), `pkg/` is the single-threaded fallback. The
 proving key is built once per worker, in the background right after the wallet exists (`warm`), so
 the first operation does not wait for it; a build's answer carries `provingMs` and `threads`, which the
-page shows ("proved in X s on N threads"). Pre-population for a demo: `npm run prepopulate` in
+page shows ("proved in X s on N threads").
+
+**Browser proving — what to budget for, and what not to change** (measured 2026-10-23 on the live site,
+Chrome, 20-core laptop, cross-origin isolated, `performance.measureUserAgentSpecificMemory`): the wallet
+worker holds ≈ 70 MB once the proving key is built and ≈ 135 MB after the first proof — WebAssembly
+linear memory does not shrink, so that is the session's working set; the threaded build declares a
+2 GiB maximum for its shared memory (`frontend/wasm/build-threads.sh`), far above need. Times: proving
+keys 6.0 s and a 2-action proof 3.1 s on 16 threads; ≈ 12 s and ≈ 16 s single-threaded. Three facts keep
+this cheap, and the UI must not change them: (1) the circuit is the Zcash Orchard Action circuit reused
+unchanged — its size (`k`) is fixed by Orchard, there is nothing to tune; (2) **no non-native curve
+arithmetic runs inside the proof** — spend authorization is RedPallas on Pallas, native to the circuit;
+every XRPL signature (secp256k1 / ed25519) is made by `xrpl.js` outside the proof, and the deposit is
+bound by the memo (the bundle hash) that every node checks against the ledger — so lookup-table curve
+libraries (PSE / Axiom style) are not needed and must not be added; (3) proving always runs in
+`wallet-worker.js`, never on the main thread. Threads need a cross-origin-isolated page: the COOP/COEP
+headers *and* a secure context (HTTPS, or `http://localhost`); over plain `http://<ip>/` browsers ignore
+the headers and the wallet silently runs single-threaded (the wallet card says "N threads"). The default
+allocator is used; `wee_alloc` is unmaintained and not worth its known leaks. Pre-population for a demo: `npm run prepopulate` in
 `backend/quorum` (fixed denominations, faucet-funded holders, a few private hops — a synthetic set, say
 so); the stage run-sheet is `docs/DEMO.md`. `xrpl.js` in
 the browser does the faucet and the deposit. Fallback when WebAssembly is unavailable: the demo

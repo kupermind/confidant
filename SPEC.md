@@ -271,6 +271,7 @@ deposit checks trusts the quorum on backing, which adds no risk beyond the conce
 | Circuit parameters (once per process) | ≈ 2.5 s |
 | Wallet: build + prove a 2-action bundle | ≈ 0.9 s (+ ≈ 0.45 s per extra action) |
 | Browser wallet (WebAssembly, Chrome, 20-core laptop): proving keys / 2-action proof | 6.0 s / 3.2 s on 16 threads (cross-origin isolated page, `pkg-threads`); 12.1 s / 16.2 s single-threaded (`pkg`) on the same machine |
+| Browser wallet memory (the worker, measured 2026-10-23 on the live site) | ≈ 70 MB after the proving key, ≈ 135 MB after the first proof (wasm memory does not shrink); the threaded build declares a 2 GiB maximum |
 | Verifier: accept a bundle | ≈ 10 ms |
 | `sync` / `rebuild` | ≈ 10 ms per record |
 | Anchor memo | 196–260 B for 2 actions, ≤ 1 KB up to 8 |
