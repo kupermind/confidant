@@ -55,7 +55,8 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
   (`backend/wallet`, holds demo keys on the host). The contract: `docs/API-BOUNDARY.md`.
   A one-page overview for visitors, judges and lenders — `frontend/how-it-works.html`, served at
   `/how-it-works.html` and linked from the app's header — explains the pool, the quorum, the hackathon
-  lending features and the honest limits.
+  lending features and the honest limits. `frontend/balances.html` (`/balances.html`) reconciles the
+  shielded total with the pool account's balance live from the ledger and answers the usual questions.
 - No Solidity, no WASM, no `xrpl-rust`.
 
 ## Privacy and trust — what we claim, what we don't

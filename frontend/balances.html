@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Confidant — balances, explained</title>
+<meta name="description" content="Why the shielded total and the pool account's balance differ, where every XRP on the pool account comes from, and how deposits, memos, fees, anchors and payouts work — with live numbers from the ledger.">
+<!--
+  A read-only companion to the app: it asks the coordinator for /api/config and /api/fees (public facts) and
+  the XRPL public WebSocket for the pool account's history, then shows the reconciliation and the FAQ.
+  No keys, no wallet, nothing is sent anywhere. ?demo=1 shows a worked example without a backend.
+-->
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #F5F7F9; --surface: #FFFFFF; --surface-2: #EEF2F5; --line: #D9E0E7;
+    --text: #0E1419; --muted: #5C6B7A; --accent: #7919FF; --accent-ink: #FFFFFF;
+    --link: #1F6FEB; --warn: #B7791F; --danger: #D23C3C;
+    --radius: 12px; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0B0F14; --surface: #121922; --surface-2: #19222D; --line: #243040;
+    --text: #E8EEF4; --muted: #8A98A8; --accent: #7919FF; --accent-ink: #FFFFFF;
+    --link: #6EA8FF; --warn: #FFB454; --danger: #FF6B6B;
+  } }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0B0F14; --surface: #121922; --surface-2: #19222D; --line: #243040;
+    --text: #E8EEF4; --muted: #8A98A8; --accent: #7919FF; --accent-ink: #FFFFFF;
+    --link: #6EA8FF; --warn: #FFB454; --danger: #FF6B6B;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  a { color: var(--link); text-decoration: none; } a:hover { text-decoration: underline; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 20px 16px 48px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  .wordmark { font-weight: 700; font-size: 22px; letter-spacing: .02em; }
+  .tagline { color: var(--muted); font-size: 14px; }
+  nav { display: flex; gap: 14px; font-size: 14px; flex-wrap: wrap; }
+  h1 { font-size: 24px; margin: 6px 0 6px; letter-spacing: -.01em; }
+  h2 { font-size: 17px; margin: 28px 0 10px; }
+  p { margin: 0 0 10px; }
+  .lede { color: var(--muted); max-width: 64ch; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .two { grid-template-columns: 1fr; } }
+  .big { font-size: 26px; font-weight: 700; color: var(--accent); margin: 2px 0; }
+  .big small { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+  .k { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .eq { font-family: var(--mono); font-size: 13.5px; color: var(--text); background: var(--surface-2); border-radius: 8px; padding: 10px 12px; margin-top: 12px; overflow-wrap: anywhere; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  td.n, th.n { text-align: right; font-family: var(--mono); white-space: nowrap; }
+  tr.total td { font-weight: 700; border-bottom: 0; }
+  tr.check td { color: var(--muted); font-size: 13px; border-bottom: 0; }
+  /* Narrow screens: one flow per block — label and explanation, then the amount under it. */
+  @media (max-width: 480px) {
+    thead { display: none; }
+    tr, td { display: block; }
+    tr { border-bottom: 1px solid var(--line); padding: 6px 0; }
+    td { border-bottom: 0; padding: 2px 0; }
+    td.n { text-align: right; white-space: normal; padding-top: 4px; }
+    tr.total, tr.check { border-bottom: 0; }
+  }
+  td .why { display: block; color: var(--muted); font-size: 12.5px; }
+  .ok { color: var(--accent); font-weight: 600; } .bad { color: var(--danger); font-weight: 600; }
+  .src { color: var(--muted); font-size: 12.5px; margin-top: 10px; overflow-wrap: anywhere; }
+  .mono { font-family: var(--mono); font-size: 13px; }
+  details { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 0 16px; margin-bottom: 8px; }
+  summary { cursor: pointer; padding: 12px 0; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; color: var(--accent); font-weight: 700; flex: none; }
+  details[open] summary::after { content: "–"; }
+  details > div { padding: 0 0 14px; color: var(--text); }
+  details p { margin: 0 0 8px; }
+  code { font-family: var(--mono); font-size: 13px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+  .note { color: var(--muted); font-size: 13px; margin-top: 16px; max-width: 72ch; }
+  footer { margin-top: 28px; color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 14px; max-width: 76ch; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--muted); background: var(--surface); }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .pill.off .dot { background: var(--danger); }
+  .pill.wait .dot { background: var(--warn); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="wordmark">C0nf!d@nt</div>
+      <div class="tagline">balances, explained · <span id="net">testnet</span></div>
+    </div>
+    <nav><a href="/">Open the app →</a><a href="how-it-works.html">How Confidant works →</a></nav>
+  </header>
+
+  <h1>Two numbers, two meanings</h1>
+  <p class="lede">The app shows what the <b>notes</b> are worth. The explorer shows what the pool <b>account</b> holds. The
+    account always holds more, and every drop of the difference is accounted for below — live, from the ledger.</p>
+
+  <div class="two">
+    <div class="card">
+      <div class="k">Total shielded (what the notes are worth)</div>
+      <div class="big"><span id="backing">—</span><small>XRP</small></div>
+      <div class="src">Shields in, net of the fee, minus unshields out — from the public value balances of every accepted
+        operation. Public by construction; only the split among holders is private.</div>
+    </div>
+    <div class="card">
+      <div class="k">Pool account balance (what the explorer shows)</div>
+      <div class="big"><span id="balance">—</span><small>XRP</small></div>
+      <div class="src">The account's XRP on the validated ledger. It also holds the operator's float, fees not yet swept
+        to the treasury, and any refused deposit awaiting refund.</div>
+    </div>
+  </div>
+  <div class="eq" id="eq">pool account = total shielded + operator float and unswept fees</div>
+  <p class="src" style="margin-top:8px"><span class="pill" id="live"><span class="dot"></span><span id="livetext">reading the ledger…</span></span>
+    <span id="src-line"></span></p>
+
+  <h2>Where the pool account's balance comes from</h2>
+  <div class="card">
+    <table id="t-account">
+      <thead><tr><th>Flow on the ledger</th><th class="n">XRP</th></tr></thead>
+      <tbody>
+        <tr><td>Operator funding at genesis<span class="why">the Payment that created the account (no memo): covers the XRPL reserve and the account's transaction fees; never note value</span></td><td class="n" id="r-funding">—</td></tr>
+        <tr><td>Shield deposits<span class="why">Payments to the pool carrying the <code>confidant/shield</code> memo — each bound to one bundle</span></td><td class="n" id="r-deposits">—</td></tr>
+        <tr><td>Payouts to unshield destinations<span class="why">k-of-N Payments, each bound to an accepted unshield, net of the unshield fee</span></td><td class="n" id="r-payouts">—</td></tr>
+        <tr><td>Fee sweeps to the treasury<span class="why">k-of-N Payments of accrued protocol fees; verified by every node</span></td><td class="n" id="r-sweeps">—</td></tr>
+        <tr><td>Anchors<span class="why">1-drop Payments whose memo carries the state after each accepted operation</span></td><td class="n" id="r-anchors">—</td></tr>
+        <tr><td>XRPL transaction fees paid by the account<span class="why">burned by the ledger, go to no one</span></td><td class="n" id="r-txfees">—</td></tr>
+        <tr class="total"><td>= balance on the ledger</td><td class="n" id="r-balance">—</td></tr>
+        <tr class="check"><td>check against <code>account_info</code></td><td class="n" id="r-check">—</td></tr>
+      </tbody>
+    </table>
+    <div class="src" id="t-account-src"></div>
+  </div>
+
+  <h2>What the notes are worth</h2>
+  <div class="card">
+    <table id="t-notes">
+      <thead><tr><th>Inside the pool</th><th class="n">XRP</th></tr></thead>
+      <tbody>
+        <tr><td>Shield deposits</td><td class="n" id="n-deposits">—</td></tr>
+        <tr><td>− shield fees<span class="why"><span id="n-bps-s">0.25</span> % of each deposit, floored to the drop; the note is credited net</span></td><td class="n" id="n-sfees">—</td></tr>
+        <tr><td>= notes created</td><td class="n" id="n-created">—</td></tr>
+        <tr><td>− notes burned by unshields<span class="why">gross note value; the destination receives it net of the <span id="n-bps-u">0.25</span> % unshield fee</span></td><td class="n" id="n-burned">—</td></tr>
+        <tr class="total"><td>= total shielded (backing)</td><td class="n" id="n-backing">—</td></tr>
+        <tr class="check"><td>pool account − backing = operator float and unswept fees (<code>poolExcess</code>, the node's own read)</td><td class="n" id="n-excess">—</td></tr>
+        <tr class="check"><td>protocol fees: accrued · swept · available to sweep</td><td class="n" id="n-fees">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>FAQ</h2>
+
+  <details open>
+    <summary>Why is "Total shielded" smaller than the balance on the explorer?</summary>
+    <div><p>Because they count different things. <b>Total shielded</b> is the value of the notes the pool backs: every
+      shield deposit net of its fee, minus every note burned by an unshield. The <b>account balance</b> adds the
+      operator's funding at genesis, the protocol fees that have accrued but not yet been swept to the treasury, and
+      any deposit the screening gate refused and that awaits a refund. None of that is note value, and none of it
+      can be spent by a holder. The two tables above reconcile them to the drop.</p></div>
+  </details>
+
+  <details>
+    <summary>What is the memo on a shield deposit?</summary>
+    <div><p>A shield is an ordinary XRPL Payment to the pool account that carries a memo: <code>MemoType = confidant/shield</code>,
+      <code>MemoData = the hash of the bundle</code> you built and proved <em>before</em> paying. The bundle commits to
+      the amount; the memo binds the deposit to that one bundle. Every verifier node reads the Payment from the
+      ledger itself (validated, to the pool, in XRP, memo present) and accepts the bundle only if the delivered amount
+      matches the note net of the fee. Nothing else creates a note.</p></div>
+  </details>
+
+  <details>
+    <summary>What happens if I just send XRP to the pool account, without the memo?</summary>
+    <div><p>Nothing good: it is not a shield, so no note is created and it does not raise the shielded total. The XRP
+      lands in the account and shows up in the "operator float and unswept fees" line. It cannot be claimed later — a
+      later memo would have to name a bundle that commits to <em>that</em> deposit, and the bundle must be built
+      first. It cannot be swept as fees either: a sweep is capped by the fee ledger, which grows only with real shields
+      and unshields. The signers refuse everything except anchors, payouts bound to accepted unshields, and sweeps
+      within that cap, so the XRP stays in the account until a refund path exists (a roadmap item). Don't do it.</p></div>
+  </details>
+
+  <details>
+    <summary>Why is my note a little smaller than my deposit?</summary>
+    <div><p>The pool charges a protocol fee on the way in and on the way out — <span id="f-bps-s">0.25</span> % of a shield
+      and <span id="f-bps-u">0.25</span> % of an unshield, floored to the drop. Transfers inside the pool are free. The
+      note is credited net of the shield fee; a payout is net of the unshield fee. The rates are a public policy fixed
+      at the pool's genesis: a pool whose deposits were bound under one policy cannot be replayed under another, so
+      new rates mean a new pool.</p></div>
+  </details>
+
+  <details>
+    <summary>Where do the fees go?</summary>
+    <div><p>They accrue inside the pool account and leave it only through a <b>sweep</b>: a k-of-N multisigned Payment to the
+      configured treasury account. Each node keeps its own fee ledger, replayable from the ledger, and will only record
+      a sweep it has read from the ledger itself: validated, from the pool, to the canonical treasury, no larger than
+      what is available. "Available" is the fee ledger's balance capped by the account's excess over the notes it backs,
+      so a sweep can never dip into note value. XRPL's own transaction fees are different: the pool account pays them
+      from its float and the ledger burns them.</p></div>
+  </details>
+
+  <details>
+    <summary>What is the "operator float"?</summary>
+    <div><p>The XRP the operator put into the pool account when it was created — on testnet, a faucet Payment. It covers the
+      account's reserve (the base reserve plus the owner reserve for its SignerList) and pays the account's transaction
+      fees for anchors, payouts and sweeps. It is never note value, and the node's conservation check — the account
+      must always hold at least what its notes are worth — treats it as the cushion it is.</p></div>
+  </details>
+
+  <details>
+    <summary>What are all the 1-drop Payments?</summary>
+    <div><p>Anchors. Every accepted operation — shield, transfer, unshield — ends with the quorum signing a 1-drop Payment from
+      the pool account whose memo carries the new state. That is how the pool's state lives on the ledger: anyone can
+      read the memos in order and rebuild the verifiers' state without trusting them. Transfers inside the pool leave
+      exactly one such anchor and nothing else — no sender, no receiver, no amount.</p></div>
+  </details>
+
+  <details>
+    <summary>Why did my shield wait "until the deposit is 2 ledgers old"?</summary>
+    <div><p>The screening standby. Each node accepts a deposit only once it is a few validated ledgers deep (two on the demo
+      pool), which gives the boundary screening a stable view of the Payment. The app retries by itself and the
+      shield completes after about eight seconds. It is the policy working, not an error.</p></div>
+  </details>
+
+  <details>
+    <summary>What is a "refused deposit awaiting refund"?</summary>
+    <div><p>A Payment the screening gate refused — for instance from a sender on a public sanctions list. The XRP is in the pool
+      account but no note was created, so it counts in the excess, not in the shielded total. Returning it needs a
+      quorum-signed refund path, which is on the roadmap; until then such a deposit stays where it is. The screening
+      itself is a check against public lists at the public boundary, not a proof of innocence per note.</p></div>
+  </details>
+
+  <details>
+    <summary>What is public, and what is private?</summary>
+    <div><p>Public: every shield and unshield — amount, XRPL address, time — and therefore the total shielded and the account's
+      balance. Private: who holds what inside the pool and who paid whom; a transfer leaves one anchor and nothing
+      else. A holder can reveal their own history to an auditor with their viewing key; nobody else can. An empty or
+      thinly used pool gives little privacy, and endpoint timing and amounts can still correlate a deposit with a
+      withdrawal — the pool hides the graph, not the boundary.</p></div>
+  </details>
+
+  <details>
+    <summary>Can the operators spend my notes?</summary>
+    <div><p>No. Notes are non-custodial: the spending key never leaves the holder's browser, and a note moves only by a proof
+      built with it. What the operators <em>can</em> do, if k of the N signers collude, is move the pool account's own XRP —
+      that is the federated custody caveat, stated plainly everywhere. Today's XRPL has no on-ledger verifier for these
+      proofs, which is why a quorum re-verifies every operation and signs only roots it computed itself.</p></div>
+  </details>
+
+  <details>
+    <summary>Why does the app sometimes show "—" for the total?</summary>
+    <div><p>The coordinator's node could not be reached, or it could not read the ledger at that moment (then it also reports no
+      excess and nothing is sweepable). The figure returns with the next refresh.</p></div>
+  </details>
+
+  <p class="note">Honest limits, as everywhere in Confidant: the pool account and proof verification are federated (k-of-N);
+    collusion of k signers can drain the pool account but cannot spend anyone's notes; state is reconstructible from the
+    ledger; shield and unshield amounts and addresses are public; an empty pool has no privacy. Testnet only.</p>
+
+  <footer>Read-only page: it asks the coordinator for public facts (<code>/api/config</code>, <code>/api/fees</code>) and the XRPL
+    public WebSocket for the pool account's history. No keys, no wallet, nothing is sent anywhere.</footer>
+</div>
+
+<script>
+  const DEMO = new URLSearchParams(location.search).has("demo");
+  const DROPS = 1_000_000;
+  const $ = (id) => document.getElementById(id);
+  const fmt = (drops) => (Number(drops) / DROPS).toLocaleString("en-US", { maximumFractionDigits: 6 });
+  const sign = (drops) => (drops < 0 ? "− " : "") + fmt(Math.abs(drops));
+  const feeOf = (drops, bps) => Math.floor((Number(drops) * (bps ?? 0)) / 10000);
+
+  // Classify every validated transaction in the pool account's history (ledger order).
+  // Works with both shapes the XRPL API returns an account_tx entry in (tx / tx_json).
+  function bucket(txs, pool, treasury) {
+    const b = { funding: 0, deposits: 0, depositFees: 0, payouts: 0, sweeps: 0, anchors: 0, txFees: 0, count: 0 };
+    for (const t of txs) {
+      const tx = t.tx ?? t.tx_json ?? {}, meta = t.meta ?? {};
+      if (meta.TransactionResult !== "tesSUCCESS") continue;
+      b.count++;
+      const amt = meta.delivered_amount ?? tx.DeliverMax ?? tx.Amount;
+      const drops = typeof amt === "string" ? Number(amt) : 0; // issued currencies never touch this pool
+      if (tx.TransactionType === "Payment" && tx.Destination === pool) {
+        const memo = (tx.Memos ?? []).some((m) => /^636f6e666964616e742f736869656c64$/i.test(m?.Memo?.MemoType ?? "")); // hex("confidant/shield")
+        if (memo) b.deposits += drops; else b.funding += drops;
+      } else if (tx.Account === pool) {
+        b.txFees += Number(tx.Fee ?? 0);
+        if (tx.TransactionType === "Payment") {
+          if (drops === 1) b.anchors += drops;
+          else if (treasury && tx.Destination === treasury) b.sweeps += drops;
+          else b.payouts += drops;
+        }
+      }
+    }
+    return b;
+  }
+
+  // Minimal XRPL WebSocket JSON-RPC client (no library needed for two read-only commands).
+  function connect(url) {
+    return new Promise((res, rej) => {
+      const s = new WebSocket(url); let seq = 0; const pending = new Map();
+      s.onopen = () => res({
+        request: (cmd) => new Promise((ok, no) => { const id = ++seq; pending.set(id, [ok, no]); s.send(JSON.stringify({ id, ...cmd })); }),
+        close: () => s.close(),
+      });
+      s.onerror = () => rej(new Error("cannot reach the XRPL websocket"));
+      s.onmessage = (e) => { const m = JSON.parse(e.data); const p = pending.get(m.id); if (!p) return; pending.delete(m.id); m.status === "success" ? p[0](m.result) : p[1](new Error(m.error_message ?? m.error ?? "rpc error")); };
+    });
+  }
+  async function history(c, account) {
+    const all = []; let marker;
+    for (let page = 0; page < 50; page++) {
+      const r = await c.request({ command: "account_tx", account, ledger_index_min: -1, ledger_index_max: -1, forward: true, limit: 200, ...(marker ? { marker } : {}) });
+      all.push(...(r.transactions ?? [])); marker = r.marker; if (!marker) break;
+    }
+    return all;
+  }
+
+  function setLive(state, text) { const p = $("live"); p.classList.toggle("off", state === "off"); p.classList.toggle("wait", state === "wait"); $("livetext").textContent = text; }
+
+  function render(b, balance, fees, cfg, note) {
+    const sBps = cfg.fees?.shieldBps ?? 0, uBps = cfg.fees?.unshieldBps ?? 0;
+    const created = b.deposits - b.depositFees;
+    const backing = fees.outstandingBacking, excess = fees.poolExcess;
+    const burned = created - backing;
+    $("backing").textContent = fmt(backing); $("balance").textContent = fmt(balance);
+    $("eq").textContent = `pool account ${fmt(balance)} XRP = ${fmt(backing)} shielded + ${fmt(balance - backing)} operator float and unswept fees`;
+    $("r-funding").textContent = fmt(b.funding); $("r-deposits").textContent = "+ " + fmt(b.deposits);
+    $("r-payouts").textContent = sign(-b.payouts); $("r-sweeps").textContent = sign(-b.sweeps);
+    $("r-anchors").textContent = sign(-b.anchors); $("r-txfees").textContent = sign(-b.txFees);
+    const computed = b.funding + b.deposits - b.payouts - b.sweeps - b.anchors - b.txFees;
+    $("r-balance").textContent = fmt(computed);
+    const ok = computed === balance;
+    $("r-check").innerHTML = ok ? `<span class="ok">matches: ${fmt(balance)} ✓</span>` : `<span class="bad">differs: ${fmt(balance)} on the ledger</span>`;
+    $("t-account-src").textContent = `${b.count} validated transactions in the account's history` + (note ? ` · ${note}` : "");
+    $("n-deposits").textContent = fmt(b.deposits); $("n-sfees").textContent = sign(-b.depositFees);
+    $("n-created").textContent = fmt(created); $("n-burned").textContent = sign(-burned);
+    $("n-backing").textContent = fmt(backing);
+    $("n-excess").textContent = excess == null ? "ledger not readable by the node" : fmt(excess);
+    $("n-fees").textContent = `${fmt(fees.accrued)} · ${fmt(fees.swept)} · ${fmt(fees.available)}`;
+    for (const id of ["n-bps-s", "f-bps-s"]) $(id).textContent = (sBps / 100).toLocaleString("en-US", { maximumFractionDigits: 4 });
+    for (const id of ["n-bps-u", "f-bps-u"]) $(id).textContent = (uBps / 100).toLocaleString("en-US", { maximumFractionDigits: 4 });
+  }
+
+  // A worked example (the demo pool on 2026-10-23, after the sweep) for ?demo=1 or when the backend is away.
+  const SAMPLE = {
+    cfg: { network: "testnet (sample data)", explorer: "https://testnet.xrpl.org", pool: "rEiHipocKiZZ9UgriMRNpMu1jg7roGWcLV", fees: { shieldBps: 25, unshieldBps: 25, treasury: "rwbgyYBhFiBExQ7K5yJKyYdvHYwGHdBamt" } },
+    fees: { shieldBps: 25, unshieldBps: 25, poolExcess: 99_998_465, outstandingBacking: 114_687_500, accrued: 462_340, swept: 462_340, available: 0 },
+    b: { funding: 100_000_000, deposits: 150_000_000, depositFees: 375_000, payouts: 34_850_160, sweeps: 462_340, anchors: 23, txFees: 1_512, count: 45 },
+    balance: 100_000_000 + 150_000_000 - 34_850_160 - 462_340 - 23 - 1_512,
+  };
+
+  async function main() {
+    if (DEMO) { $("net").textContent = SAMPLE.cfg.network; setLive("wait", "sample data (no backend)"); render(SAMPLE.b, SAMPLE.balance, SAMPLE.fees, SAMPLE.cfg, "sample"); return; }
+    let cfg, fees;
+    try {
+      cfg = await (await fetch("/api/config")).json(); fees = await (await fetch("/api/fees")).json();
+      if (fees.outstandingBacking == null) throw new Error("node without outstandingBacking");
+    } catch (e) { setLive("off", `backend unreachable (${e.message}) — showing a worked example`); $("net").textContent = SAMPLE.cfg.network; render(SAMPLE.b, SAMPLE.balance, SAMPLE.fees, SAMPLE.cfg, "sample"); return; }
+    $("net").textContent = cfg.network ?? "testnet";
+    $("src-line").innerHTML = ` pool account <a class="mono" href="${cfg.explorer}/accounts/${cfg.pool}" target="_blank" rel="noopener">${cfg.pool}</a>` + (cfg.fees?.treasury ? ` · treasury <a class="mono" href="${cfg.explorer}/accounts/${cfg.fees.treasury}" target="_blank" rel="noopener">${cfg.fees.treasury}</a>` : "");
+    $("backing").textContent = fmt(fees.outstandingBacking);
+    if (fees.poolExcess != null) { $("balance").textContent = fmt(fees.outstandingBacking + fees.poolExcess); $("eq").textContent = `pool account ${fmt(fees.outstandingBacking + fees.poolExcess)} XRP = ${fmt(fees.outstandingBacking)} shielded + ${fmt(fees.poolExcess)} operator float and unswept fees`; }
+    if (!cfg.xrplWs) { setLive("off", "no XRPL websocket in the config — history not shown"); return; }
+    try {
+      const c = await connect(cfg.xrplWs);
+      const info = await c.request({ command: "account_info", account: cfg.pool, ledger_index: "validated" });
+      const txs = await history(c, cfg.pool); c.close();
+      const b = bucket(txs, cfg.pool, cfg.fees?.treasury);
+      // shield fees per deposit, as the nodes compute them (floor per deposit)
+      b.depositFees = txs.reduce((acc, t) => { const tx = t.tx ?? t.tx_json ?? {}, meta = t.meta ?? {}; if (meta.TransactionResult !== "tesSUCCESS" || tx.TransactionType !== "Payment" || tx.Destination !== cfg.pool) return acc; const memo = (tx.Memos ?? []).some((m) => /^636f6e666964616e742f736869656c64$/i.test(m?.Memo?.MemoType ?? "")); if (!memo) return acc; const amt = meta.delivered_amount ?? tx.DeliverMax ?? tx.Amount; return acc + feeOf(typeof amt === "string" ? Number(amt) : 0, cfg.fees?.shieldBps); }, 0);
+      render(b, Number(info.account_data.Balance), fees, cfg, `validated ledger ${info.ledger_index ?? info.ledger_current_index ?? ""}`);
+      setLive("on", "live from the ledger and the coordinator");
+    } catch (e) { setLive("off", `ledger history unavailable (${e.message})`); }
+  }
+  main();
+</script>
+</body>
+</html>
