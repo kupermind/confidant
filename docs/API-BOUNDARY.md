@@ -74,6 +74,11 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
   way round. It is the note-backing total, not the pool account's whole XRPL balance (which also holds
   operator funding, unswept fees and refused deposits awaiting refund), and the tooltip says so; only
   how the total is split among holders, and who paid whom inside, is private.
+- **Pool account balance vs. shielded total.** The UI shows a second line from the same `GET /fees` answer:
+  "pool account B XRP = `outstandingBacking` shielded + `poolExcess` operator float and unswept fees"
+  (B = the two added; `poolExcess` is the node's own read of balance − backing, `null` when the ledger is
+  unreadable). The excess is the operator's funding at genesis, protocol fees not yet swept to the treasury,
+  and any refused deposit awaiting refund — never note value.
 - **The viewing key is the authorization for `/audit/reveal`** and reveals that holder's whole history
   (read-only, nothing else). The UI sends it only to the coordinator the user chose, over the URL the
   user configured, and says so before sending; it never stores or forwards it elsewhere. CORS is `*`
