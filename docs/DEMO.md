@@ -63,6 +63,10 @@ on the ledger — transfers inside are free."
   simulated data; say it is simulated.
 - **Browser without threads** (status line shows "1 thread"): proving takes ≈ 20 s per step; talk
   through the proof while it runs ("this is Halo 2, no trusted setup, on the Zcash Orchard circuit").
+- **"Create wallet" looks stuck**: the spending key is instant, the testnet faucet takes 10–30 s. The
+  card appears at once and says "funding… (10–30 s)" with the fund button disabled — nothing to press.
+  If it ends in an error, press **fund (faucet)**: it funds the same account (generated and stored
+  before the faucet was asked), never a second one.
 - **Faucet down**: use the pre-funded Alice account from the rehearsal (secret in the demo laptop's
   password manager, never in the repo).
 
