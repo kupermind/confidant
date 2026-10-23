@@ -5,7 +5,8 @@
 and the apply-path guards it required first (PR #31, PASS). This document fills what the spike
 leaves out — the part that lives **on the XRP Ledger** — and sets proof of funds apart from
 collateral escrow, the construction that actually locks (§1a). It doubles as the source for the pitch's "what comes next" slides. The decisions
-(ROADMAP §0 (a)–(g)): A + C; the node endpoint verifies; X in clear; everything on devnet; track
+(ROADMAP §0 (a)–(g)): A + C; the node endpoint verifies; X in clear; the pool stays on testnet and the
+loan side runs on devnet or on slides; track
 Lending & Borrowing.
 
 Honest line, everywhere this is shown: a proof of funds is an **underwriting signal** ("someone who
@@ -235,7 +236,7 @@ firsthand IMPL-PASS inside the window**; a read gate does not carry that risk.
 - **Tier 2** (`credential-revoke`) is another signing path plus a node state change (watch list,
   revocation): stretch at most, under the same rule.
 
-**Track: Lending & Borrowing** (decided 2026-10-14, ROADMAP §0 (f)); **network: devnet** (decided
-2026-10-16, (g)), where the Lending Protocol is enabled. Proof of funds is an
+**Track: Lending & Borrowing** (decided 2026-10-14, ROADMAP §0 (f)); **network: the pool stays on testnet** (decision (g) revised 2026-10-23); the Lending Protocol is
+enabled only on devnet, so the broker/loan side runs there with separate accounts, or on slides. Proof of funds is an
 underwriting signal a loan broker on the XRPL Lending Protocol checks before lending; escrow and
 Tier 4 are the "what comes next" for collateral.
