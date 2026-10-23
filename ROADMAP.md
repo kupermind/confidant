@@ -163,7 +163,7 @@ signing, never persisted or logged) and the Credential's meaning ("controlled �
 | HTTPS on the demo domain (`confidant.im`) | ✅ live, PR #28 merged |
 | Re-run the headless-browser cycle over HTTPS; fill the `docs/DEMO.md` threaded timings | ✅ done by the crypto/ZK lead: cross-origin isolated, 16 threads, proving keys 6.0 s, shield proof 3.2 s, whole cycle with fees 81 s (PR #34, merged) |
 | Move the quorum to devnet | dropped 2026-10-23 — the pool stays on testnet (decision g, revised) |
-| Re-populate the pool on testnet, then the public log snapshot (PR #49), then cut the `pre-hackathon` baseline tag | in progress 2026-10-23 — the tag comes after re-population and the snapshot, so the baseline and the CID on the deck are what judges can open |
+| Re-populate the pool on testnet, then the public log snapshot (PR #49), then cut the `pre-hackathon` baseline tag | ✅ 2026-10-23: pre-populated (8 holders × 5/10/25 XRP + 4 private transfers, 0 failed; pool 28 → 40 bundles, 274.29 XRP shielded; fees swept, available 0) → snapshot pinned, CID `bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda` (40 records, root `dd1a9a87…`), published on the ledger in memo tx `8CBBA25CC347…`, and a fresh node rebuilt from the gateway copy to the live root in 15 s → tag `pre-hackathon` on the commit that merges this row |
 | C spike, draft PR #29 | stays a draft, not for merge; disclosed as pre-event; its coverage CI fails on purpose |
 | Apply-path guards (audit condition 1) | ✅ PR #31 |
 | Which of XLS-65 / XLS-66 / XLS-80 are enabled on testnet or devnet; how a loan broker can require a Credential | ✅ checked 2026-10-14 (amendments object on each network, rippled 3.4.1). **Testnet:** Credentials, PermissionedDomains enabled; SingleAssetVault and LendingProtocol supported but **not enabled**. **Devnet:** all four enabled. XLS-66 has no on-ledger borrower gate (uncollateralized loans, off-chain underwriting; `LoanSet` is counter-signed by the broker), so the broker requires the Credential by policy before counter-signing; on-ledger Credential gating exists for depositors of a private vault (XLS-65 `tfVaultPrivate` + XLS-80 domain). XLS-70 reserve and delete rules confirmed. Detail in `docs/PROOF-OF-FUNDS.md` §2. Leads to decision (g). |
@@ -171,7 +171,7 @@ signing, never persisted or logged) and the Credential's meaning ("controlled �
 | Confirm Credentials and Permissioned Domains on testnet | ✅ enabled on testnet and devnet (same check, 2026-10-14) |
 | A design written (no code) | open — next docs PR; the audit wants A's REQ first on-site |
 | Pitch length, rubric, submission format from the organizers | open |
-| Where the public repo lives | open |
+| Where the public repo lives | ✅ this repository (`kupermind/confidant`), flipped to public on the evening of 2026-10-23 after the baseline tag — the PR and audit history is part of the story |
 | FE team: design and deck structure | open (FE team) |
 | Rehearse on the demo laptop | open |
 
