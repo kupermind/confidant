@@ -135,7 +135,7 @@ the build happens on-site under the ship rule.
 | d | ✅ X in the Credential | clear in the URI · only a hash, X given off-ledger | **Clear in the URI** for the event: a loan broker reads one field and the slide explains itself. Hash-only (threshold off the public ledger) stays an option to add later. |
 | e | ✅ the scope cut above | — | **As proposed**, under the ship rule below: A + C core slice + Tier 1 only if A lands by Saturday evening and gets its own IMPL-PASS in-window; Tier 2 stretch; escrow and Tier 4 slides only; B dropped. |
 | f | ✅ **track** (decided 2026-10-14) | Lending & Borrowing · Protocol Innovation · Why Not | **Lending & Borrowing.** Proof of funds is an underwriting signal for a loan broker, escrow is collateral, and both read loan state from the XRPL Lending Protocol (XLS-66) — the track asks for builds on it before it goes live. Protocol Innovation targets core infrastructure (rippled, C++), clients and tooling; nothing here touches rippled and on-ledger verification is a SPEC non-goal. Why Not is the fallback for the pool alone. |
-| g | ✅ network for the lending demo | pool and lending both on devnet · pool on testnet, vault + broker + loan on devnet · wait for testnet | **Everything on devnet.** The Lending Protocol and Vaults are enabled only there (checked 2026-10-14), and one network keeps the story simple. Cost: devnet is reset from time to time, so the pool needs a redeploy-and-repopulate script that runs on demand (pre-event ops, not a feature). Devnet is a test network like testnet; the "testnet first, never mainnet" constraint is unchanged in substance — SPEC's deployment wording is updated in the PR that moves the quorum. |
+| g | ✅ network for the demo | pool and lending both on devnet · pool on testnet, vault + broker + loan on devnet · wait for testnet | **Revised 2026-10-23: the pool stays on testnet.** The move to devnet was never started and everything proven — the quorum, HTTPS, the measured timings, the pre-populated pool — is on testnet, where Credentials and Permissioned Domains are enabled, so A and C's Tier 1 run there unchanged. The Lending Protocol (XLS-66) and Vaults are enabled only on devnet, so the broker/loan side of the demo runs on devnet with separate accounts, or on slides; the slide says so in one sentence. (Original decision of 2026-10-16: everything on devnet with a redeploy script — superseded.) |
 
 **Ship rule, above the schedule** (audit, review on PR #27): a new **signing** path ships only with
 its own firsthand IMPL-PASS inside the window; a **read** gate does not carry that risk. A (a ledger
@@ -146,12 +146,12 @@ stand-alone kind, node-recomputed `URI`, node-checked freshness, mandatory unspe
 signing, never persisted or logged) and the Credential's meaning ("controlled ≥ X as of L", not
 "controls now") are in [`docs/PROOF-OF-FUNDS.md`](./docs/PROOF-OF-FUNDS.md) §2.
 
-**Timeline for A + C** ((c) node endpoint, (g) devnet).
+**Timeline for A + C** ((c) node endpoint, (g) pool on testnet, loan side on devnet or slides).
 
 | When | Crypto/ZK lead | API/XRPL lead |
 |---|---|---|
 | Sat 9–13 | Credential module in node + sidecar; credential check at submit and endorse | issuer page, issue/accept flow |
-| Sat 13–20 | tests, mutation table, audit REQ, deploy to the devnet quorum | refusal + status in the UI; deck skeleton |
+| Sat 13–20 | tests, mutation table, audit REQ, deploy to the testnet quorum | refusal + status in the UI; deck skeleton |
 | Sat 20 – Sun 2 | proof of funds in core (from the reviewed design); if A is in: `POST /pof/verify` + sidecar kind `credential-pof`; audit REQ | "prove funds" in the wallet; lender page reading the Credential; re-populate the pool with credentialed holders |
 | Sun 9–14 | audit fixes; Tier 2 or fillers if ahead | deck and story (escrow + Tier 4 slides, as separate constructions) |
 | Sun 14–18 | freeze; two full rehearsals on the demo laptop; fill `docs/DEMO.md` timings; fallbacks | same |
@@ -162,8 +162,8 @@ signing, never persisted or logged) and the Credential's meaning ("controlled �
 |---|---|
 | HTTPS on the demo domain (`confidant.im`) | ✅ live, PR #28 merged |
 | Re-run the headless-browser cycle over HTTPS; fill the `docs/DEMO.md` threaded timings | ✅ done by the crypto/ZK lead: cross-origin isolated, 16 threads, proving keys 6.0 s, shield proof 3.2 s, whole cycle with fees 81 s (PR #34, merged) |
-| Move the quorum to devnet (decision g): redeploy-and-repopulate script runnable on demand (pool account + SignerList, nodes, sidecars, coordinator, UI config); SPEC/DEMO/deploy docs updated in the same PR | open — pre-event ops; owner: API/XRPL lead with the crypto/ZK lead for the quorum scripts |
-| Re-populate the pool on devnet, then cut the `pre-hackathon` baseline tag | open — the tag comes after re-population, so the baseline is what judges can open |
+| Move the quorum to devnet | dropped 2026-10-23 — the pool stays on testnet (decision g, revised) |
+| Re-populate the pool on testnet, then the public log snapshot (PR #49), then cut the `pre-hackathon` baseline tag | in progress 2026-10-23 — the tag comes after re-population and the snapshot, so the baseline and the CID on the deck are what judges can open |
 | C spike, draft PR #29 | stays a draft, not for merge; disclosed as pre-event; its coverage CI fails on purpose |
 | Apply-path guards (audit condition 1) | ✅ PR #31 |
 | Which of XLS-65 / XLS-66 / XLS-80 are enabled on testnet or devnet; how a loan broker can require a Credential | ✅ checked 2026-10-14 (amendments object on each network, rippled 3.4.1). **Testnet:** Credentials, PermissionedDomains enabled; SingleAssetVault and LendingProtocol supported but **not enabled**. **Devnet:** all four enabled. XLS-66 has no on-ledger borrower gate (uncollateralized loans, off-chain underwriting; `LoanSet` is counter-signed by the broker), so the broker requires the Credential by policy before counter-signing; on-ledger Credential gating exists for depositors of a private vault (XLS-65 `tfVaultPrivate` + XLS-80 domain). XLS-70 reserve and delete rules confirmed. Detail in `docs/PROOF-OF-FUNDS.md` §2. Leads to decision (g). |
