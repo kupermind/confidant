@@ -10,7 +10,12 @@ survives?"*
 the CID is on the ledger in a `confidant/snapshot` memo (tx `8CBBA25CC347…`), and a fresh
 `confidant-node --rebuild --mirror <gateway URL>` reached the live root with every proof re-verified. Taken with
 `backend/quorum/log-snapshot.mjs` after the pre-event pre-population; the pinning token lives in the host's
-environment, never in the repo.
+environment, never in the repo. **Anyone reproduces the claim with one command:**
+`SNAPSHOT_URL=<gateway URL> NODE_BIN=<confidant-node> COORDINATOR_URL=https://confidant.im/api npm run snapshot:verify`
+(`backend/quorum/verify-snapshot.mjs`): it fetches the object, reads the pool's SignerList and quorum from the
+ledger, rebuilds a throwaway node from the ledger plus the object, and compares roots, counts and the fee ledger
+with the snapshot and the live pool — exit 0 only when everything matches; a stale or altered object makes the
+node refuse. The manual CI job runs it when given a `snapshot_url`.
 
 ## 1. The data, layer by layer
 

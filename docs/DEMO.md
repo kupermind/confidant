@@ -62,7 +62,9 @@ Answer with the snapshot: the ledger names every bundle by hash; the public log 
 CID `bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda` (gateway: https://gateway.pinata.cloud/ipfs/bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda; the CID is also on the
 ledger: https://testnet.xrpl.org/transactions/8CBBA25CC347F510E626467A4987EF2BC77744944483165E60D960445625C03B). A stranger rebuilds the pool from the XRP Ledger plus that object:
 `confidant-node --rebuild --mirror https://gateway.pinata.cloud/ipfs/bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda --xrpl-rpc https://s.altnet.rippletest.net:51234 --pool … --signers … --quorum 2 --fee-shield-bps 25 --fee-unshield-bps 25 --fee-treasury …`
-→ `/state` shows the live root (rehearsed 2026-10-23: 15 s, every proof re-verified). Honest line: pinned, not
+→ `/state` shows the live root (rehearsed 2026-10-23: 15 s, every proof re-verified). One command does the whole
+rehearsal with a verdict: `SNAPSHOT_URL=<gateway URL> NODE_BIN=… COORDINATOR_URL=https://confidant.im/api npm run snapshot:verify`
+in `backend/quorum`. Honest line: pinned, not
 permanent; the ledger carries the state, not the bytes.
 
 ## If something stalls
