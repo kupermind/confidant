@@ -62,8 +62,9 @@ hashes. A pool whose nodes all run on one host has one copy. Before anything rea
 back up `data/quorum` (states *and* signer keys) off the host, and run at least one node on another
 machine, joined with `--rebuild --mirror`. A public copy of the log takes one command:
 `COORDINATOR_URL=https://<host>/api npm run log:snapshot` (in `backend/quorum`) writes the log in the
-shape `--mirror` reads and, with an `ipfs` CLI on the path, adds and pins it; any node can then rebuild
-with `--mirror https://<gateway>/ipfs/<CID>`. What survives which failure, and the roadmap for on-ledger and
+shape `--mirror` reads and pins it (a pinning service via `PIN_RPC_URL`+`PIN_TOKEN` or `PINATA_JWT`, else a
+local `ipfs` daemon); `--memo` with `OPERATOR_SEED` also records the CID on the ledger (`confidant/snapshot`
+memo to the sink). Any node can then rebuild with `--mirror https://<gateway>/ipfs/<CID>`. What survives which failure, and the roadmap for on-ledger and
 public mirrors: `docs/DATA-AVAILABILITY.md`.
 
 ## Running it as services (`backend/`)
