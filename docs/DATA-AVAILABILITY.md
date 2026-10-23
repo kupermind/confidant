@@ -75,13 +75,17 @@ is shaped the way it is.
 
 | Stage | When | What | Honest label after it |
 |---|---|---|---|
-| **0 — ops** | before the event; no code | off-host backup of `data/quorum` (states + signer keys); one verifier node on a second host, joining with `--rebuild --mirror`; both already supported | "every node is a full mirror; we run two hosts" |
+| **0 — one demonstrative public backup** (proposal to the owner, 2026-10-23) | before or at the event; a 60-line utility, no node change | `npm run log:snapshot` in `backend/quorum` takes the public log from the coordinator (records + state + pool + fee policy, one JSON in the exact shape a node's `--rebuild --mirror` reads), pins it with a CIDv1 through a pinning service (`PIN_RPC_URL` + `PIN_TOKEN` for any Kubo-compatible RPC such as Filebase, or `PINATA_JWT`; a local `ipfs` daemon as the fallback — tokens from the environment, never the repo) and, with `--memo`, publishes the CID on the ledger as a 1-drop Payment from an operator account to the pool's sink with `MemoType = confidant/snapshot`, `MemoData = CID` — verifiable on the explorer; the how-it-works page and README carry the same CID. **Owner's decision 2026-10-23: yes** — before the event, as ops; pinning service, key held by the owner; CID on the page and in a memo; the snapshot is taken after the pool is re-populated for the baseline, so the CID on the deck is the one judges open. Verification anyone can run: `confidant-node --rebuild --mirror https://<gateway>/ipfs/<CID> …` lands on the live root. **Rehearsed 2026-10-23 with the snapshot served as a plain static file:** a fresh node rebuilt from the ledger + that file reproduced the live quorum exactly — root, anchored root, 54 leaves, 54 nullifiers, 27 bundles, 14 consumed deposits, fee ledger accrued 612 340 / swept 462 340 / available 150 000. The lead's call for the event: **no second node and no off-host backup** — neither can be shown to a judge; the IPFS snapshot can | "the public log is also on IPFS under CID …; anyone can rebuild the pool from the XRP Ledger plus that object and re-verify every proof" |
 | **1 — cheap redundancy** | post-event, ≈ 1–2 days | I: a publisher next to each node adds every accepted record to IPFS with blake2b-256 raw-leaf CIDs (= the bundle hash) and pins it; `--mirror` accepts an IPFS gateway; log snapshots per N records with the snapshot CID in a checkpoint memo. H: the wallet persists its notes, positions and own bundles in IndexedDB, with export | "a public mirror anyone can pin; the ledger names every object by hash; your notes are yours to keep" |
 | **2 — canonical DA** | post-event, with an audit slice | B: chunked `confidant/bundle` memos, `rebuild_checked` reassembling and hash-checking; publish-before-anchor as a sidecar rule; cost and size model recorded per bundle shape | "anyone rebuilds the whole pool from the XRP Ledger alone (full history)" |
 | **3 — archive** | after 2, operational | Fc and/or Ar for epoch snapshots; a `docs/` page listing deal ids / tx ids so anyone can verify the archive exists | "archived under verifiable storage deals, independent of the operators" |
 
-Stage 0 is the one that matters this week; it needs no change to `main` and respects the feature
-freeze. Stages 1–3 are the answer to the question in the title and stay roadmap.
+Stage 0 is a one-off demonstration, not an operations regime: it shows that the log is public, that
+the ledger names it by hash, and that a stranger can rebuild and re-verify the pool from the ledger
+plus one public object — which is the answer to the question in the title. Stages 1–3 make it a regime
+and stay roadmap. (The production advice in `docs/NODE-OPERATOR.md` — off-host backups, nodes on
+independent hosts — stands for any pool that carries real value; it is deliberately not part of the
+hackathon.)
 
 ## 6. Audit boundaries (so the plan does not drift into the trust path)
 
