@@ -366,6 +366,12 @@
       </div>
     </div>
 
+    <p class="note"><em>Where the data lives.</em> The pool's state is on the XRP Ledger (one anchor memo per operation);
+      the bundle bytes — proofs and note ciphertexts — are served by every verifier node and are also pinned on IPFS as
+      one public snapshot: CID <a href="https://gateway.pinata.cloud/ipfs/bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda" target="_blank" rel="noopener" style="font-family:var(--f-mono);font-size:.78rem;overflow-wrap:anywhere">bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda</a>,
+      published on the ledger in a <a href="https://testnet.xrpl.org/transactions/8CBBA25CC347F510E626467A4987EF2BC77744944483165E60D960445625C03B" target="_blank" rel="noopener">confidant/snapshot memo</a>. Anyone can
+      rebuild the pool from the XRP Ledger plus that one object and re-verify every proof (checked 2026-10-23: a fresh node
+      given only the gateway copy reached the live root). Pinned, not permanent; the ledger carries the state, not the bytes.</p>
     <p class="note">Privacy comes from the zero-knowledge notes; the quorum — and, later, the enclave — protects
       <em>integrity</em>, i.e. who can move funds. Honest limits: a pool offers little privacy until it is used by
       many; today's safety rests on the independence of the quorum (a dishonest threshold could drain the pool's

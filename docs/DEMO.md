@@ -56,6 +56,15 @@ is who holds what and who paid whom inside."
 Keep the fee line short: "the pool takes 0.25 % on the way in and out — public policy, every sweep is
 on the ledger — transfers inside are free."
 
+## The "what if your server dies" question
+
+Answer with the snapshot: the ledger names every bundle by hash; the public log is pinned on IPFS under
+CID `bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda` (gateway: https://gateway.pinata.cloud/ipfs/bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda; the CID is also on the
+ledger: https://testnet.xrpl.org/transactions/8CBBA25CC347F510E626467A4987EF2BC77744944483165E60D960445625C03B). A stranger rebuilds the pool from the XRP Ledger plus that object:
+`confidant-node --rebuild --mirror https://gateway.pinata.cloud/ipfs/bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda --xrpl-rpc https://s.altnet.rippletest.net:51234 --pool … --signers … --quorum 2 --fee-shield-bps 25 --fee-unshield-bps 25 --fee-treasury …`
+→ `/state` shows the live root (rehearsed 2026-10-23: 15 s, every proof re-verified). Honest line: pinned, not
+permanent; the ledger carries the state, not the bytes.
+
 ## If something stalls
 
 - **Shield lingers on step 3 with "Anchoring — the verifiers wait until the deposit is 2 ledgers old (≈ 8 s)"**:

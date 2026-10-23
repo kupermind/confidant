@@ -5,6 +5,13 @@
 understands the system asks first: "the ledger has no smart contract — if your server dies, what
 survives?"*
 
+**Status 2026-10-23 (stage 0 done):** the public log is pinned on IPFS as one snapshot — CID
+`bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda` (40 records, root `dd1a9a87…`; gateway https://gateway.pinata.cloud/ipfs/bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda),
+the CID is on the ledger in a `confidant/snapshot` memo (tx `8CBBA25CC347…`), and a fresh
+`confidant-node --rebuild --mirror <gateway URL>` reached the live root with every proof re-verified. Taken with
+`backend/quorum/log-snapshot.mjs` after the pre-event pre-population; the pinning token lives in the host's
+environment, never in the repo.
+
 ## 1. The data, layer by layer
 
 | Layer | What | Where it lives today | Permanence | Who needs it |
