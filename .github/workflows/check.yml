@@ -60,6 +60,22 @@ jobs:
       - run: npm test
         working-directory: backend/quorum
 
+  frontend:
+    # The three static pages: unit tests of their pure functions (ledger reconciliation, fee rounding,
+    # standby wording) and a headless-Chrome smoke in demo mode (phone-width layout, create-wallet
+    # states, step ticks, the balances check row). No backend, no network.
+    name: frontend (static page checks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test "frontend/test/*.test.mjs"
+      - run: node frontend/test/browser-smoke.mjs
+        env:
+          CHROME: google-chrome
+
   hygiene:
     name: hygiene (no secrets)
     runs-on: ubuntu-latest
