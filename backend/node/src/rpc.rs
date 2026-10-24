@@ -84,6 +84,23 @@ impl Ledger for JsonRpc {
         }
     }
 
+    async fn account_credentials(&self, account: &str) -> Result<(Vec<Value>, bool), LedgerError> {
+        let r = self
+            .call(
+                "account_objects",
+                json!({ "account": account, "type": "credential", "ledger_index": "validated", "limit": 400 }),
+            )
+            .await?;
+        let objects = r
+            .get("account_objects")
+            .and_then(Value::as_array)
+            .cloned()
+            .ok_or_else(|| {
+                LedgerError::Rpc("account_objects: no account_objects in the answer".into())
+            })?;
+        Ok((objects, r.get("marker").is_some()))
+    }
+
     async fn ledger_close_time(&self, index: u64) -> Result<u64, LedgerError> {
         let r = self
             .call("ledger", json!({ "ledger_index": index }))

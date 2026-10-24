@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Confidant — compliance provider</title>
+<title>Confidant — credential issuer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -13,7 +13,7 @@
     if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     document.documentElement.setAttribute("data-theme", t); })();
 </script>
-<meta name="description" content="The compliance provider for a Confidant pool: an authorized party that verifies holders off-ledger and records XLS-70 Credentials the pool requires before accepting a deposit. Demo persona on testnet.">
+<meta name="description" content="The credential issuer for a Confidant pool: the account whose XLS-70 Credentials the pool's nodes require before accepting a deposit. Demo issuer on testnet; the gate on the ledger is real.">
 <style>
   /* Palette and scale shared by every page. Surfaces, grays and the type scale follow liminal-ui;
      the violet is the one accent: --accent for fills, --accent-text for text on the page background. */
@@ -168,7 +168,7 @@
     <div class="brand">
       <a class="mark" href="/">CONFIDANT</a>
       <span class="sep"></span>
-      <small>Compliance provider · <span id="net">testnet</span></small>
+      <small>Credential issuer · <span id="net">testnet</span></small>
     </div>
     <nav class="nav">
       <a href="/">Open the app</a>
@@ -178,61 +178,58 @@
     <button class="theme" id="theme-toggle" type="button" aria-label="Switch theme" title="Switch theme"><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
   </header>
 
-  <h1>Compliance provider</h1>
-  <p class="lede">This pool accepts a deposit only from an XRPL address that an <b>authorized compliance provider</b> has
-    verified. The provider is a KYC/AML firm or an accreditation body, not another user of the pool: it checks the
-    holder <em>off-ledger</em> and records the result as an <b>XLS-70 Credential</b> on the XRP Ledger; the holder
-    confirms it with their own signature in the app; every verifier node reads it from the ledger before it signs.
-    The pool never sees documents, and the credential says nothing about anyone's notes. On this testnet the provider
-    is a persona operated by the Confidant team — the persona is a demo; the gate on the ledger is real.</p>
+  <h1>Credential issuer</h1>
+  <p class="lede">This pool accepts a deposit only from an XRPL account that holds an <b>XLS-70 Credential</b> from the
+    issuer the pool trusts, confirmed by the account's own signature. The issuer writes the credential on the XRP Ledger;
+    the holder accepts it in the app; every verifier node reads it from the ledger before it signs. The credential says
+    nothing about anyone's notes. On this testnet the issuer is an account operated by the Confidant team — the issuer is
+    a demo; the gate on the ledger is real.</p>
 
-  <h2>What is checked, by whom, and why</h2>
+  <h2>What the gate is, mechanically</h2>
   <div class="card" id="explain-card">
-    <p><b>What is checked.</b> One fact only: that this XRPL address belongs to someone an authorized compliance
-      provider has verified. Nothing inside the pool is examined — not your notes, not your balance, not your transfers.</p>
-    <p><b>On what basis.</b> The pool operator's policy for regulated use: a pool that institutions may use admits only
-      verified depositors, the same rule a bank or a broker applies when an account is opened. It is not a suspicion
-      about you and not a judgement — the same check applies to every depositor alike, before anything happens.</p>
-    <p><b>Who checks.</b> The compliance provider the pool operator trusts: in production a licensed KYC/AML firm or an
-      accreditation body; on this testnet, a demo persona run by the Confidant team. Not the pool, not its verifier
-      nodes, not another user — they only read the result.</p>
-    <p><b>What the result is.</b> A yes/no record on the XRP Ledger: an XLS-70 Credential from that provider to your
-      address, which you confirm with your own signature. No name, no document, no personal data is written to the
-      ledger or seen by the pool. The record expires, and the provider can revoke it.</p>
-    <p><b>Why.</b> So that a regulated institution can use a shielded pool at all while every depositor keeps their
-      privacy inside it: the entrance is accountable, the graph inside stays hidden. An operator who does not need this
-      runs the pool open — the gate is a per-pool switch, not part of the protocol.</p>
+    <p><b>What is checked.</b> One on-ledger fact: that the depositing XRPL account holds an accepted XLS-70 Credential of
+      the configured type from the configured issuer, and that it has not expired. Nothing inside the pool is examined —
+      not notes, not balances, not transfers.</p>
+    <p><b>Who checks.</b> Each verifier node, by reading the ledger itself (<code>ledger_entry credential</code>) at submit
+      and again at endorse; a signer sidecar signs nothing its own node did not accept. The issuer only writes the
+      credential; the holder's <code>CredentialAccept</code> signature is what binds the account.</p>
+    <p><b>What the credential is.</b> A yes/no object on the XRP Ledger from the issuer to the account, with an optional
+      expiry; the issuer can delete it. No personal data is on the ledger or seen by the pool. What the issuer checked
+      before writing it is the issuer's business, not the protocol's — the gate is gatekeeping on a trusted issuer's say-so
+      at the public boundary, not a proof about any note.</p>
+    <p><b>Why a per-pool switch.</b> An operator who wants to restrict who may enter configures an issuer and a type on
+      the nodes; an operator who does not runs the pool open. The protocol is the same either way.</p>
   </div>
 
   <div class="card" id="holder-card">
-    <div class="k">For holders: getting verified</div>
-    <p>The pool trusts one provider: <span class="mono" id="trusted-provider">reading the pool's configuration…</span>.
+    <div class="k">For holders: getting a credential</div>
+    <p>The pool trusts one issuer: <span class="mono" id="trusted-provider">reading the pool's configuration…</span>.
       Only credentials issued by that account count; a credential from any other account is ignored by the pool.</p>
     <div id="req-block" hidden>
-      <p>Verification request for your address <span class="mono" id="req-subject"></span> — send it to the provider's
+      <p>Credential request for your address <span class="mono" id="req-subject"></span> — send it to the issuer's
         operator (the Confidant team at the event):</p>
       <div class="row"><span class="mono" id="req-text"></span><button class="btn" id="btn-copy-req" type="button">Copy</button></div>
-      <div class="src">After the provider issues the credential, open the app: the Compliance row reads
-        "verified … confirm with your signature" — press <b>Confirm</b>, and the pool accepts your deposits.</div>
+      <div class="src">After the issuer writes the credential, open the app: the Credential row reads
+        "issued — confirm it to shield" — press <b>Confirm</b>, and the pool accepts your deposits.</div>
     </div>
-    <div id="req-none" class="src">Open this page from the app's Compliance row to get a request pre-filled with your address.</div>
+    <div id="req-none" class="src">Open this page from the app's Credential row to get a request pre-filled with your address.</div>
   </div>
 
-  <h2>Provider console</h2>
+  <h2>Issuer console</h2>
   <div class="card">
-    <div class="k">Provider account</div>
+    <div class="k">Issuer account</div>
     <div id="issuer-none">
-      <p>No provider key in this browser. The provider's operator imports the key of the account the pool's nodes trust;
+      <p>No issuer key in this browser. The issuer's operator imports the key of the account the pool's nodes trust;
         anyone else can only read this page.</p>
-      <details open><summary>Operate the pool's provider (import its key)</summary>
-        <div class="row"><input type="password" id="seed" placeholder="provider account seed (s…)" autocomplete="off"><button class="btn primary" id="btn-import-issuer" type="button">Import</button></div>
+      <details open><summary>Operate the pool's issuer (import its key)</summary>
+        <div class="row"><input type="password" id="seed" placeholder="issuer account seed (s…)" autocomplete="off"><button class="btn primary" id="btn-import-issuer" type="button">Import</button></div>
         <div class="src">The seed stays in this browser's storage; nothing is sent anywhere. Testnet only.</div>
       </details>
-      <details><summary>Create a separate test provider (not trusted by this pool)</summary>
-        <p class="src">For your own pool or for the <code>?demo=1</code> walkthrough. This pool's nodes trust only the provider
+      <details><summary>Create a separate test issuer (not trusted by this pool)</summary>
+        <p class="src">For your own pool or for the <code>?demo=1</code> walkthrough. This pool's nodes trust only the issuer
           shown above: credentials from a freshly created account are <b>ignored</b> by this pool. Creating one takes a
           testnet faucet call (10–30 s).</p>
-        <div class="row"><button class="btn" id="btn-create-issuer" type="button">Create a test provider account</button></div>
+        <div class="row"><button class="btn" id="btn-create-issuer" type="button">Create a test issuer account</button></div>
       </details>
     </div>
     <div id="issuer-has" hidden>
@@ -244,28 +241,28 @@
     <div id="issuer-msg"></div>
   </div>
 
-  <h2>Verify an address and issue its credential</h2>
+  <h2>Issue a credential to an address</h2>
   <div class="card">
-    <div class="row"><input type="text" id="subject" placeholder="Holder's XRPL address (r…)" autocomplete="off" spellcheck="false"><input type="number" id="days" value="30" min="1" max="3650" title="valid for N days" style="flex:0 0 90px"><button class="btn primary" id="btn-issue" type="button">Verify &amp; issue</button></div>
-    <div class="src">After the off-ledger check, signs <code>CredentialCreate { Account: provider, Subject, CredentialType, Expiration }</code>
-      from the provider account. The holder must confirm it before the pool counts it: send them to the app with
+    <div class="row"><input type="text" id="subject" placeholder="Holder's XRPL address (r…)" autocomplete="off" spellcheck="false"><input type="number" id="days" value="30" min="1" max="3650" title="valid for N days" style="flex:0 0 90px"><button class="btn primary" id="btn-issue" type="button">Issue</button></div>
+    <div class="src">Signs <code>CredentialCreate { Account: issuer, Subject, CredentialType, Expiration }</code>
+      from the issuer account. The holder must accept it before the pool counts it: send them to the app with
       <span class="mono" id="accept-link">—</span>.</div>
     <div id="issue-msg"></div>
   </div>
 
-  <h2>Credentials issued by this provider</h2>
+  <h2>Credentials issued by this issuer</h2>
   <div class="card">
     <div class="row"><button class="btn" id="btn-refresh" type="button">Refresh</button><span class="src" id="list-src"></span></div>
     <table class="cred" id="cred-table"><thead><tr><th>Holder</th><th>Type</th><th>Status</th><th>Expires</th><th></th></tr></thead><tbody></tbody></table>
   </div>
 
-  <p class="note">What this proves on stage: a holder's compliance status is an on-ledger fact anyone can check
-    (<code>account_objects</code>, type <code>credential</code>), recorded by the provider the pool trusts and confirmed by
+  <p class="note">What this proves on stage: a holder's eligibility is an on-ledger fact anyone can check
+    (<code>account_objects</code>, type <code>credential</code>), written by the issuer the pool trusts and accepted by
     the holder's own signature; the pool's verifiers read it from the ledger themselves and refuse a deposit without it.
-    What it does not prove: anything about the provider's diligence — on this testnet the provider is a demo persona,
-    and it vouches for whoever its operator enters.</p>
+    What it does not prove: anything about the issuer's diligence — on this testnet the issuer is a demo account, and it
+    vouches for whoever its operator enters.</p>
 
-  <footer>This page holds the provider's seed in this browser's storage (testnet only, never real value) and talks to the
+  <footer>This page holds the issuer's seed in this browser's storage (testnet only, never real value) and talks to the
     public XRPL WebSocket. It never touches the pool or anyone's notes. <code>?demo=1</code> simulates everything.</footer>
 </div>
 
@@ -298,7 +295,7 @@
     const i = issuer();
     $("issuer-none").hidden = !!i; $("issuer-has").hidden = !i;
     const t = trusted();
-    $("trusted-provider").textContent = DEMO ? "rDEMOissuerKYCxxxxxxxxxxxxxxxxxxxx (demo data)" : t ? `${t} (${cfg.credential.typeText ?? TYPE_TEXT})` : "none — this pool has no compliance gate configured, deposits are open";
+    $("trusted-provider").textContent = DEMO ? "rDEMOissuerKYCxxxxxxxxxxxxxxxxxxxx (demo data)" : t ? `${t} (${cfg.credential.typeText ?? TYPE_TEXT})` : "none — this pool has no credential gate configured, deposits are open";
     const mm = $("provider-mismatch");
     if (i && t && i.address !== t) { mm.hidden = false; mm.textContent = `This browser operates ${i.address}, but the pool trusts ${t}: credentials issued here are NOT accepted by this pool.`; }
     else mm.hidden = true;
@@ -312,14 +309,14 @@
       let w;
       if (DEMO) { await new Promise((r) => setTimeout(r, 800)); w = xrpl.Wallet.generate(); }
       else { const c = await xrpl_(); ({ wallet: w } = await c.fundWallet()); }
-      store.set("issuer", { seed: w.seed, address: w.address }); msg("issuer-msg", `Test provider account ready: <span class="mono">${w.address}</span>`, "ok"); render(); await refresh();
+      store.set("issuer", { seed: w.seed, address: w.address }); msg("issuer-msg", `Test issuer account ready: <span class="mono">${w.address}</span>`, "ok"); render(); await refresh();
     } catch (e) { msg("issuer-msg", esc(e.message), "err"); } finally { busy(b, false); }
   }
   async function issue() {
     const i = issuer(); if (!i) return;
     const subject = $("subject").value.trim(); const days = Math.max(1, Math.min(3650, Number($("days").value) || 30));
     if (!/^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(subject)) { msg("issue-msg", "Enter the holder's XRPL address (starts with r).", "err"); return; }
-    const b = $("btn-issue"); busy(b, true); msg("issue-msg", "Signing CredentialCreate from the provider account…", "warn");
+    const b = $("btn-issue"); busy(b, true); msg("issue-msg", "Signing CredentialCreate from the issuer account…", "warn");
     try {
       const expiration = Math.floor(Date.now() / 1000) - RIPPLE_EPOCH + days * 86400;
       let hash;
@@ -367,7 +364,7 @@
     render(); $("btn-create-issuer").addEventListener("click", createIssuer); $("btn-issue").addEventListener("click", issue); $("btn-refresh").addEventListener("click", refresh);
     $("btn-import-issuer").addEventListener("click", async () => {
       const seed = $("seed").value.trim();
-      try { const w = xrpl.Wallet.fromSeed(seed); store.set("issuer", { seed, address: w.address }); $("seed").value = ""; msg("issuer-msg", `Provider key imported: <span class="mono">${w.address}</span>`, "ok"); render(); await refresh(); }
+      try { const w = xrpl.Wallet.fromSeed(seed); store.set("issuer", { seed, address: w.address }); $("seed").value = ""; msg("issuer-msg", `Issuer key imported: <span class="mono">${w.address}</span>`, "ok"); render(); await refresh(); }
       catch (e) { msg("issuer-msg", "That is not a valid seed.", "err"); }
     });
     $("btn-copy-issuer").addEventListener("click", async () => { try { await navigator.clipboard.writeText(issuer().address); } catch {} });

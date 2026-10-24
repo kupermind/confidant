@@ -6,6 +6,7 @@
 //   balances.html  bucket()  — classifies the pool account's ledger history into the reconciliation rows
 //   balances.html  feeOf()   — the protocol-fee rounding the nodes use (floor per operation)
 //   index.html     standbyText() — the screening-standby message shown while a shield waits
+//   index.html, lender.html  challengeString() — the canonical proof-of-funds challenge both pages and every node build
 //
 // Nothing here needs a backend, a browser or the network; the ledger fixture is public data.
 import { test } from "node:test";
@@ -31,7 +32,7 @@ function extract(src, names) {
   return new Function(`${parts.join("\n")}\nreturn { ${names.join(", ")} };`)();
 }
 
-const PAGES = ["index.html", "how-it-works.html", "balances.html", "issuer.html"];
+const PAGES = ["index.html", "how-it-works.html", "balances.html", "issuer.html", "lender.html"];
 
 test("every page's inline script parses (node --check)", () => {
   const dir = mkdtempSync(join(tmpdir(), "confidant-pages-"));
@@ -98,3 +99,15 @@ test("standbyText turns the node's refusal into progress wording and keeps the o
   assert.match(standbyText("something else entirely"), /a few ledgers old/);
   assert.ok(standbyText('a "quoted" message').includes("&quot;quoted&quot;"), "quotes are escaped inside the attribute");
 });
+
+test("challengeString is the node's canonical bytes, identical on the holder and the lender page", () => {
+  const ch = { borrower: "rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf", lender: "lender-1", ledgerIndex: 990, expiry: 1500 };
+  const want = "confidant/pof/v1|rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf|120|990|1500|lender-1"; // pinned in backend/node/tests/node.rs too
+  const holder = extract(inline(page("index.html")), ["POF_PREFIX", "challengeString"]);
+  assert.equal(holder.challengeString(ch, 120), want);
+  const lender = extract(inline(page("lender.html")), ["challengeString"]);
+  assert.equal(lender.challengeString(ch, 120), want);
+  // The amount is part of the bytes: another threshold is another challenge.
+  assert.notEqual(holder.challengeString(ch, 121), want);
+});
+
