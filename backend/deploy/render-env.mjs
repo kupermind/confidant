@@ -12,6 +12,10 @@ const [configPath, envDir, dataDir, basePortArg, xrplRpcArg, xrplWsArg] = proces
 // SCREENING_STANDBY_LEDGERS; the unit passes them as --screening-list / --screening-standby-ledgers.
 const screeningList = process.env.SCREENING_LIST ?? "";
 const screeningStandby = Number(process.env.SCREENING_STANDBY_LEDGERS ?? 0);
+// Optional credential gate for every node (XLS-70, feature A): CREDENTIAL_ISSUER (r…), CREDENTIAL_TYPE (hex),
+// CREDENTIAL_TYPE_TEXT (label); the unit passes them as --credential-issuer / --credential-type / --credential-type-text.
+const credIssuer = process.env.CREDENTIAL_ISSUER ?? "", credType = process.env.CREDENTIAL_TYPE ?? "", credText = process.env.CREDENTIAL_TYPE_TEXT ?? "";
+if ((credIssuer && !credType) || (!credIssuer && credType)) { console.error("CREDENTIAL_ISSUER and CREDENTIAL_TYPE go together"); process.exit(2); }
 if (!configPath || !envDir || !dataDir) { console.error("usage: render-env.mjs <config.json> <envDir> <dataDir> [basePort] [xrplRpc] [xrplWs]"); process.exit(2); }
 const config = JSON.parse(readFileSync(configPath, "utf8"));
 const basePort = Number(basePortArg ?? 7700);
@@ -25,7 +29,8 @@ const write = (name, kv) => writeFileSync(`${envDir}/${name}`, Object.entries(kv
 
 const feeArgs = config.fees && config.treasury ? `--fee-shield-bps ${config.fees.shieldBps ?? 0} --fee-unshield-bps ${config.fees.unshieldBps ?? 0} --fee-treasury ${config.treasury}` : "";
 write("common.env", { POOL: config.pool, SINK: config.sink, QUORUM: config.quorum, SIGNERS: config.signers.map((s) => s.address).join(","), XRPL_RPC: xrplRpc, FEE_ARGS: feeArgs,
-  SCREENING_ARGS: [screeningList ? `--screening-list ${screeningList}` : "", screeningStandby > 0 ? `--screening-standby-ledgers ${screeningStandby}` : ""].filter(Boolean).join(" ") });
+  SCREENING_ARGS: [screeningList ? `--screening-list ${screeningList}` : "", screeningStandby > 0 ? `--screening-standby-ledgers ${screeningStandby}` : ""].filter(Boolean).join(" "),
+  CREDENTIAL_ARGS: credIssuer ? [`--credential-issuer ${credIssuer}`, `--credential-type ${credType}`, credText ? `--credential-type-text ${credText}` : ""].filter(Boolean).join(" ") : "" });
 for (let i = 0; i <= n; i++) write(`node-${i}.env`, { LISTEN: `127.0.0.1:${basePort + i}`, STATE: `${dataDir}/node${i}.verifier-state.json` });
 for (let i = 1; i <= n; i++) write(`signer-${i}.env`, { PORT: basePort + 100 + i, NODE_URL: nodeUrl(i), KEY_FILE: config.signers[i - 1].keyFile, MAX_FEE_DROPS: 5000 });
 // The coordinator's SIGNERS are sidecar URLs (it overrides common.env's SIGNERS, which the nodes use as addresses).

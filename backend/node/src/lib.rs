@@ -31,6 +31,7 @@
 //! sidecar next to this node, only after this node endorsed — see `backend/quorum/`.
 
 pub mod address;
+pub mod credential;
 pub mod fees;
 pub mod http;
 pub mod node;
@@ -39,6 +40,7 @@ pub mod screening;
 pub mod xrpl;
 
 pub use address::canonical;
+pub use credential::{ripple_now, CredentialError, CredentialGate, CredentialPolicy, LSF_ACCEPTED};
 pub use fees::{FeeLedger, FeePolicy, FeeReport, MAX_BPS};
 pub use node::{AcceptedWithMemo, Node, NodeError};
 pub use rpc::JsonRpc;

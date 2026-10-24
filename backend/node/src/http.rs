@@ -50,7 +50,7 @@ impl IntoResponse for ApiError {
             NodeError::Fee(_) => StatusCode::CONFLICT,
             NodeError::Ledger(_) => StatusCode::BAD_GATEWAY,
             NodeError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            NodeError::Screened(_) => StatusCode::FORBIDDEN,
+            NodeError::Screened(_) | NodeError::Credential(_) => StatusCode::FORBIDDEN,
         };
         (
             status,
@@ -136,12 +136,38 @@ pub fn router<L: Ledger + 'static>(node: Arc<Node<L>>) -> Router {
         .route("/anchored", post(anchored::<L>))
         .route("/audit/reveal", post(reveal::<L>))
         .route("/fees", get(fees::<L>))
+        .route("/policy", get(policy::<L>))
         .route("/fees/swept", post(fee_swept::<L>))
         .with_state(node)
 }
 
 async fn state<L: Ledger>(State(n): State<Arc<Node<L>>>) -> Json<confidant_core::PoolState> {
     Json(n.state())
+}
+
+/// `GET /policy`: the deposit gates this node enforces, for the coordinator's `/config` and the UI.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PolicyReport {
+    pub credential: Option<crate::credential::CredentialPolicy>,
+    pub screening: ScreeningReport,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreeningReport {
+    pub active: bool,
+    pub standby_ledgers: u64,
+}
+
+async fn policy<L: Ledger>(State(n): State<Arc<Node<L>>>) -> Json<PolicyReport> {
+    Json(PolicyReport {
+        credential: n.credential_policy().cloned(),
+        screening: ScreeningReport {
+            active: n.screening().is_active(),
+            standby_ledgers: n.screening().standby_ledgers(),
+        },
+    })
 }
 
 async fn log<L: Ledger>(
