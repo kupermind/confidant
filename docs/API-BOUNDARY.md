@@ -99,7 +99,7 @@ Copy from there.
 ### Credential gate (hackathon feature A) — the contract between the node and the holder side
 
 *Proposed 2026-10-24 (event day); implemented the same day on both sides (`backend/node/src/credential.rs`,
-`frontend/issuer.html`, the app's Compliance row). The node reports its gate through `GET /policy`, which the
+`frontend/issuer.html`, the app's Credential row). The node reports its gate through `GET /policy`, which the
 coordinator copies into `/config.credential`.*
 
 - **Config.** `GET /config` gains `credential: { issuer: "r…", type: "<hex>", typeText: "ConfidantKYC",
@@ -114,13 +114,14 @@ coordinator copies into `/config.credential`.*
   <account>" }` — the same status family as the screening gate; the UI tells them apart by the word
   `credential`. An issued-but-not-accepted Credential is refused too (the subject must accept it: that
   signature is what binds the account).
-- **Holder side (UI).** The wallet card shows a *Compliance* row: `verified ✓` / `verified — press Confirm`
-  / `not verified — how to get verified`; *Confirm* signs `CredentialAccept { Account: holder, Issuer,
+- **Holder side (UI).** The wallet card shows a *Credential* row: `accepted ✓` / `issued — confirm it to shield`
+  / `none — get one from the issuer`; *Confirm* signs `CredentialAccept { Account: holder, Issuer,
   CredentialType }` with the holder's XRPL account in the browser (xrpl.js); a refused shield links to
   the issuer page. Until the node side ships `credential` in `/config`, the issuer page hands the holder over with
-  `/?accept=<issuer>:<typeHex>`, which the app keeps in storage and treats as the gate's config (demo path only).
+  `/?accept=<issuer>:<typeHex>`, which the app keeps in storage and treats as the gate's config (demo path only; the
+  stored link is dropped as soon as `/config.credential` is set, since a URL must not outrank the nodes' config).
   The demo issuer is a static page (`frontend/issuer.html`): a faucet-funded XRPL
-  account playing the authorized compliance provider (a KYC/AML firm in production), which signs `CredentialCreate { Account: issuer, Subject: holder,
+  account acting as the issuer the nodes trust, which signs `CredentialCreate { Account: issuer, Subject: holder,
   CredentialType, Expiration? }` for any address pasted in and prints its own address and the type for
   the node operators' config. Honest label: the issuer is a demo persona; the gate is real on the ledger.
 - **Browser library.** XLS-70 transaction types are absent from xrpl.js 4.3.0, which the app loaded; the
