@@ -38,10 +38,11 @@ Everything is JSON. Errors are `{ "error": "<message>", "details"?: {…} }` wit
 | `POST /submit/transfer` | `{ record }` | `Accepted` + quorum fields |
 | `POST /submit/unshield` | `{ record, destination }` | `Accepted` (with `payout`) + quorum fields incl. `payoutTx` / `payoutBlob` |
 | `POST /audit/reveal` | `{ viewingKey }` | `RevealReport` |
-| `GET /config` | — | `{ network, explorer, xrplWs, pool, sink, quorum, signers, fees: { shieldBps, unshieldBps, treasury }, credential: { issuer, type, typeText } \| null }` — public facts the UI needs; no secrets |
+| `GET /config` | — | `{ network, explorer, xrplWs, pool, sink, quorum, signers, fees: { shieldBps, unshieldBps, treasury }, credential: { issuer, type, typeText } \| null, nodes: [url…] }` — public facts the UI needs; no secrets. `nodes` are the URLs a browser reaches each verifier node at (default `/node/<i>` on the UI origin), for the proof-of-funds check |
 | `GET /fees` | — | `FeeReport` of the coordinator's node |
 | `GET /policy` (node) | — | `{ credential: { issuer, type, typeText } \| null, screening: { active, standbyLedgers } }` — the deposit gates the node enforces; the coordinator copies `credential` into `GET /config` |
 | `POST /fees/sweep` | `{ amount? }` (drops; default: everything available) | `{ amount, tx, treasury, recorded, refusals }` — operator call, k-of-N Payment pool → treasury |
+| `POST /pof/verify` (node, reached as `/node/<i>/pof/verify` — never through the coordinator) | `{ record, amount, challenge: { borrower, lender, ledgerIndex, expiry } }` | `{ ok, amount, challenge, validatedLedger, root, bundleHash, meaning }` — proof of funds checked read-only on that node's own state; never logged or persisted. 400 challenge refused · 409 the proof does not verify · 413 body > 256 KiB · 429 node busy · 502 no validated ledger |
 
 Shapes (camelCase on the wire):
 
@@ -124,6 +125,38 @@ coordinator copies into `/config.credential`.*
   the node operators' config. Honest label: the issuer is a demo persona; the gate is real on the ledger.
 - **Browser library.** XLS-70 transaction types are absent from xrpl.js 4.3.0, which the app loaded; the
   holder page and the issuer page use **xrpl.js 5.3.0** (the same version as `backend/quorum`).
+
+### Proof of funds (hackathon feature C, Tier 1 — the read side)
+
+*Built 2026-10-24 (event day) on the core slice (`core`: `OpTag::ProofOfFunds`, domain `ConfidantPoF_v1_`). Node side:
+`backend/node/src/pof.rs` and `POST /pof/verify`; holder side: the wasm export `buildProofOfFunds(amount, challenge)` and
+the worker op `proofOfFunds({ amount, challenge })`. The `credential-pof` signing path (the quorum writing an expiring
+Credential on the borrower's account) is a separate slice under the ship rule in `docs/PROOF-OF-FUNDS.md` §6.*
+
+- **Challenge.** The lender fills `{ borrower, lender, ledgerIndex, expiry }`: `borrower` is the borrower's classic XRPL
+  address (X-addresses refused, so both sides sign the same bytes); `lender` an opaque id — a name, an account, a request
+  id — of 1–64 printable characters without `|`; `ledgerIndex` the validated ledger index the lender saw when issuing the
+  challenge; `expiry` a ledger index after it and at most 21 600 ledgers (≈ 24 h) later. Its **canonical bytes** — what
+  the holder's wallet signs over and what every node recomputes from the fields — are the UTF-8 string
+  `confidant/pof/v1|<borrower>|<amount>|<ledgerIndex>|<expiry>|<lender>`. The UI builds exactly this string and passes it
+  to `proofOfFunds({ amount, challenge })`; `amount` is in drops.
+- **Verify.** The lender — or the holder on the lender's behalf — POSTs `{ record, amount, challenge }` to **each node**
+  at a URL from `/config.nodes` (`/node/<i>/pof/verify` on the UI origin). The coordinator is not in the path and never
+  sees the record. The node validates the fields, judges freshness against the validated ledger index **it reads itself**
+  (`ledgerIndex` within 200 ledgers of it, `expiry` after it), recomputes the bytes and runs the read-only check on its
+  own state. Answer: `{ ok: true, amount, challenge, validatedLedger, root, bundleHash, meaning }` — `root` is that node's
+  state the proof was checked against, `meaning` the honest label to show verbatim. Errors: **400** `proof of funds:
+  challenge refused: …` (a field or the freshness window), **409** the proof does not verify against this node's state
+  (another amount, another challenge, a pool record, notes spent since), **413** body over 256 KiB, **429** the node is
+  busy (four verifications at a time — retry), **502** the node cannot read the validated ledger.
+- **Never logged, never persisted.** The record carries the holder's nullifiers; the node keeps no copy and writes nothing
+  about the request, not even the bundle hash. The UI must not send it to the coordinator and must not keep it beyond the
+  session; the holder's wallet should rotate the proven notes to itself afterwards (the nodes can otherwise link the later
+  spend — `docs/PROOF-OF-FUNDS.md` §1).
+- **Honest label (lender surface, verbatim from `meaning`):** "someone controlling at least `amount` in this pool answered
+  this challenge as of the validated ledger: an underwriting signal, a snapshot, not a lock, and not proof that the borrower
+  owns the notes." k verdicts from N nodes are k independent reads of the same ledger-reconstructible state; the lender
+  decides how many it wants. Nothing reaches the ledger in this slice.
 
 ## 3. What the UI must produce — the `record`
 

@@ -37,6 +37,12 @@ transactions — only for roots it computed itself.
   yourself), `submit-transfer`, `submit-unshield`. Reject = nothing changes.
 - Serve your log (`export-log`) so wallets can sync and other nodes can rebuild.
 
+- Answer `POST /pof/verify` (proof of funds, feature C) **read-only on your own state**, judging the challenge's
+  ledger window against the validated ledger index you read yourself. **Never log or persist the record** — it carries the
+  holder's nullifiers. The node caps the body at 256 KiB and runs at most four verifications at a time (429 beyond);
+  add your own per-client rate limit in front. The lender must reach your node directly (`/node/<i>/pof/verify` in the
+  nginx site), never through the coordinator.
+
 ## Sign (step 3 of v2) — never blind
 
 For each proposal from a coordinator you receive `{submission, proposedMemo}`:

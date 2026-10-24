@@ -7,6 +7,7 @@
 //!                                                    build-shield <amount> <out.json> [log.json]
 //!                                                    build-transfer <recipientAddrHex> <amount> <out.json> <log.json>
 //!                                                    build-unshield <amount> <destination> <out.json> <log.json>
+//!                                                    build-pof <amount> <challenge> <out.json> <log.json>
 //! cli verifier --state data/v1.verifier-state.json   submit-shield <bundle.json> <depositTxHash> <delivered> <memoHashHex>
 //!                                                    submit-transfer <bundle.json>
 //!                                                    submit-unshield <bundle.json> <destination>
@@ -37,6 +38,7 @@ wallet:   init | info | balance | sync <log.json>
           build-shield <amount> <out.json> [log.json]
           build-transfer <recipientAddressHex> <amount> <out.json> <log.json>
           build-unshield <amount> <destination> <out.json> <log.json>
+          build-pof <amount> <challenge> <out.json> <log.json>   (proof of funds: checked read-only, never submitted)
 verifier: submit-shield <bundle.json> <depositTxHash> <deliveredAmount> <memoHashHex>
           submit-transfer <bundle.json> | submit-unshield <bundle.json> <destination>
           state | export-log <log.json> | anchored <rootHex> | reveal <viewingKeyHex>
@@ -189,6 +191,17 @@ fn wallet_cmd(file: PathBuf, args: &[String]) {
             let w = synced(arg(a, 3, "log.json"));
             let p = w
                 .build_unshield(num(arg(a, 0, "amount")), arg(a, 1, "destination"))
+                .unwrap_or_else(|e| die(e));
+            write_public(
+                Path::new(arg(a, 2, "out.json")),
+                &serde_json::to_string_pretty(&p.record).unwrap_or_else(|e| die(e)),
+            );
+            out(&serde_json::json!({ "bundleHash": p.hash_hex(), "file": arg(a, 2, "out.json") }));
+        }
+        "build-pof" => {
+            let w = synced(arg(a, 3, "log.json"));
+            let p = w
+                .build_proof_of_funds(num(arg(a, 0, "amount")), arg(a, 1, "challenge").as_bytes())
                 .unwrap_or_else(|e| die(e));
             write_public(
                 Path::new(arg(a, 2, "out.json")),

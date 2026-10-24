@@ -101,6 +101,22 @@ async fn wallets_sync_build_and_persist() {
     assert_eq!(acc.payout.unwrap().amount, 25);
     assert_eq!(store.sync(&bob.id).await.unwrap().balance, 15);
     assert_eq!(store.summary(&bob.id).unwrap().balance, 15);
+    // Proof of funds from bob: its own op tag, never submitted; a verifier checks it read-only.
+    let ch = "confidant/pof/v1|rBorrower|15|1000|1500|lender";
+    let pf = store.build_proof_of_funds(&bob.id, 15, ch).await.unwrap();
+    assert_eq!(pf.record.op, confidant_core::OpTag::ProofOfFunds);
+    log.verifier
+        .lock()
+        .unwrap()
+        .verify_proof_of_funds(&pf.record, 15, ch.as_bytes())
+        .unwrap();
+    assert_eq!(store.sync(&bob.id).await.unwrap().balance, 15);
+    assert!(matches!(
+        store.build_proof_of_funds(&bob.id, 16, ch).await,
+        Err(StoreError::Core(
+            confidant_core::Error::InsufficientFunds { .. }
+        ))
+    ));
 
     // Errors: unknown wallet, insufficient funds, zero amount, unreachable log.
     assert!(matches!(
@@ -228,6 +244,16 @@ async fn http_surface_round_trips_and_maps_errors() {
     .await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(v["record"]["external"], json!("rOut"));
+    let (s, v) = call(
+        &app,
+        "POST",
+        &format!("/wallets/{id}/pof"),
+        Some(json!({ "amount": 20, "challenge": "confidant/pof/v1|rB|20|1|2|lender" })),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["record"]["op"], json!("proofoffunds"));
+    assert_eq!(v["record"]["valueBalance"], json!(20));
     let (s, _) = call(
         &app,
         "POST",

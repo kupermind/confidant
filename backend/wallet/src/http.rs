@@ -62,6 +62,13 @@ pub struct Unshield {
     pub destination: String,
 }
 
+#[derive(Deserialize)]
+pub struct Pof {
+    pub amount: u64,
+    /// The lender's canonical challenge string (`confidant/pof/v1|…`).
+    pub challenge: String,
+}
+
 pub fn router<L: LogSource + 'static>(store: Arc<Store<L>>) -> Router {
     Router::new()
         .route("/health", get(health::<L>))
@@ -71,6 +78,7 @@ pub fn router<L: LogSource + 'static>(store: Arc<Store<L>>) -> Router {
         .route("/wallets/{id}/shield", post(shield::<L>))
         .route("/wallets/{id}/transfer", post(transfer::<L>))
         .route("/wallets/{id}/unshield", post(unshield::<L>))
+        .route("/wallets/{id}/pof", post(pof::<L>))
         .with_state(store)
 }
 
@@ -119,4 +127,14 @@ async fn unshield<L: LogSource>(
     Json(b): Json<Unshield>,
 ) -> Result<Built> {
     Ok(Json(s.build_unshield(&id, b.amount, &b.destination).await?))
+}
+
+async fn pof<L: LogSource>(
+    State(s): State<Arc<Store<L>>>,
+    Path(id): Path<String>,
+    Json(b): Json<Pof>,
+) -> Result<Built> {
+    Ok(Json(
+        s.build_proof_of_funds(&id, b.amount, &b.challenge).await?,
+    ))
 }

@@ -35,6 +35,7 @@ pub mod credential;
 pub mod fees;
 pub mod http;
 pub mod node;
+pub mod pof;
 pub mod rpc;
 pub mod screening;
 pub mod xrpl;
@@ -44,7 +45,11 @@ pub use credential::{
     is_entry_not_found, ripple_now, CredentialError, CredentialGate, CredentialPolicy, LSF_ACCEPTED,
 };
 pub use fees::{FeeLedger, FeePolicy, FeeReport, MAX_BPS};
-pub use node::{AcceptedWithMemo, Node, NodeError};
+pub use node::{AcceptedWithMemo, Node, NodeError, POF_PERMITS};
+pub use pof::{
+    PofChallenge, PofError, PofVerdict, CHALLENGE_PREFIX, MAX_EXPIRY_WINDOW, MAX_LENDER_LEN,
+    MEANING, RECENT_WINDOW,
+};
 pub use rpc::JsonRpc;
 pub use screening::{ScreenError, Screening};
 pub use xrpl::{

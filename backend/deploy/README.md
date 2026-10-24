@@ -29,6 +29,8 @@ sudo systemctl enable confidant-coordinator confidant.target && sudo systemctl s
 # nginx (CORS for a browser UI, long proxy timeouts because a submit waits for the anchor) + firewall
 sudo install -m 0644 /srv/confidant/repo/backend/deploy/nginx/confidant.conf /etc/nginx/sites-available/confidant
 sudo ln -sf /etc/nginx/sites-available/confidant /etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx
+# the UI sites (nginx/confidant-ui*.conf) also expose each node's read-only proof-of-funds check and state at
+# /node/<i>/pof/verify and /node/<i>/state (i = 0..9 → 127.0.0.1:770i); the coordinator's /config lists them as `nodes`
 sudo ufw allow 8787/tcp
 ```
 
