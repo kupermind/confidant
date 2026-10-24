@@ -56,7 +56,7 @@ let pass = 0, fail = 0;
 const check = (name, ok, detail) => { if (ok) pass++; else fail++; console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : `  →  ${JSON.stringify(detail)}`}`); };
 
 // 1. Static layout: nothing wider than the viewport on any page at 320 and 390 px.
-for (const name of ["index.html", "how-it-works.html", "balances.html"]) {
+for (const name of ["index.html", "how-it-works.html", "balances.html", "lender.html"]) {
   const file = probe(name, "", "{}");
   for (const w of [320, 390]) {
     const r = sample(file, w, 2500);
@@ -143,6 +143,35 @@ for (const name of ["index.html", "how-it-works.html", "balances.html"]) {
   check("credential: row shown, issued, Confirm offered", before.row === true && /^issued — confirm it/.test(before.status ?? "") && before.btn === false, before);
   const after = sample(file, 390, 5200);
   check("credential: accepted ✓ after the Confirm step", /^accepted ✓/.test(after.status ?? "") && after.btn === true, after);
+}
+
+// 10. Proof of funds, holder side (demo): create the wallet, prove 5 XRP to a lender → every node's verdict, the
+//     success line, the package buttons; the Share step done. Demo timings: faucet 2.5 s, prove 0.9 s, nodes ≤ 0.9 s.
+{
+  const file = probe("index.html",
+    `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("tabbtn-prove").click();document.getElementById("prove-amount").value="5";document.getElementById("prove-borrower").value="rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf";document.getElementById("prove-lender").value="ACME-1";document.getElementById("btn-prove").click()},3200)`,
+    `{steps:[...document.getElementById("steps-prove").children].map(e=>(e.classList.contains("on")?"on":"")+(e.classList.contains("done")?"✓":"")).join("|"),msg:${text("msg-prove")},rows:document.querySelectorAll("#prove-verdicts tr").length,copy:!!document.getElementById("btn-pof-copy"),hidden:document.getElementById("tab-prove").hidden}`);
+  const r = sample(file, 390, 7000);
+  check("prove: 4 of 4 nodes verified, every step done, package offered", r.steps === "✓|✓|✓" && /^4 of 4 nodes verified it/.test(r.msg ?? "") && r.rows === 5 && r.copy === true && r.hidden === false, r);
+  const bad = probe("index.html",
+    `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("tabbtn-prove").click();document.getElementById("prove-amount").value="5";document.getElementById("prove-borrower").value="nobody";document.getElementById("prove-lender").value="a|b";document.getElementById("btn-prove").click()},3200)`,
+    `{msg:${text("msg-prove")},steps:[...document.getElementById("steps-prove").children].map(e=>e.classList.contains("on")||e.classList.contains("done")?"x":"").join("|")}`);
+  const b = sample(bad, 390, 4500);
+  check("prove: a bad borrower is refused before proving", /classic XRPL address/.test(b.msg ?? "") && b.steps === "||", b);
+}
+
+// 11. Proof of funds, lender side (demo): the demo package verifies on 3 of 4 nodes (one busy), the claims are
+//     summarised, the lender id is flagged as the lender's own, the meaning is printed; a bad paste is refused.
+{
+  const file = probe("lender.html",
+    `setTimeout(()=>{const a=document.getElementById("ask-lender");a.value="ACME-4471";a.dispatchEvent(new Event("input"));document.getElementById("btn-demo-pkg").click();document.getElementById("btn-verify").click()},400)`,
+    `{msg:${text("verdict-msg")},rows:document.querySelectorAll("#verdict-table tbody tr").length,sum:${text("pkg-summary")},label:${text("verdict-label")},ask:${text("ask-text")}}`);
+  const r = sample(file, 390, 3000);
+  check("lender: 3 of 4 nodes verified, claims summarised, own id flagged, meaning shown",
+    /^3 of 4 nodes verified it \(1 did not answer or refused\)/.test(r.msg ?? "") && r.rows === 4 && /at least 25 XRP/.test(r.sum ?? "") && /your id ✓/.test(r.sum ?? "") && /not a lock/.test(r.label ?? "") && /lender id "ACME-4471"/.test(r.ask ?? ""), r);
+  const bad = probe("lender.html", `setTimeout(()=>{document.getElementById("pkg").value="{not json";document.getElementById("btn-verify").click()},400)`, `{msg:${text("verdict-msg")}}`);
+  const b = sample(bad, 390, 1500);
+  check("lender: a non-JSON paste is refused with a readable reason", /not JSON/.test(b.msg ?? ""), b);
 }
 
 console.log(`\n${pass}/${pass + fail} checks ok${fail ? ` — ${fail} FAILED` : ""}`);

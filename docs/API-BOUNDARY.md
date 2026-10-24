@@ -130,7 +130,7 @@ coordinator copies into `/config.credential`.*
 
 *Built 2026-10-24 (event day) on the core slice (`core`: `OpTag::ProofOfFunds`, domain `ConfidantPoF_v1_`). Node side:
 `backend/node/src/pof.rs` and `POST /pof/verify`; holder side: the wasm export `buildProofOfFunds(amount, challenge)` and
-the worker op `proofOfFunds({ amount, challenge })`. The `credential-pof` signing path (the quorum writing an expiring
+the worker op `pof({ amount, challenge })` (one name on every surface: worker op, wallet-service route, node endpoint). The `credential-pof` signing path (the quorum writing an expiring
 Credential on the borrower's account) is a separate slice under the ship rule in `docs/PROOF-OF-FUNDS.md` §6.*
 
 - **Challenge.** The lender fills `{ borrower, lender, ledgerIndex, expiry }`: `borrower` is the borrower's classic XRPL
@@ -139,7 +139,7 @@ Credential on the borrower's account) is a separate slice under the ship rule in
   challenge; `expiry` a ledger index after it and at most 21 600 ledgers (≈ 24 h) later. Its **canonical bytes** — what
   the holder's wallet signs over and what every node recomputes from the fields — are the UTF-8 string
   `confidant/pof/v1|<borrower>|<amount>|<ledgerIndex>|<expiry>|<lender>`. The UI builds exactly this string and passes it
-  to `proofOfFunds({ amount, challenge })`; `amount` is in drops.
+  to `pof({ amount, challenge })`; `amount` is in drops.
 - **Verify.** The lender — or the holder on the lender's behalf — POSTs `{ record, amount, challenge }` to **each node**
   at a URL from `/config.nodes` (`/node/<i>/pof/verify` on the UI origin). The coordinator is not in the path and never
   sees the record. The node validates the fields, judges freshness against the validated ledger index **it reads itself**
@@ -157,6 +157,21 @@ Credential on the borrower's account) is a separate slice under the ship rule in
   this challenge as of the validated ledger: an underwriting signal, a snapshot, not a lock, and not proof that the borrower
   owns the notes." k verdicts from N nodes are k independent reads of the same ledger-reconstructible state; the lender
   decides how many it wants. Nothing reaches the ledger in this slice.
+- **Holder side (UI, built 2026-10-24).** A fourth tab, **Prove funds**: amount, borrower (prefilled with the holder's
+  XRPL account), lender id, validity (1 / 6 / 24 h → 900 ledgers per hour). The app reads the validated ledger index
+  itself, builds the challenge and the canonical string, proves in the browser (`pof`), POSTs
+  `{ record, amount, challenge }` to **every** URL in `/config.nodes` and shows a per-node verdict table (✓ / the
+  refusal, the ledger judged at, that node's root), the honest label, and the **proof package**
+  `{ amount, challenge, record, bundleHash }` to copy or download for the lender. It then offers to **rotate the notes**
+  (a transfer to the holder's own address, pre-filled on the Transfer tab) so the nodes cannot link the next spend to the
+  proof. The package is never sent to the coordinator and is not stored.
+- **Lender page (`frontend/lender.html`, built 2026-10-24).** Step 1 drafts the request to the borrower (lender id,
+  minimum amount, validity). Step 2 takes the pasted or uploaded package, checks its shape, shows what it claims
+  (amount, borrower with an explorer link, lender id — flagged when it is not the lender's own, the ledger window and
+  how long it is still valid), POSTs to every node in `/config.nodes`, and prints the verdict table with "k of N nodes
+  verified" and the nodes' `meaning` verbatim; a 400 (stale / expired) and a 409 (does not verify) are explained. A
+  "told / not told / not a lock" card closes the page. `?demo=1` fakes four nodes (one busy, 429) and loads a demo
+  package.
 
 ## 3. What the UI must produce — the `record`
 
