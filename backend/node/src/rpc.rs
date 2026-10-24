@@ -77,8 +77,9 @@ impl Ledger for JsonRpc {
             .await;
         match r {
             Ok(v) => Ok(v.get("node").cloned()),
-            // No such entry is an ordinary answer, not a failure.
-            Err(LedgerError::Rpc(m)) if m.contains("entryNotFound") => Ok(None),
+            // No such entry is an ordinary answer, not a failure (rippled: code `entryNotFound`,
+            // message "Entry not found."; the gate then refuses with 403, not 502).
+            Err(LedgerError::Rpc(m)) if crate::credential::is_entry_not_found(&m) => Ok(None),
             Err(e) => Err(e),
         }
     }
