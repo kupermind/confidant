@@ -9,7 +9,7 @@ and the credential gate are checks at the public boundary, not proofs about any 
 Formal name everywhere in this text: **Confidant**. The stylized wordmark `C0nf!d@nt` is for the logo only.
 
 Limits (from the form): short description ≤ 200 characters · description ≤ 5000 · technical description ≤ 1000.
-Markdown is accepted in all three. Counts are of the text between the fences (`wc -m` on each block): 177 / 4024 / 961 on 2026-10-24.
+Markdown is accepted in all three. Counts are of the text between the fences (`wc -m` on each block): 177 / 4119 / 961 on 2026-10-24.
 
 **Status (2026-10-24, end of day 1):** everything below is **live on the XRPL testnet** at `https://confidant.im`
 — the pre-existing pool (baseline tag `pre-hackathon`), plus, built on-site and audited today: the credential gate
@@ -42,6 +42,8 @@ Confidant — a compliant shielded pool on the XRP Ledger: private transfers ins
 **Honest limits.** The pool account and proof verification are federated (k of N): collusion of k signers can drain the pool account but cannot spend anyone's notes. Shield and unshield amounts and addresses are public by construction; an empty pool has no privacy. The quorum exists because today's XRPL has no on-ledger Halo 2 verifier. Testnet only.
 
 **Links.** Live app `https://confidant.im` · how it works `/how-it-works.html` · lender page `/lender.html` · issuer page `/issuer.html` · repository with the design (`SPEC.md`), the audit record (`docs/audit/`) and the demo script (`docs/DEMO.md`).
+
+FYI, our crypto/ZK lead was unable to join the hackathon in person and is attending remotely.
 ```
 
 ## Technical description (≤ 1000 characters)
@@ -52,9 +54,12 @@ Rust core (`confidant-core`): Orchard/Halo 2 circuit reused unchanged; a `Wallet
 
 ## Logo
 
-Optional on the form. Use the stylized wordmark `C0nf!d@nt` (logo/banner only) on a plain background; PNG or SVG,
-under 10 MB. Not attached yet.
+`docs/assets/logo.svg` (source) and `docs/assets/logo.png` (1024 × 1024, rendered from it): a shield — the pool — holding a
+transfer graph drawn as fading dashed edges, only the endpoints visible; the stylized wordmark `C0nf!d@nt` (logo only, per
+the branding rule) and the line "SHIELDED POOL · XRP LEDGER". Violet `#7919FF` on deep ink, the UI's accent. Upload the
+PNG to the form (the SVG loads Google Fonts for the wordmark; the PNG has them baked in).
 
 ## Change log
 
 - 2026-10-24 — first draft, end of day 1: A and C live; Mastercard-track relay code complete.
+- 2026-10-24 (later) — remote-attendance note in the description; logo added (`docs/assets/`).

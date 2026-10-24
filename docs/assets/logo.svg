@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Confidant — shielded pool on the XRP Ledger">
+  <title>Confidant</title>
+  <desc>A shield holding a transfer graph you cannot see, over the stylized wordmark C0nf!d@nt.</desc>
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Sora:wght@700&amp;family=Inter:wght@600&amp;display=swap');
+      .wordmark { font-family: "Sora", "Inter", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif; font-weight: 700; }
+      .tag { font-family: "Inter", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif; font-weight: 600; letter-spacing: 7px; }
+    </style>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1A1240"/>
+      <stop offset="1" stop-color="#090716"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7919FF" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#7919FF" stop-opacity="0.06"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.55">
+      <stop offset="0" stop-color="#7919FF" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#7919FF" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="inside">
+      <path d="M512 164 L744 248 V436 C744 568 648 668 512 724 C376 668 280 568 280 436 V248 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- tile -->
+  <rect width="1024" height="1024" rx="184" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="184" fill="url(#glow)"/>
+
+  <!-- the pool: a shield -->
+  <path d="M512 164 L744 248 V436 C744 568 648 668 512 724 C376 668 280 568 280 436 V248 Z"
+        fill="url(#shield)" stroke="#9A5CFF" stroke-width="22" stroke-linejoin="round"/>
+
+  <!-- the graph nobody sees: edges fade, only the endpoints that touch the boundary are plain -->
+  <g clip-path="url(#inside)" fill="none" stroke-linecap="round">
+    <path d="M372 342 L512 444 L652 342" stroke="#C9B3FF" stroke-width="14" stroke-opacity="0.9" stroke-dasharray="2 30"/>
+    <path d="M512 444 L512 606" stroke="#C9B3FF" stroke-width="14" stroke-opacity="0.9" stroke-dasharray="2 30"/>
+    <path d="M372 342 L372 520 L512 606 L652 520 L652 342" stroke="#C9B3FF" stroke-width="10" stroke-opacity="0.35" stroke-dasharray="2 34"/>
+  </g>
+  <g>
+    <circle cx="372" cy="342" r="26" fill="#FFFFFF"/>
+    <circle cx="652" cy="342" r="26" fill="#FFFFFF"/>
+    <circle cx="512" cy="444" r="34" fill="#7919FF" stroke="#FFFFFF" stroke-width="10"/>
+    <circle cx="372" cy="520" r="20" fill="#B9A6FF" fill-opacity="0.55"/>
+    <circle cx="652" cy="520" r="20" fill="#B9A6FF" fill-opacity="0.55"/>
+    <circle cx="512" cy="606" r="26" fill="#FFFFFF"/>
+  </g>
+
+  <!-- wordmark (stylized form: logo only) -->
+  <text class="wordmark" x="512" y="838" text-anchor="middle" font-size="122" fill="#FFFFFF" letter-spacing="-3">C0nf!d@nt</text>
+  <text class="tag" x="512" y="906" text-anchor="middle" font-size="30" fill="#B9A6FF">SHIELDED POOL · XRP LEDGER</text>
+</svg>
