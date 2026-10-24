@@ -144,6 +144,14 @@ impl CredentialGate {
     }
 }
 
+/// Whether a `ledger_entry` error means "no such entry" (an ordinary answer: the account holds no
+/// such credential) rather than a failure of the lookup. rippled reports it as the error code
+/// `entryNotFound` with the message "Entry not found."; the RPC layer may surface either.
+pub fn is_entry_not_found(rpc_error: &str) -> bool {
+    rpc_error.contains("entryNotFound")
+        || rpc_error.to_ascii_lowercase().contains("entry not found")
+}
+
 /// Now, in seconds since the Ripple epoch (what `Expiration` is compared against).
 pub fn ripple_now() -> u64 {
     SystemTime::now()
