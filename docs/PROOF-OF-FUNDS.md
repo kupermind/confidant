@@ -1,5 +1,16 @@
 # Proof of shielded funds, and collateral escrow as a separate construction — proposal
 
+> **Project lead's ruling, 2026-10-25 (after using the live feature).** A proof of funds that reveals the nullifiers of
+> the proven notes degrades the holder's privacy — the node operators and, in the package flow, the lender learn when
+> those notes are next spent — and makes the holder the last link of the protection (a manual refresh, in the right
+> order). That is not an acceptable product property. **The only accepted design is §5: a circuit that proves control of
+> unspent notes ≥ X without revealing nullifiers.** Everything built on 2026-10-24 (core slice, read side, package flow,
+> on-ledger credential) is a demo of the flow and is labelled as degrading the holder's privacy; it is not the feature.
+> Two findings go with the ruling: (1) the package flow hands the lender the record, so the lender sees the nullifiers —
+> contrary to requirement 6 ("nullifiers stay with the nodes"); (2) the holder tab said "without naming your notes" and
+> the lender page "not told: which notes" — both over-claims, corrected the same day. Interim rule for the demo: the
+> on-ledger credential flow (nodes only) over the package flow, and the wallet, not the user, refreshes the notes.
+
 **Status: design of record for the event (proposed 2026-10-14, decided 2026-10-16 in ROADMAP §0). Core slice built on-site 2026-10-24:** a fourth op tag `ProofOfFunds` that every apply path (submit, endorse, replay, memo) refuses before any signature check; `Wallet::build_proof_of_funds` / read-only `Verifier::verify_proof_of_funds` under the separate domain `ConfidantPoF_v1_`, registered in the hash-domain allow-list on purpose; break tests both directions, 100 % coverage, mutation table (audit REQ). **Tier 1's read side built on-site the same day:** `POST /pof/verify` on every node (challenge `{ borrower, lender, ledgerIndex, expiry }` recomputed to canonical bytes, freshness judged against the node's own validated ledger, 256 KiB / 4-at-a-time bounds, never logged or persisted; node coverage gate, mutation table, audit REQ), wasm `buildProofOfFunds`, `/config.nodes`. The `credential-pof` signing path got its own IMPL-PASS in-window (`docs/audit/RESP-pof-credential-2026-10-24.md`) and is live, with node-side bounds (gate eligibility, one credential per borrower, outstanding cap 8, fail-closed reads). Input: the pre-event spike
 (draft PR #29), the audit's conditional DESIGN-PASS (`docs/audit/RESP-pof-design-2026-10-14.md`)
 and the apply-path guards it required first (PR #31, PASS). This document fills what the spike

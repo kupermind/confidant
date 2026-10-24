@@ -40,6 +40,11 @@ Refer to people by role, never by name, in anything that reaches git (see hard r
   Boundary screening (optional, per node) is gatekeeping on public lists at the public boundary, not a
   per-note proof of innocence — say so.
   CI checks the label markers in `SPEC.md`, `README.md`, `SPEC.ru.md`.
+- **No human as the last link (project lead, 2026-10-25).** A security or privacy property that holds
+  only if the user performs a step, in the right order, is not a property of the protocol and is not
+  shipped as one. A proof of funds that reveals the proven notes' nullifiers is therefore a demo of a
+  flow, labelled as degrading the holder's privacy, not the feature: the only accepted design is a
+  circuit that proves control of unspent notes ≥ X **without revealing nullifiers** (`docs/PROOF-OF-FUNDS.md` §5).
 - **TEE is a production footnote only** — never in the demo mechanics, never the lead.
 - **"Only what you build during the hackathon counts."** The core, the reused Orchard circuit, the
   harness and the XRPL integration already deployed on testnet are pre-existing (baseline tagged);
