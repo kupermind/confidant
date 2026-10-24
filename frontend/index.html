@@ -1143,11 +1143,24 @@
       if (!okCount) throw new Error(`No node verified the proof: ${verdicts[0]?.e?.message ?? "unknown"}`);
       setSteps("steps-prove", 2, true);
       const pkg = JSON.stringify({ amount, challenge, record: built.record, bundleHash: built.bundleHash });
-      setMsg("msg-prove", `<b>${okCount} of ${nodes.length} nodes</b> verified it: someone controlling at least <b>${fmt(drops)} XRP</b> in this pool answered the challenge of "${esc(lender)}" for ${esc(borrower)} as of ledger ${L}, valid until ledger ${challenge.expiry} (≈ ${hours} h). An underwriting signal, a snapshot — not a lock, and not proof that the borrower owns the notes. <button class="link" type="button" id="btn-pof-copy">Copy the proof package</button> · <button class="link" type="button" id="btn-pof-download">Download it</button> · the lender checks it on <a href="lender.html">the lender page</a>. Then <button class="link" type="button" id="btn-pof-rotate">rotate your notes</button> so the nodes cannot link your next spend to this proof.${okCount >= Number(cfg.quorum) && cfg.pool ? ` Or have the quorum <button class="link" type="button" id="btn-pof-record">record it on the ledger as a Credential</button> on ${esc(borrower)} — the lender then reads XRPL, not a file.` : ""}${proved(built)}`, "ok");
+      setMsg("msg-prove", `<b>${okCount} of ${nodes.length} nodes</b> verified it: someone controlling at least <b>${fmt(drops)} XRP</b> in this pool answered the challenge of "${esc(lender)}" for ${esc(borrower)} as of ledger ${L}, valid until ledger ${challenge.expiry} (≈ ${hours} h). An underwriting signal, a snapshot — not a lock, and not proof that the borrower owns the notes. <button class="link" type="button" id="btn-pof-copy">Copy the proof package</button> · <button class="link" type="button" id="btn-pof-download">Download it</button> · the lender checks it on <a href="lender.html">the lender page</a>. Once the lender has checked it, <button class="link" type="button" id="btn-pof-rotate">refresh your notes</button> so this proof cannot be linked to your next payment (the proof stops verifying after that).${okCount >= Number(cfg.quorum) && cfg.pool ? ` Or have the quorum <button class="link" type="button" id="btn-pof-record">record it on the ledger as a Credential</button> on ${esc(borrower)} — the lender then reads XRPL, not a file.` : ""}${proved(built)}`, "ok");
       $("btn-pof-record")?.addEventListener("click", () => recordCredential(body, lender));
       $("btn-pof-copy").addEventListener("click", async () => { $("btn-pof-copy").textContent = (await copyText(pkg)) ? "Copied" : "Copy failed — use Download"; });
       $("btn-pof-download").addEventListener("click", () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([pkg], { type: "application/json" })); a.download = `confidant-proof-${L}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); });
-      $("btn-pof-rotate").addEventListener("click", () => { $("transfer-to").value = w.address; $("transfer-amount").value = ($("priv-balance").textContent || "").replace(/,/g, ""); $("tabbtn-transfer").click(); setMsg("msg-transfer", "Rotating: a transfer to your own address replaces the proven notes with fresh ones. Nothing leaves the pool; the anchor is the only trace.", "warn"); });
+      // Refreshing the notes = a private transfer of the whole balance to this wallet's own address, done
+      // here in place: the proven notes are spent, fresh ones replace them, nothing leaves the pool.
+      $("btn-pof-rotate").addEventListener("click", async () => {
+        const b = $("btn-pof-rotate"); b.disabled = true; b.textContent = "refreshing your notes…";
+        try {
+          const amount = Number(toDrops(($("priv-balance").textContent || "0").replace(/,/g, "")));
+          if (!(amount > 0)) throw new Error("Nothing to refresh: your private balance is 0");
+          const fresh = await wbFor(w).build(w, "transfer", { recipient: w.address, amount });
+          const acc = await be.submit("transfer", { record: fresh.record });
+          b.outerHTML = `<b>notes refreshed ✓</b> ${link("Anchor", acc.anchorTx)}`;
+          addActivity({ type: "transfer", text: `${fmt(amount)} XRP refreshed (a transfer to yourself)`, links: [["Anchor", acc.anchorTx]] });
+        } catch (e) { b.disabled = false; b.textContent = "refresh your notes"; setMsg("msg-prove-ledger", `Could not refresh the notes: ${esc(e.message)}`, "err"); }
+        finally { refreshWallet(); refreshStatus(); }
+      });
       addActivity({ type: "proof", text: `proved ≥ ${fmt(drops)} XRP to "${esc(lender)}" as of ledger ${L} — ${okCount} of ${nodes.length} nodes`, links: [] });
     } catch (e) { setMsg("msg-prove", esc(e.message), "err"); }
     finally { busy(btn, false); refreshWallet(); refreshStatus(); }
