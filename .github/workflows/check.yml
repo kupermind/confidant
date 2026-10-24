@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      snapshot_url:
+        description: "Public log snapshot to verify after the e2e (an IPFS gateway URL); empty = skip"
+        required: false
+        default: ""
 
 jobs:
   core:
@@ -138,6 +143,11 @@ jobs:
         working-directory: e2e/testnet
       - run: CLI=../../target/release/examples/cli NODE_BIN=../../target/release/confidant-node npm run e2e:services
         working-directory: e2e/testnet
+      # The data-availability claim, reproduced by a stranger: rebuild a node from the ledger plus the
+      # public snapshot and compare with the live pool (docs/DATA-AVAILABILITY.md).
+      - run: SNAPSHOT_URL="${{ inputs.snapshot_url }}" NODE_BIN=../../target/release/confidant-node COORDINATOR_URL=https://confidant.im/api npm run snapshot:verify
+        if: inputs.snapshot_url != ''
+        working-directory: backend/quorum
       - uses: actions/upload-artifact@v4
         if: always()
         with:

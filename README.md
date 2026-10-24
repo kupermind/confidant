@@ -113,7 +113,8 @@ that tag is event work. The baseline pool runs on XRPL testnet at https://confid
 (a synthetic anonymity set funded from the testnet faucet by the operator — say so). Its public log is pinned
 on IPFS — CID `bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda` ([gateway](https://gateway.pinata.cloud/ipfs/bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda)), published on the ledger in a
 [`confidant/snapshot` memo](https://testnet.xrpl.org/transactions/8CBBA25CC347F510E626467A4987EF2BC77744944483165E60D960445625C03B) — and a fresh node rebuilds the whole pool from the XRP Ledger plus that
-one object (`confidant-node --rebuild --mirror https://gateway.pinata.cloud/ipfs/bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda …`, see `docs/DATA-AVAILABILITY.md`).
+one object (`confidant-node --rebuild --mirror https://gateway.pinata.cloud/ipfs/bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda …`;
+reproduce it with `npm run snapshot:verify` in `backend/quorum`, see `docs/DATA-AVAILABILITY.md`).
 
 ## Full technical task
 
