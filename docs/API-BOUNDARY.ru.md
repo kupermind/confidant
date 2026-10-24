@@ -114,7 +114,9 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
 - **Сторона держателя (UI).** В карточке кошелька строка *Eligibility*: `accepted ✓` / `issued — нажмите
   Accept` / `none — получите у эмитента`; *Accept* подписывает `CredentialAccept { Account: держатель, Issuer,
   CredentialType }` XRPL-аккаунтом держателя в браузере (xrpl.js); отклонённый shield ссылается на страницу
-  эмитента. Демо-эмитент — статичная страница (`frontend/issuer.html`): пополненный из faucet XRPL-аккаунт в
+  эмитента. Пока узел не отдаёт `credential` в `/config`, страница эмитента передаёт держателя по ссылке
+  `/?accept=<issuer>:<typeHex>`, которую приложение сохраняет и считает конфигом ворот (только демо-путь).
+  Демо-эмитент — статичная страница (`frontend/issuer.html`): пополненный из faucet XRPL-аккаунт в
   роли KYC-провайдера, подписывает `CredentialCreate { Account: issuer, Subject: holder, CredentialType,
   Expiration? }` для любого вставленного адреса и печатает свой адрес и тип для конфига операторов узлов.
   Честная подпись: эмитент — демо-персона; ворота на леджере настоящие.

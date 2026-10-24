@@ -133,5 +133,17 @@ for (const name of ["index.html", "how-it-works.html", "balances.html"]) {
   check("issuer: account created, credential issued and listed", /^r/.test(r.issuer ?? "") && r.rows === 1 && /issued, not yet accepted/.test(r.status ?? "") && /Issued to/.test(r.msg ?? ""), r);
 }
 
+// 8. Credential gate, holder side (demo config carries a gate; the holder arrives with a credential issued):
+//    the Eligibility row shows "issued" with an Accept button; accepting turns it into "accepted ✓".
+{
+  const file = probe("index.html",
+    `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>document.getElementById("btn-accept-cred").click(),3400)`,
+    `{row:!document.getElementById("cred-row").hidden,status:${text("cred-status")},btn:document.getElementById("btn-accept-cred").hidden}`);
+  const before = sample(file, 390, 3200);
+  check("credential: row shown, issued, Accept offered", before.row === true && /^issued/.test(before.status ?? "") && before.btn === false, before);
+  const after = sample(file, 390, 5200);
+  check("credential: accepted after the Accept step", /^accepted ✓/.test(after.status ?? "") && after.btn === true, after);
+}
+
 console.log(`\n${pass}/${pass + fail} checks ok${fail ? ` — ${fail} FAILED` : ""}`);
 process.exit(fail ? 1 : 0);
