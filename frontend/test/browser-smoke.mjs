@@ -134,15 +134,15 @@ for (const name of ["index.html", "how-it-works.html", "balances.html"]) {
 }
 
 // 8. Credential gate, holder side (demo config carries a gate; the holder arrives with a credential issued):
-//    the Compliance row reads "verified by the provider — confirm…" with a Confirm button; confirming turns it into "verified ✓".
+//    the Credential row reads "issued — confirm it to shield" with a Confirm button; confirming turns it into "accepted ✓".
 {
   const file = probe("index.html",
     `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>document.getElementById("btn-accept-cred").click(),3400)`,
     `{row:!document.getElementById("cred-row").hidden,status:${text("cred-status")},btn:document.getElementById("btn-accept-cred").hidden}`);
   const before = sample(file, 390, 3200);
-  check("compliance: row shown, verified-unconfirmed, Confirm offered", before.row === true && /^verified by the provider/.test(before.status ?? "") && before.btn === false, before);
+  check("credential: row shown, issued, Confirm offered", before.row === true && /^issued — confirm it/.test(before.status ?? "") && before.btn === false, before);
   const after = sample(file, 390, 5200);
-  check("compliance: verified ✓ after the Confirm step", /^verified ✓/.test(after.status ?? "") && after.btn === true, after);
+  check("credential: accepted ✓ after the Confirm step", /^accepted ✓/.test(after.status ?? "") && after.btn === true, after);
 }
 
 console.log(`\n${pass}/${pass + fail} checks ok${fail ? ` — ${fail} FAILED` : ""}`);

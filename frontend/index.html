@@ -676,7 +676,7 @@
             <h4>XRPL account<span class="pub">public</span></h4>
             <div class="kv"><span class="k">Address</span><span class="v" id="xrpl-addr"></span><button class="small ghost copy" data-copy="xrpl-addr">Copy</button></div>
             <div class="kv"><span class="k">Balance</span><span class="v" id="xrpl-balance">—</span><button class="small" id="btn-fund">Fund from faucet</button></div>
-            <div class="kv" id="cred-row" hidden title="Compliance-gated pool: a deposit is accepted only from an address that an authorized compliance provider has verified. The provider checks the holder off-ledger and records an XLS-70 Credential on the XRP Ledger; the holder confirms it with their own signature; every verifier node reads it from the ledger itself. The pool never sees documents and the credential says nothing about anyone's notes. It is the operator's policy for regulated use, applied to every depositor alike — not a suspicion about you. What is checked, by whom and why: see the provider page."><span class="k">Compliance</span><span class="v" id="cred-status">—</span><button class="small" id="btn-accept-cred" hidden>Confirm</button></div>
+            <div class="kv" id="cred-row" hidden title="Credential-gated pool: a deposit is accepted only from an XRPL account that holds an XLS-70 Credential from the issuer the pool trusts, confirmed by the account's own signature. Every verifier node reads the credential from the ledger itself before it signs; the credential says nothing about anyone's notes. It is a per-pool switch the operator sets, applied to every depositor alike. Details on the issuer page."><span class="k">Credential</span><span class="v" id="cred-status">—</span><button class="small" id="btn-accept-cred" hidden>Confirm</button></div>
           </div>
           <div class="col-kv">
             <h4>Pool wallet<span class="pub">off ledger</span></h4>
@@ -943,13 +943,14 @@
     if (!c) { row.hidden = true; return; }
     row.hidden = false; $("btn-accept-cred").hidden = true;
     if (!x) { $("cred-status").textContent = "needs an XRPL account first"; return; }
+    if (!$("cred-status").textContent.trim() || $("cred-status").textContent === "—") $("cred-status").textContent = "checking…";
     let state; try { state = await credentialState(c, x.address); } catch (e) { $("cred-status").textContent = "ledger not readable"; return; }
     const issuerHref = `issuer.html?subject=${encodeURIComponent(x.address)}`;
-    // Short on purpose: the cell is narrow; the tooltip and the provider page carry the explanation.
-    if (state === "accepted") $("cred-status").textContent = `verified ✓ (${c.typeText ?? "compliance credential"})`;
-    else if (state === "issued") { $("cred-status").textContent = `verified by the provider — confirm it`; $("btn-accept-cred").hidden = false; }
-    else if (state === "expired") $("cred-status").innerHTML = `expired — <a href="${issuerHref}">renew with the provider</a>`;
-    else $("cred-status").innerHTML = `not verified — <a href="${issuerHref}">how to get verified</a>`;
+    // Short on purpose: the cell is narrow; the tooltip and the issuer page carry the explanation.
+    if (state === "accepted") $("cred-status").textContent = `accepted ✓ (${c.typeText ?? "credential"})`;
+    else if (state === "issued") { $("cred-status").textContent = `issued — confirm it to shield`; $("btn-accept-cred").hidden = false; }
+    else if (state === "expired") $("cred-status").innerHTML = `expired — <a href="${issuerHref}">renew with the issuer</a>`;
+    else $("cred-status").innerHTML = `none — <a href="${issuerHref}">get one from the issuer</a>`;
   }
   async function acceptCredential() {
     const c = credentialCfg(); const x = store.get("xrpl"); if (!c || !x) return;
@@ -961,9 +962,9 @@
         const tx = await cl.autofill({ TransactionType: "CredentialAccept", Account: w.address, Issuer: c.issuer, CredentialType: c.type });
         const res = await cl.submitAndWait(w.sign(tx).tx_blob);
         const code = res.result.meta?.TransactionResult; if (code !== "tesSUCCESS") throw new Error(`The ledger refused the acceptance: ${code}`);
-        addActivity({ type: "compliance", text: `confirmed the ${c.typeText ?? "compliance"} credential issued by the pool's compliance provider ${short(c.issuer)}`, links: [["Confirmation", res.result.hash ?? ""]] });
+        addActivity({ type: "credential", text: `accepted the ${c.typeText ?? ""} credential from the pool's trusted issuer ${short(c.issuer)}`, links: [["CredentialAccept", res.result.hash ?? ""]] });
       }
-    } catch (e) { alert(e.message); }
+    } catch (e) { $("cred-status").textContent = `could not accept: ${e.message}`; }
     finally { busy(b, false); refreshCredential().catch(() => {}); }
   }
   async function refreshStatus() {
@@ -1030,7 +1031,7 @@
     } catch (e) {
       const p = store.get("pending-shield");
       if (p) showResume(p, e.message);
-      else if (e.status === 403 && /credential/i.test(e.message)) { const x = store.get("xrpl"); setMsg("msg-shield", `${esc(e.message)} — this pool accepts deposits only from addresses verified by its compliance provider. <a href="issuer.html?subject=${encodeURIComponent(x?.address ?? "")}">How to get verified</a>; once verified, confirm it in the wallet card and shield again.`, "err"); }
+      else if (e.status === 403 && /credential/i.test(e.message)) { const x = store.get("xrpl"); setMsg("msg-shield", `${esc(e.message)} — this pool accepts deposits only from accounts holding a credential from its trusted issuer. <a href="issuer.html?subject=${encodeURIComponent(x?.address ?? "")}">Get one from the issuer</a>, confirm it in the wallet card, then shield again.`, "err"); }
       else setMsg("msg-shield", esc(e.message), "err");
     }
     finally { busy(btn, false); refreshWallet(); refreshStatus(); }
@@ -1159,9 +1160,15 @@
     if (cfg.fees?.shieldBps) $("shield-fee-hint").textContent = ` net of the ${pct(cfg.fees.shieldBps)} protocol fee`;
     if (cfg.fees?.unshieldBps) $("unshield-fee-hint").textContent = `, net of the ${pct(cfg.fees.unshieldBps)} protocol fee`;
     $("st-pool-link").href = cfg.pool ? `${cfg.explorer}/accounts/${cfg.pool}` : "#";
+    // The issuer page's hand-off link (?accept=<issuer>:<typeHex>) is the gate's config only while the node side
+    // does not publish one; once /config carries the credential, the stored link is dropped (it is URL-controlled).
+    if (cfg.credential) store.del("credential");
+    else { const a = new URLSearchParams(location.search).get("accept"); const m = a && /^(r[1-9A-HJ-NP-Za-km-z]{24,34}):([0-9A-Fa-f]{2,128})$/.exec(a); if (m) store.set("credential", { issuer: m[1], type: m[2].toUpperCase(), typeText: "credential" }); }
     renderActivity(); await refreshStatus();
     const w = wallet();
     if (w) {
+      // Before the (slow) restore: the row shows "checking…" at once instead of appearing after the key build.
+      refreshCredential().catch(() => {});
       await refreshWallet();
       try {
         if (w.mode === "browser") setMsg("wallet-progress", `<span class="spin"></span>Restoring your wallet in this browser…`, "warn");
@@ -1170,7 +1177,6 @@
     }
     await refreshWallet();
     { const p = store.get("pending-shield"); if (p && wallet()) showResume(p); }
-    { const a = new URLSearchParams(location.search).get("accept"); const m = a && /^(r[1-9A-HJ-NP-Za-km-z]{24,34}):([0-9A-Fa-f]{2,128})$/.exec(a); if (m) { store.set("credential", { issuer: m[1], type: m[2].toUpperCase(), typeText: "compliance credential" }); refreshCredential().catch(() => {}); } }
     setInterval(refreshStatus, 20000);
   })();
 })();
