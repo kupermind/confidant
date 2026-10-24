@@ -66,6 +66,14 @@ on the ledger — transfers inside are free."
    credential from the ledger at submit and at endorse), and the app links to the issuer page. The gate is on when the
    nodes run with `CREDENTIAL_ARGS` (then `/config.credential` is set); off, the row hides and shields are open.
 
+## Mastercard track — "pay for privacy" (only if the AP4M onboarding and two rehearsals happened)
+
+Terminal, `hackathon/ap4m`: `node agent.mjs` — the wallet syncs, a private transfer is built, the relay answers **402**,
+the agent prints its decision ("price 0.1 RLUSD ≤ max 0.25 — paying"), pays with a Voucher (EVM explorer:
+`VoucherRedeemed` at the PaymentLedger), the relay forwards and the quorum anchors (XRPL testnet explorer: the anchor
+memo — no sender, receiver or amount), `settle` prints the RLUSD payout and the receipt. Say once: "the metered payment is
+public, the settlement is private, both ledgers show a receipt". Fallbacks in `hackathon/ap4m/README.md`.
+
 ## The "what if your server dies" question
 
 Answer with the snapshot: the ledger names every bundle by hash; the public log is pinned on IPFS under
