@@ -100,7 +100,7 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
 ### Ворота по Credential (фича хакатона A) — контракт между узлом и стороной держателя
 
 *Предложено 2026-10-24 (день события); в тот же день реализовано с обеих сторон (`backend/node/src/credential.rs`,
-`frontend/issuer.html`, строка Eligibility в приложении). Узел сообщает свои ворота через `GET /policy`, координатор
+`frontend/issuer.html`, строка Compliance в приложении). Узел сообщает свои ворота через `GET /policy`, координатор
 копирует их в `/config.credential`.*
 
 - **Конфиг.** `GET /config` получает `credential: { issuer: "r…", type: "<hex>", typeText: "ConfidantKYC",
@@ -114,8 +114,8 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
 - **Отказ.** HTTP **403** с `{ error: "no accepted credential from <issuer> of type <typeText> for <account>" }`
   — то же семейство статусов, что у скрининга; UI различает по слову `credential`. Выпущенный, но не
   принятый Credential тоже отклоняется (принять его должен субъект: эта подпись и привязывает аккаунт).
-- **Сторона держателя (UI).** В карточке кошелька строка *Eligibility*: `accepted ✓` / `issued — нажмите
-  Accept` / `none — получите у эмитента`; *Accept* подписывает `CredentialAccept { Account: держатель, Issuer,
+- **Сторона держателя (UI).** В карточке кошелька строка *Compliance*: `verified ✓` / `verified — нажмите
+  Confirm` / `not verified — как пройти проверку`; *Confirm* подписывает `CredentialAccept { Account: держатель, Issuer,
   CredentialType }` XRPL-аккаунтом держателя в браузере (xrpl.js); отклонённый shield ссылается на страницу
   эмитента. Пока узел не отдаёт `credential` в `/config`, страница эмитента передаёт держателя по ссылке
   `/?accept=<issuer>:<typeHex>`, которую приложение сохраняет и считает конфигом ворот (только демо-путь).

@@ -122,7 +122,7 @@ for (const name of ["index.html", "how-it-works.html", "balances.html"]) {
 }
 
 // 7. The demo issuer page: layout at phone widths; in demo mode an issuer account is created, a credential
-//    is issued to a pasted address and listed as "issued, not yet accepted".
+//    is issued to a pasted address and listed as "issued, awaiting the holder's confirmation".
 {
   const file = probe("issuer.html", "", "{}");
   for (const w of [320, 390]) { const r = sample(file, w, 2000); check(`issuer.html @${w}px: no horizontal overflow`, r.over === 0, r); }
@@ -130,19 +130,19 @@ for (const name of ["index.html", "how-it-works.html", "balances.html"]) {
     `setTimeout(()=>document.getElementById("btn-create-issuer").click(),200);setTimeout(()=>{document.getElementById("subject").value="rJASAbKaKY7LybEdFwkgpv5gCc2YA9VYbF";document.getElementById("btn-issue").click()},1500)`,
     `{issuer:${text("issuer-addr")},rows:document.querySelectorAll("#cred-table tbody tr").length,status:${text("cred-table")},msg:${text("issue-msg")}}`);
   const r = sample(flow, 390, 3500);
-  check("issuer: account created, credential issued and listed", /^r/.test(r.issuer ?? "") && r.rows === 1 && /issued, not yet accepted/.test(r.status ?? "") && /Issued to/.test(r.msg ?? ""), r);
+  check("issuer: account created, credential issued and listed", /^r/.test(r.issuer ?? "") && r.rows === 1 && /awaiting the holder/.test(r.status ?? "") && /Issued to/.test(r.msg ?? ""), r);
 }
 
 // 8. Credential gate, holder side (demo config carries a gate; the holder arrives with a credential issued):
-//    the Eligibility row shows "issued" with an Accept button; accepting turns it into "accepted ✓".
+//    the Compliance row reads "verified by the provider — confirm…" with a Confirm button; confirming turns it into "verified ✓".
 {
   const file = probe("index.html",
     `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>document.getElementById("btn-accept-cred").click(),3400)`,
     `{row:!document.getElementById("cred-row").hidden,status:${text("cred-status")},btn:document.getElementById("btn-accept-cred").hidden}`);
   const before = sample(file, 390, 3200);
-  check("credential: row shown, issued, Accept offered", before.row === true && /^issued/.test(before.status ?? "") && before.btn === false, before);
+  check("compliance: row shown, verified-unconfirmed, Confirm offered", before.row === true && /^verified by the provider/.test(before.status ?? "") && before.btn === false, before);
   const after = sample(file, 390, 5200);
-  check("credential: accepted after the Accept step", /^accepted ✓/.test(after.status ?? "") && after.btn === true, after);
+  check("compliance: verified ✓ after the Confirm step", /^verified ✓/.test(after.status ?? "") && after.btn === true, after);
 }
 
 console.log(`\n${pass}/${pass + fail} checks ok${fail ? ` — ${fail} FAILED` : ""}`);

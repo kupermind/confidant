@@ -57,9 +57,9 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
   `/how-it-works.html` and linked from the app's header — explains the pool, the quorum, the hackathon
   lending features and the honest limits. `frontend/balances.html` (`/balances.html`) reconciles the
   shielded total with the pool account's balance live from the ledger and answers the usual questions.
-  `frontend/issuer.html` is the demo KYC issuer for the Credential gate (hackathon feature A): a
+  `frontend/issuer.html` is the compliance provider page for the Credential gate (hackathon feature A) — a demo persona of the authorized KYC/AML provider the pool trusts: a
   faucet-funded testnet account that issues XLS-70 Credentials; the holder accepts one in the app's
-  wallet card (Eligibility row) and only then can shield when the gate is on.
+  wallet card (Compliance row, "confirm with your signature") and only then can shield when the gate is on.
   Tests for the pages: `node --test "frontend/test/*.test.mjs"` (pure functions against a public ledger fixture) and
   `node frontend/test/browser-smoke.mjs` (headless Chrome, demo mode: phone-width layout, create-wallet
   states, step ticks, the balances check row) — both run in CI.

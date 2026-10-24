@@ -41,7 +41,9 @@ pub mod screening;
 pub mod xrpl;
 
 pub use address::canonical;
-pub use credential::{ripple_now, CredentialError, CredentialGate, CredentialPolicy, LSF_ACCEPTED};
+pub use credential::{
+    is_entry_not_found, ripple_now, CredentialError, CredentialGate, CredentialPolicy, LSF_ACCEPTED,
+};
 pub use fees::{FeeLedger, FeePolicy, FeeReport, MAX_BPS};
 pub use node::{AcceptedWithMemo, Node, NodeError, POF_PERMITS};
 pub use pof::{
