@@ -89,6 +89,33 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
 A complete client of this contract, including every negative case, is `e2e/testnet/run-services.mjs`.
 Copy from there.
 
+### Credential gate (hackathon feature A) — the contract between the node and the holder side
+
+*Proposed 2026-10-24 (event day) by the API/XRPL lead for the crypto/ZK lead's node slice; adjust here, in
+the same PR as the code, if the node needs it different.*
+
+- **Config.** `GET /config` gains `credential: { issuer: "r…", type: "<hex>", typeText: "ConfidantKYC",
+  expiresAfter?: <seconds> } | null`. `null` (or absent) means the gate is off and the UI shows nothing.
+  The UI reads the issuer and the type from here and from nowhere else.
+- **Rule.** A shield is accepted only if the deposit's `Account` holds an XLS-70 Credential on the ledger
+  with `Issuer == credential.issuer`, `CredentialType == credential.type`, the **accepted** flag set
+  (`lsfAccepted`) and no past `Expiration`, read by each node from the ledger itself (`ledger_entry`
+  `credential` or `account_objects` of the depositor) at submit and again at endorse. The sidecar signs
+  nothing its own node did not accept (unchanged rule).
+- **Refusal.** HTTP **403** with `{ error: "no accepted credential from <issuer> of type <typeText> for
+  <account>" }` — the same status family as the screening gate; the UI tells them apart by the word
+  `credential`. An issued-but-not-accepted Credential is refused too (the subject must accept it: that
+  signature is what binds the account).
+- **Holder side (UI).** The wallet card shows an *Eligibility* row: `accepted ✓` / `issued — press Accept`
+  / `none — get one from the issuer`; *Accept* signs `CredentialAccept { Account: holder, Issuer,
+  CredentialType }` with the holder's XRPL account in the browser (xrpl.js); a refused shield links to
+  the issuer page. The demo issuer is a static page (`frontend/issuer.html`): a faucet-funded XRPL
+  account playing the KYC provider, which signs `CredentialCreate { Account: issuer, Subject: holder,
+  CredentialType, Expiration? }` for any address pasted in and prints its own address and the type for
+  the node operators' config. Honest label: the issuer is a demo persona; the gate is real on the ledger.
+- **Browser library.** XLS-70 transaction types are absent from xrpl.js 4.3.0, which the app loaded; the
+  holder page and the issuer page use **xrpl.js 5.3.0** (the same version as `backend/quorum`).
+
 ## 3. What the UI must produce — the `record`
 
 `record` is a `BundleRecord` exactly as the wallet writes it (do not edit fields):
