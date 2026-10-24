@@ -184,6 +184,24 @@
     The pool never sees documents, and the credential says nothing about anyone's notes. On this testnet the provider
     is a persona operated by the Confidant team — the persona is a demo; the gate on the ledger is real.</p>
 
+  <h2>What is checked, by whom, and why</h2>
+  <div class="card" id="explain-card">
+    <p><b>What is checked.</b> One fact only: that this XRPL address belongs to someone an authorized compliance
+      provider has verified. Nothing inside the pool is examined — not your notes, not your balance, not your transfers.</p>
+    <p><b>On what basis.</b> The pool operator's policy for regulated use: a pool that institutions may use admits only
+      verified depositors, the same rule a bank or a broker applies when an account is opened. It is not a suspicion
+      about you and not a judgement — the same check applies to every depositor alike, before anything happens.</p>
+    <p><b>Who checks.</b> The compliance provider the pool operator trusts: in production a licensed KYC/AML firm or an
+      accreditation body; on this testnet, a demo persona run by the Confidant team. Not the pool, not its verifier
+      nodes, not another user — they only read the result.</p>
+    <p><b>What the result is.</b> A yes/no record on the XRP Ledger: an XLS-70 Credential from that provider to your
+      address, which you confirm with your own signature. No name, no document, no personal data is written to the
+      ledger or seen by the pool. The record expires, and the provider can revoke it.</p>
+    <p><b>Why.</b> So that a regulated institution can use a shielded pool at all while every depositor keeps their
+      privacy inside it: the entrance is accountable, the graph inside stays hidden. An operator who does not need this
+      runs the pool open — the gate is a per-pool switch, not part of the protocol.</p>
+  </div>
+
   <div class="card" id="holder-card">
     <div class="k">For holders: getting verified</div>
     <p>The pool trusts one provider: <span class="mono" id="trusted-provider">reading the pool's configuration…</span>.
