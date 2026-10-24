@@ -10,9 +10,9 @@ use confidant_core::memo::MEMO_TYPE;
 use confidant_core::record::bundle_hash;
 use confidant_core::{DepositRef, Error as CoreError, Submission, Verifier, Wallet};
 use confidant_node::{
-    anchor_memos, canonical, deposit_facts, deposit_source, http, ripple_now, CredentialError,
-    CredentialGate, FeeLedger, FeePolicy, Ledger, LedgerError, Node, NodeError, Screening,
-    LSF_ACCEPTED, LSF_DISABLE_MASTER, MEMO_SHIELD,
+    anchor_memos, canonical, deposit_facts, deposit_source, http, is_entry_not_found, ripple_now,
+    CredentialError, CredentialGate, FeeLedger, FeePolicy, Ledger, LedgerError, Node, NodeError,
+    Screening, LSF_ACCEPTED, LSF_DISABLE_MASTER, MEMO_SHIELD,
 };
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
@@ -1599,6 +1599,24 @@ async fn credential_gate_refuses_deposits_without_an_accepted_credential_at_subm
     );
     assert!(CredentialGate::off().check("rAlice", None, 1_000).is_ok());
     assert!(ripple_now() > 800_000_000);
+    // The live ledger's "no such entry" answer, in both shapes rippled's error can reach the node in,
+    // is an ordinary "none" — never a lookup failure (that would be a 502 instead of the 403).
+    for m in [
+        "entryNotFound",
+        "ledger rpc: Entry not found.",
+        "Entry not found",
+        "ENTRY NOT FOUND.",
+    ] {
+        assert!(is_entry_not_found(m), "{m}");
+    }
+    for m in [
+        "txnNotFound",
+        "ledger rpc: connection refused",
+        "actNotFound rX",
+        "",
+    ] {
+        assert!(!is_entry_not_found(m), "{m}");
+    }
     // A policy error reads as one; a refusal carries the contract's wording.
     assert!(CredentialError::Policy("x".into())
         .to_string()

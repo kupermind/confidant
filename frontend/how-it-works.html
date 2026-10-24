@@ -402,11 +402,14 @@
 
     <div class="flow">
       <div class="step">
-        <span class="n">01 · Credential-gated entry</span>
-        <h3>Only credentialed accounts shield</h3>
-        <p>A deposit is accepted only from an XRPL account holding an accepted XLS-70 Credential from a trusted issuer
-          (KYC, accreditation, a permissioned domain). Every verifier node checks it before it signs — native XRPL
-          compliance, not a promise.</p>
+        <span class="n">01 · Compliance-gated entry</span>
+        <h3>Only verified accounts shield</h3>
+        <p>A deposit is accepted only from an address that an authorized compliance provider (a KYC/AML firm, an
+          accreditation body, a permissioned domain) has verified off-ledger and recorded as an XLS-70 Credential on the
+          ledger, confirmed by the holder's own signature. Every verifier node checks it before it signs — native XRPL
+          compliance, not a promise, and nothing about anyone's notes. The check covers one fact — that the depositing
+          address was verified — applied to every depositor alike; it is the operator's policy for regulated use, not a
+          suspicion about anyone, and an operator who does not need it runs the pool open.</p>
       </div>
       <div class="step">
         <span class="n">02 · Proof of shielded funds</span>
