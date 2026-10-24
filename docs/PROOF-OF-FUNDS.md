@@ -241,13 +241,102 @@ properties of this product)
   round; the quorum gets an arbiter service with ledger-checked policies; all of it is trust-path
   work with its own audit cycle. **Not event scope.**
 
-## 5. Tier 4 — circuit-level (post-event): the only lock without moving
+## 5. Tier 4 — the accepted design: proof of control without revealing nullifiers
 
-- A proof of funds that reveals **no nullifiers** (a membership-and-unspent proof against a
-  nullifier-set accumulator) — needs a new circuit.
-- Notes with **spending conditions** (time locks, covenants) — needs a new circuit.
+**Status: design of record for proof of funds (project lead, 2026-10-25); sent to the audit as a DESIGN-REQ the
+same day; implementation post-event in audited slices.** This is the only design under which proof of funds is a
+feature of the pool: the proof reveals no nullifier, no commitment and no total, so nothing the holder does
+afterwards is needed, and no later spend is linkable to it. The nullifier-revealing flow built on 2026-10-24 is a
+demo of the plumbing around it and is labelled as such.
 
-Both are outside the "Orchard reused unchanged" line (ROADMAP §4.5) and stay roadmap items.
+### 5.1 The statement
+
+A new Halo 2 circuit (IPA over Pallas, no trusted setup — the same proof system as the pool, `docs/WHY-HALO2.md`),
+with **k note slots** (a circuit constant; k = 4 to start). It is not an Orchard Action and not a `BundleRecord`:
+nothing of it can reach an apply path.
+
+**Public inputs:** `R_S` — the note-commitment root of the pool at state S; `N_S` — the root of the pool's
+nullifier set at the **same** state S (§5.2); `X` — the threshold in drops (u64); `c` — the challenge,
+BLAKE2b-256 of the canonical challenge bytes `confidant/pof/v1|borrower|X|L|E|lender` (its own hash domain,
+`ConfidantPoFChal_`, listed in the SPEC §11 inventory) reduced to a Pallas base-field element. Nothing else.
+
+**Witness per slot i:** the spending key `sk`; the note `(addr_i, v_i, ρ_i, ψ_i, rcm_i)`; the Merkle path `π_i`
+of `cm_i` in the commitment tree at S; the non-membership witness `ω_i` of `nf_i` in the nullifier tree at S.
+
+**Constraints per slot:**
+- **(a) ownership** — `ak`, `nk`, `rivk` derived from `sk` in-circuit as in Orchard's spend; `ivk = CommitIvk(ak, nk, rivk)`;
+  the note's `pk_d = [ivk] g_d` — the note is addressed to a key the prover holds.
+- **(b) membership** — `cm_i = NoteCommit(addr_i, v_i, ρ_i, ψ_i, rcm_i)`; the Sinsemilla Merkle path `π_i` leads to `R_S`.
+- **(c) the nullifier, never exposed** — `nf_i = DeriveNullifier(nk, ρ_i, ψ_i, cm_i)` computed in-circuit, bit-exact
+  with `orchard::Note::nullifier` (Poseidon PRF, fixed-base multiplication by K, add `cm`, extract x).
+- **(d) unspent at S** — `nf_i` is **not** in the nullifier set at S: `ω_i` is a leaf `(a, next)` of the indexed tree
+  (§5.2) with a Poseidon path to `N_S`, and the in-circuit comparisons `a < nf_i < next` (255-bit, by decomposition;
+  `next = ∞` sentinel for the largest leaf).
+- **(e) dummies** — a slot with `v_i = 0` skips (b) and (d), Orchard's dummy-spend rule, so k is a maximum, not the count.
+- **(f) distinctness** — over the non-dummy slots `nf_1 < nf_2 < …` strictly (dummies last), so no note is counted twice.
+- **(g) threshold** — `Σ v_i ≥ X`; every `v_i` and `Σ v_i − X` range-checked to 64 bits.
+
+No signatures, no value commitments, no `rk`: the proof is bound to the challenge by the public input `c`; whoever
+presents it cannot change `c` or `X`; ownership is proven, not signed. The verifier checks the proof against **its own**
+`(R_S, N_S)` for one state S — the two roots are one atomic snapshot object in the verifier (never mixed across log
+positions) — and `c` against the challenge it recomputes from the request's fields, exactly as the read side does
+today. The verdict, the per-node check, the on-ledger Credential and the lender page keep their shape; what changes
+is the proof type behind them.
+
+**What the proof says:** "someone holding the keys to unspent notes worth at least X in this pool, at state S
+(ledger L), answered this challenge." A snapshot, not a lock — cryptographically now, with no step for the holder
+afterwards. What the lender receives, `(proof, public inputs)`, contains nothing linkable to any later spend; it is
+safe to hand over and to re-verify later against the same S.
+
+### 5.2 The nullifier set as an indexed Merkle tree
+
+Every node already holds the set of nullifiers it has seen (the public log). For (d) it keeps the same set as an
+**indexed Merkle tree** (sorted leaves, each leaf `(value, next)` pointing to the next larger value; Poseidon over
+Pallas; depth 32), inserted in log order — deterministic, so every node and any third party rebuilding from the
+public log computes the same root. `N_S` joins `R_S` in the verifier's state at every log position; `rebuild` and
+`rebuild_checked` reconstruct it. Not anchored on the ledger in the first slice (reconstructible from the anchored
+log); adding it to the anchor memo is a later option.
+
+### 5.3 What the holder's wallet needs
+
+The witnesses are built from public data plus the holder's keys: the commitment path `π_i` from the public log
+(the wallet already rebuilds the tree to spend); the non-membership witness `ω_i` from the sorted nullifier set,
+also rebuilt from the public log. Proving ≈ one Orchard bundle of k actions (seconds in the browser on 16 threads,
+longer on a phone); verification tens of milliseconds on a node. Nothing about the holder's notes leaves the wallet.
+
+### 5.4 Engineering notes
+
+- Gadgets: `halo2_gadgets` 0.5 (Sinsemilla Merkle, Poseidon, ECC, lookup range checks). Orchard 0.15's
+  `NoteCommit` / `CommitIvk` / `DeriveNullifier` gadgets are `pub(in crate::circuit)` even behind its
+  `unstable-voting-circuits` feature, so the slot's ownership/commitment/nullifier gadgets are re-implemented on the
+  same primitives (≈ 300–600 lines) with **bit-exactness tests against `orchard`** on random notes — a pin for the audit.
+- The circuit has its own proving and verifying key (`Params`-style lazy build as today), its own proof type, and no
+  op tag: the `OpTag::ProofOfFunds` builder on the wallet and `Verifier::verify_proof_of_funds` (the revealing path)
+  are removed from the product path once this ships.
+- Node: `POST /pof/verify` keeps its challenge, windows, bounds and verdict; the body carries the new proof and its
+  public inputs instead of a record; the sidecar kind `credential-pof` keeps its pins (own node's verdict at signing
+  time, fields from its own node). The outstanding-credentials cap stays (it bounds the pool's reserve, not privacy).
+- Cost at the node: one proof verification per request, as today; the indexed tree costs O(log n) per nullifier insert.
+
+### 5.5 Slices and what the audit pins
+
+1. **Core:** `NullifierTree` (indexed, Poseidon) with its root in `PoolState`, rebuilt from the log; mutation rows on
+   insertion order, sentinel, root in the snapshot.
+2. **Circuit:** the statement (a)–(g); bit-exactness of (b)/(c) against `orchard`; a negative test per clause (wrong key,
+   non-member commitment, spent nullifier, duplicate slot, sum < X, wrong `c`, roots from two positions); mutation rows
+   per clause.
+3. **Wallet:** witness builders (CLI, wasm), the challenge hash domain, no note data in the output.
+4. **Node:** proof-type swap behind the existing endpoint and sidecar kind; the atomic `(R_S, N_S)` snapshot;
+   fail-closed on any mismatch; the revealing path removed.
+5. **UI:** the one-button shape of `docs/UI-RULE.md`; no refresh step exists any more.
+
+Each slice gets its REQ → RESP before merge. Until slice 4 ships, the repository carries the 2026-10-25 ruling: the
+nullifier-revealing proof of funds is a demo of the flow, not the feature.
+
+### 5.6 Still outside this design
+
+Notes with **spending conditions** (time locks, covenants, a lock without moving) need another circuit change and
+stay a roadmap item; collateral escrow stays the separate construction of §6.
 
 ## 6. What fits the 36 hours
 
