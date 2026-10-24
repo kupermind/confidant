@@ -620,7 +620,7 @@
   /* sync status: one line in the card header */
   .wallet .actions .hint { max-width: 34ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* XRPL balance may wrap again, so the faucet hint is never cut */
-  #xrpl-balance { white-space: normal; overflow: visible; text-overflow: clip; }
+  #xrpl-balance, #cred-status { white-space: normal; overflow: visible; text-overflow: clip; }
   /* keyboard focus readable in the dark theme */
   :root[data-theme="dark"] :focus-visible { outline-color: rgba(255,255,255,.85); }
   @media (max-width: 700px) { .two-col { margin-bottom: 0; } }
@@ -945,11 +945,11 @@
     if (!x) { $("cred-status").textContent = "needs an XRPL account first"; return; }
     let state; try { state = await credentialState(c, x.address); } catch (e) { $("cred-status").textContent = "ledger not readable"; return; }
     const issuerHref = `issuer.html?subject=${encodeURIComponent(x.address)}`;
-    const provider = `the pool's compliance provider (${short(c.issuer)})`;
-    if (state === "accepted") $("cred-status").textContent = `verified ✓ by ${provider}, ${c.typeText ?? "compliance credential"}`;
-    else if (state === "issued") { $("cred-status").textContent = `verified by ${provider} — confirm with your signature to activate`; $("btn-accept-cred").hidden = false; }
-    else if (state === "expired") $("cred-status").innerHTML = `verification expired — <a href="${issuerHref}">renew with the compliance provider</a>`;
-    else $("cred-status").innerHTML = `not verified — this pool accepts deposits only from addresses verified by its compliance provider. <a href="${issuerHref}">How to get verified</a>`;
+    // Short on purpose: the cell is narrow; the tooltip and the provider page carry the explanation.
+    if (state === "accepted") $("cred-status").textContent = `verified ✓ (${c.typeText ?? "compliance credential"})`;
+    else if (state === "issued") { $("cred-status").textContent = `verified by the provider — confirm it`; $("btn-accept-cred").hidden = false; }
+    else if (state === "expired") $("cred-status").innerHTML = `expired — <a href="${issuerHref}">renew with the provider</a>`;
+    else $("cred-status").innerHTML = `not verified — <a href="${issuerHref}">how to get verified</a>`;
   }
   async function acceptCredential() {
     const c = credentialCfg(); const x = store.get("xrpl"); if (!c || !x) return;

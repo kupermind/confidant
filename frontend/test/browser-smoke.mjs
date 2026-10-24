@@ -140,7 +140,7 @@ for (const name of ["index.html", "how-it-works.html", "balances.html"]) {
     `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>document.getElementById("btn-accept-cred").click(),3400)`,
     `{row:!document.getElementById("cred-row").hidden,status:${text("cred-status")},btn:document.getElementById("btn-accept-cred").hidden}`);
   const before = sample(file, 390, 3200);
-  check("compliance: row shown, verified-unconfirmed, Confirm offered", before.row === true && /^verified by the pool's compliance provider/.test(before.status ?? "") && before.btn === false, before);
+  check("compliance: row shown, verified-unconfirmed, Confirm offered", before.row === true && /^verified by the provider/.test(before.status ?? "") && before.btn === false, before);
   const after = sample(file, 390, 5200);
   check("compliance: verified ✓ after the Confirm step", /^verified ✓/.test(after.status ?? "") && after.btn === true, after);
 }

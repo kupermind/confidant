@@ -60,7 +60,7 @@ on the ledger — transfers inside are free."
 
 1. Open `/issuer.html` (the compliance provider — the team's laptop operates the provider the nodes trust: import its key once), paste the holder's XRPL address, **Verify & issue**.
    Say: "a demo persona; the credential it writes is a real XLS-70 object on the ledger."
-2. In the app the wallet card's **Compliance** row reads "verified by the pool's compliance provider — confirm with your signature to activate"; press **Confirm** (the holder's
+2. In the app the wallet card's **Compliance** row reads "verified by the provider — confirm it"; press **Confirm** (the holder's
    own signature binds the account). It turns into "verified ✓".
 3. Shield as usual. Without the credential the verifiers refuse with a 403 that names the issuer (every node reads the
    credential from the ledger at submit and at endorse), and the app links to the issuer page. The gate is on when the
