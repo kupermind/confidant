@@ -16,7 +16,7 @@ use zcash_note_encryption::try_note_decryption;
 use crate::error::Error;
 use crate::keys::{address_from_hex, address_to_hex, fvk_to_hex, spending_key_from_hex, OwnerKeys};
 use crate::record::{bundle_hash, record_from_bundle};
-use crate::sighash::{external_ctx, sighash, OpTag};
+use crate::sighash::{external_ctx, pof_ctx, pof_sighash, sighash, OpTag};
 use crate::types::{BundleRecord, TransferOutput, WalletInfo};
 use crate::verifier::Verifier;
 
@@ -224,7 +224,7 @@ impl Wallet {
             }
             resolved.push((address_from_hex(&o.recipient)?, o.amount));
         }
-        self.build_spending(&resolved, 0, OpTag::Transfer, "")
+        self.build_spending(&resolved, 0, OpTag::Transfer, "", None)
     }
 
     /// Builds and proves an unshield of `amount` to the XRPL address `destination`.
@@ -235,7 +235,19 @@ impl Wallet {
         if destination.is_empty() {
             return Err(Error::Build("empty destination".into()));
         }
-        self.build_spending(&[], amount, OpTag::Unshield, destination)
+        self.build_spending(&[], amount, OpTag::Unshield, destination, None)
+    }
+
+    /// Proof that this wallet controls unspent notes worth at least `amount`, answering
+    /// `challenge` (hackathon feature C). Built like an unshield of `amount` with the change back
+    /// to self, tagged `OpTag::ProofOfFunds` and signed over the proof-of-funds sighash: no pool
+    /// operation can accept it, and it reveals `amount`, not the balance. It is checked read-only
+    /// by `Verifier::verify_proof_of_funds`; never submit it as an operation.
+    pub fn build_proof_of_funds(&self, amount: u64, challenge: &[u8]) -> Result<Prepared, Error> {
+        if amount == 0 {
+            return Err(Error::ZeroAmount);
+        }
+        self.build_spending(&[], amount, OpTag::ProofOfFunds, "", Some(challenge))
     }
 
     fn build_spending(
@@ -244,6 +256,7 @@ impl Wallet {
         withdraw: u64,
         op: OpTag,
         external: &str,
+        pof_challenge: Option<&[u8]>,
     ) -> Result<Prepared, Error> {
         let total = outputs
             .iter()
@@ -298,7 +311,10 @@ impl Wallet {
         let vb = *unauthorized.value_balance();
         debug_assert_eq!(vb, withdraw as i64);
         let commitment: [u8; 32] = unauthorized.commitment(TxVersion::V5)?.into();
-        let sh = sighash(&commitment, op, &external_ctx(op, external, vb));
+        let sh = match pof_challenge {
+            Some(challenge) => pof_sighash(&commitment, &pof_ctx(challenge, withdraw)),
+            None => sighash(&commitment, op, &external_ctx(op, external, vb)),
+        };
         let proven = unauthorized.create_proof(self.replica.params().pk(), OsRng)?;
         let bundle = proven.apply_signatures(OsRng, sh, &[self.keys.spend_authorizing_key()])?;
         let record = record_from_bundle(&bundle, 0, op, external, 0, 0);

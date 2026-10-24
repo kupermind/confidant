@@ -17,7 +17,7 @@ use crate::error::Error;
 use crate::keys::fvk_from_hex;
 use crate::memo::AnchorMemo;
 use crate::record::{bundle_from_record, bundle_hash, record_from_bundle};
-use crate::sighash::{external_ctx, sighash, OpTag};
+use crate::sighash::{external_ctx, pof_ctx, pof_sighash, sighash, OpTag};
 use crate::tree::CommitmentTree;
 use crate::types::*;
 
@@ -230,11 +230,17 @@ impl Verifier {
         external: &str,
         expected_amount: Option<u64>,
     ) -> Result<[u8; 32], Error> {
+        // A proof of funds is never a pool operation: refused here, before the sign check and
+        // before any signature, on every apply path (submit, endorse, replay). It is checked
+        // read-only by `verify_proof_of_funds` and never applied.
+        if op == OpTag::ProofOfFunds {
+            return Err(Error::NotAPoolOperation);
+        }
         let vb = *bundle.value_balance();
         let sign_ok = match op {
             OpTag::Shield => vb < 0,
             OpTag::Transfer => vb == 0,
-            OpTag::Unshield => vb > 0,
+            OpTag::Unshield | OpTag::ProofOfFunds => vb > 0,
         };
         if !sign_ok {
             return Err(Error::ValueBalanceSign { op, actual: vb });
@@ -246,7 +252,7 @@ impl Verifier {
                     return Err(Error::VouchedAmountNotApplicable { op, amount });
                 }
                 OpTag::Transfer => 0,
-                OpTag::Unshield => amount as i64,
+                OpTag::Unshield | OpTag::ProofOfFunds => amount as i64,
             };
             if vb != expected {
                 return Err(Error::ValueBalance {
@@ -288,6 +294,66 @@ impl Verifier {
             .verify(&sh, bundle.authorization().binding_signature())
             .map_err(|_| Error::InvalidBindingSignature)?;
         Ok(sh)
+    }
+
+    /// Decodes a record for an apply path. A proof of funds is refused here by its op tag — before
+    /// decoding, before the sign check, before any signature — on every path that could apply or
+    /// anchor it (submit, endorse, replay).
+    fn pool_bundle(&self, record: &BundleRecord) -> Result<Bundle<Authorized, i64>, Error> {
+        if record.op == OpTag::ProofOfFunds {
+            return Err(Error::NotAPoolOperation);
+        }
+        bundle_from_record(record, self.params.version)
+    }
+
+    /// Read-only check of a proof of funds against this verifier's state (hackathon feature C):
+    /// the holder controls unspent notes in this pool worth exactly `amount` (the holder chooses
+    /// the threshold; the bundle's value balance is it), answered `challenge`, and signed over the
+    /// proof-of-funds domain. Mutates nothing; the bundle is never applied. Honest reading: "someone
+    /// controlling ≥ amount answered this challenge" as of this state — a snapshot, not a lock.
+    pub fn verify_proof_of_funds(
+        &self,
+        record: &BundleRecord,
+        amount: u64,
+        challenge: &[u8],
+    ) -> Result<(), Error> {
+        if record.op != OpTag::ProofOfFunds {
+            return Err(Error::NotAProofOfFunds);
+        }
+        let bundle = bundle_from_record(record, self.params.version)?;
+        let vb = *bundle.value_balance();
+        if amount == 0 || vb != amount as i64 {
+            return Err(Error::ValueBalance {
+                expected: amount as i64,
+                actual: vb,
+            });
+        }
+        if !self.tree.is_known_anchor(bundle.anchor()) {
+            return Err(Error::UnknownAnchor);
+        }
+        let mut seen = HashSet::with_capacity(bundle.actions().len());
+        for action in bundle.actions() {
+            let nf = action.nullifier().to_bytes();
+            if self.nullifiers.contains(&nf) || !seen.insert(nf) {
+                return Err(Error::DoubleSpend);
+            }
+        }
+        bundle
+            .verify_proof(self.params.vk())
+            .map_err(|_| Error::InvalidProof)?;
+        let commitment: [u8; 32] = bundle.commitment(TxVersion::V5)?.into();
+        let sh = pof_sighash(&commitment, &pof_ctx(challenge, amount));
+        for action in bundle.actions() {
+            action
+                .rk()
+                .verify(&sh, action.authorization())
+                .map_err(|_| Error::InvalidSpendAuth)?;
+        }
+        bundle
+            .binding_validating_key()
+            .verify(&sh, bundle.authorization().binding_signature())
+            .map_err(|_| Error::InvalidBindingSignature)?;
+        Ok(())
     }
 
     /// Shield-only preconditions on this verifier's own state: a deposit must be named and must
@@ -389,7 +455,7 @@ impl Verifier {
         deposit: &DepositRef,
     ) -> Result<Accepted, Error> {
         check_deposit_binding(record, deposit)?;
-        let bundle = bundle_from_record(record, self.params.version)?;
+        let bundle = self.pool_bundle(record)?;
         self.accept(
             bundle,
             OpTag::Shield,
@@ -448,7 +514,7 @@ impl Verifier {
         }
         // ...and pass every check against this signer's own state...
         self.check_deposit_state(op, external)?;
-        let bundle = bundle_from_record(record, self.params.version)?;
+        let bundle = self.pool_bundle(record)?;
         self.verify(&bundle, op, external, expected)?;
         // ...and produce, on this signer's own tree, the root the coordinator claims.
         let leaves: Vec<MerkleHashOrchard> = bundle
@@ -464,7 +530,7 @@ impl Verifier {
 
     /// Accepts a client-built private hop.
     pub fn submit_transfer(&mut self, record: &BundleRecord) -> Result<Accepted, Error> {
-        let bundle = bundle_from_record(record, self.params.version)?;
+        let bundle = self.pool_bundle(record)?;
         self.accept(bundle, OpTag::Transfer, "", None, now())
     }
 
@@ -478,7 +544,7 @@ impl Verifier {
         if destination.is_empty() {
             return Err(Error::Build("empty destination".into()));
         }
-        let bundle = bundle_from_record(record, self.params.version)?;
+        let bundle = self.pool_bundle(record)?;
         self.accept(bundle, OpTag::Unshield, destination, None, now())
     }
 
@@ -491,7 +557,7 @@ impl Verifier {
                 found: record.index,
             });
         }
-        let bundle = bundle_from_record(record, self.params.version)?;
+        let bundle = self.pool_bundle(record)?;
         let acc = self.accept(bundle, record.op, &record.external, None, record.timestamp)?;
         if acc.first_leaf != record.first_leaf {
             return Err(Error::Snapshot(format!(

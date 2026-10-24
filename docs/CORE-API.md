@@ -57,6 +57,7 @@ and trusts the quorum on backing — fine for a read-only mirror, not for a sign
 | shield | `let p = wallet.build_shield(amount)?;` then the UI sends the deposit Payment with memo `confidant/shield` = `p.hash_hex()`, then `POST /submit/shield { bundle: p.record, depositTxHash }` | build first, deposit second: the memo must commit to the bundle |
 | transfer | `wallet.build_transfer(&[TransferOutput { recipient: <address hex>, amount }])?` → `POST /submit/transfer` | recipients are raw Orchard addresses, not ids |
 | unshield | `wallet.build_unshield(amount, destination)?` → `POST /submit/unshield { bundle, destination }` | |
+| proof of funds (feature C) | `wallet.build_proof_of_funds(amount, challenge)?` → a read-only check (`verifier.verify_proof_of_funds(record, amount, challenge)`; node endpoint `POST /pof/verify`, next slice) | the record carries `op: proofoffunds`; every apply path refuses it before any signature; it is never anchored or logged |
 | persist | `wallet.secret()` → `WalletSecret` (JSON, **holds the spending key**, write 0600, never commit) / `Wallet::from_secret` | a wallet restores by re-syncing the log |
 
 Errors are `confidant_core::Error` (`thiserror`). Map `ZeroAmount` / `AmountOverflow` /

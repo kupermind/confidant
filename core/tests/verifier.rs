@@ -241,6 +241,7 @@ fn replay_of_an_accepted_bundle_is_refused() {
     unshield(&mut v, &mut bob, 10, "rX");
     for record in v.records().to_vec() {
         let err = match record.op {
+            OpTag::ProofOfFunds => unreachable!("the log holds pool operations only"),
             OpTag::Shield => v
                 .submit_shield(
                     &record,
