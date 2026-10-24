@@ -19,6 +19,7 @@ path). The relay fee is a **metering fee**, separate from the pool's protocol fe
 | `relay.mjs` | x402 Merchant (the kit's `createX402Merchant`, unmodified, sells a static "relay ticket" at `GET /resource`) **+** `POST /relay/transfer { record, channelId, claimId }`: verifies the claim **on-chain** (a `VoucherRedeemed` for that channel and claim at the PaymentLedger, amount ≥ price) and **unused** (spent-set in the state directory), forwards the bundle to the coordinator, returns the anchor. Missing / unknown / reused claim → `402`. |
 | `agent.mjs` | Builds a private transfer with the native Confidant wallet (CLI), meets the `402`, applies the **payment policy** (price ≤ `MAX_PRICE_RLUSD`, channel cap remaining), pays with `buyResource` on its Channel, retries with the `claimId`, calls `settle`, prints both explorer links. The operation name is derived from the bundle hash: a rerun resumes, never pays twice. |
 | `setup.sh` | `npm install` + download of `ap4m-hackathon-sdk.cjs` and `ap4m-x402.mjs` from the service. |
+| `prepare-wallet.mjs` | One-time pool side for the agent: two native wallet files (agent, supplier — keys stay in the state directory), a faucet XRPL account, waits for the gate's issuer to write its credential and accepts it, shields `DEPOSIT_XRP` through the live coordinator, prints `SUPPLIER` / `WALLET_FILE` / `LOG_FILE` for `.env`. |
 | `env.example` | Every variable; copy to `.env` (gitignored) and fill from the portal. **Never commit keys.** |
 
 ## Run
@@ -26,6 +27,7 @@ path). The relay fee is a **metering fee**, separate from the pool's protocol fe
 ```bash
 cd hackathon/ap4m && ./setup.sh && cp env.example .env   # fill AGENT_PRIVATE_KEY, MERCHANT_*, TEAM_NAME, SUPPLIER …
 set -a; . ./.env; set +a
+npm run prepare-wallet   # once: the agent's shielded notes on XRPL L1 (needs the gate's issuer to write one credential)
 node relay.mjs            # :4308 ticket merchant, :4309 relay → COORDINATOR_URL
 node agent.mjs            # one run = one 402 → pay → relay → settle, both receipts printed
 ```
