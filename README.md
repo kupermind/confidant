@@ -102,7 +102,8 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
 
 ## Status
 
-What is done and what is left, per role: [`ROADMAP.md`](./ROADMAP.md). The v2 core and the quorum
+What is done and what is left, per role: [`ROADMAP.md`](./ROADMAP.md); the hackathon submission text, kept
+in one place and updated as things ship: [`docs/SUBMISSION.md`](./docs/SUBMISSION.md). The v2 core and the quorum
 services (verifier node, signer sidecars, coordinator) are merged, audited and exercised end to end on
 XRPL testnet with a 2-of-3 quorum; the user-facing layer (wallet UX, deposit from the user's account,
 UI over the coordinator, demo) is the API/XRPL lead's work for the hackathon —

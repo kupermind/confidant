@@ -101,7 +101,7 @@ public mirrors: `docs/DATA-AVAILABILITY.md`.
   `CREDENTIAL_ISSUER`, `CREDENTIAL_TYPE`, `CREDENTIAL_TYPE_TEXT` → `CREDENTIAL_ARGS`). Honest label: gatekeeping on
   a trusted issuer's say-so at the public boundary; it says nothing about the holder's notes. Live check through the
   UI's path: `ISSUER_KEY=<issuer.key.json> WALLET_URL=… COORDINATOR_URL=… npm run credential:check` — a fresh account's
-  shield must be refused 403, then issue + accept, then the same shield must pass.
+  shield must be refused 403, then issue + accept, then the same shield must pass. `npm run pof:check` (`NODE_URLS=<node urls>`, `ISSUER_KEY` when the gate is on) exercises the proof-of-funds path: every node's verdict on its own state, the refusals (amount, stale, expired, pool record, oversized), and the quorum-written Credential accepted by the holder and read back from the ledger.
 - The gate judges `Expiration` against the **validated ledger's `close_time`**, which the node reads itself — never the
   host's clock (a clock running behind would be the one fail-open). If the ledger cannot be read, the deposit is refused
   with a ledger error, never accepted. The quorum's unit tests (`npm test` in `backend/quorum`) need **Node ≥ 21** for the

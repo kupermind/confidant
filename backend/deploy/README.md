@@ -59,6 +59,20 @@ untrustworthy" and the wallet runs single-threaded. Threads therefore need HTTPS
 this site), or `http://localhost` — e.g. on the demo laptop `ssh -N -L 8080:127.0.0.1:80 <host>` and
 open `http://localhost:8080/`, which is a secure context and gets the full thread pool.
 
+**Toolchains for the bundles (2026-10-24):** `wasm-pack` builds with the default toolchain, so pin one that
+compiles the workspace's edition-2024 dependencies — `RUSTUP_TOOLCHAIN=1.93 wasm-pack build frontend/wasm --target web --release --out-dir ../pkg`
+(after `rustup target add wasm32-unknown-unknown --toolchain 1.93`) — and keep `nightly` current (`rustup update nightly`)
+before `frontend/wasm/build-threads.sh`. The demo host has no `wasm-pack`: build both directories on the deploy
+laptop and `rsync --delete` them into `/srv/confidant/repo/frontend/pkg` and `pkg-threads` (keep a `.bak-<date>`).
+A wasm export added in `frontend/wasm/src/lib.rs` is not live until both bundles are rebuilt and copied.
+
+**Deploying a change that touches the signing path** (node + sidecars + coordinator, e.g. the proof-of-funds
+Credential): sync the repo, build and install the binaries, restart the nodes one at a time (`confidant-node@3..0`,
+check `/policy`), then the sidecars (`confidant-signer@1..3`), then `confidant-coordinator` and `confidant-wallet`;
+the coordinator's `/config` must list `nodes` (`PUBLIC_NODES`, default `/node/<i>`), and the UI site must carry the
+`/node/<i>/pof/verify` + `/state` locations (render `confidant-ui-tls.conf` again and `nginx -t && reload`). Then
+`npm run pof:check` from `backend/quorum` on the host (docs/NODE-OPERATOR.md).
+
 **HTTPS on a domain** (`nginx/confidant-ui-tls.conf`, replaces `confidant-ui.conf`). Same page and
 proxies, served over TLS, so every visitor's browser is a secure context and gets the thread pool.
 `<domain>` below is the public demo domain.
