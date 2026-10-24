@@ -137,3 +137,19 @@ through the localhost tunnel (16 threads, proof 3.1 s). **2026-10-14, over `http
 (TLS live, PR #28):** cross-origin isolated, 16 threads, proving keys 6.0 s, shield proof 3.2 s,
 whole cycle with fees 81 s — the production path, no tunnel needed. Re-measure on the demo machine
 (a 4-core laptop will land between the columns).
+
+**2026-10-24, the hackathon features, measured on the deployed testnet quorum** (live checks run on the host itself,
+loopback to the services; add the browser's proof time from the table above for the holder's steps):
+
+| Step (feature) | measured |
+|---|---|
+| A: issue + accept the gate credential (two XRPL transactions) | ≈ 12 s |
+| A: shield refused 403 without it / anchored with it, same record | refusal < 1 s; anchor ≈ 10 s |
+| C: proof of funds built natively (CLI, 2 notes) | ≈ 5 s (browser: the shield-proof column) |
+| C: `POST /pof/verify`, one node, read-only | ≈ 200 ms (4 nodes in parallel ≈ 1 s) |
+| C: `POST /pof/credential` → `CredentialCreate` validated (3 sidecars re-verify, 2-of-3 multisign) | ≈ 9 s |
+| C: the holder's `CredentialAccept` validated | ≈ 7 s |
+| C: lender page, "Check the ledger" (`account_objects`) | < 1 s |
+
+So the on-stage lending beat (prove → every node → record on the ledger → confirm → lender reads it) is ≈ 30 s of waiting
+after the proof, all of it visible as explorer links.
