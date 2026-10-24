@@ -10,8 +10,9 @@ use confidant_core::memo::MEMO_TYPE;
 use confidant_core::record::bundle_hash;
 use confidant_core::{DepositRef, Error as CoreError, Submission, Verifier, Wallet};
 use confidant_node::{
-    anchor_memos, canonical, deposit_facts, deposit_source, http, FeeLedger, FeePolicy, Ledger,
-    LedgerError, Node, NodeError, Screening, LSF_DISABLE_MASTER, MEMO_SHIELD,
+    anchor_memos, canonical, deposit_facts, deposit_source, http, ripple_now, CredentialError,
+    CredentialGate, FeeLedger, FeePolicy, Ledger, LedgerError, Node, NodeError, Screening,
+    LSF_ACCEPTED, LSF_DISABLE_MASTER, MEMO_SHIELD,
 };
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
@@ -27,9 +28,42 @@ struct FakeLedger {
     info: Arc<Mutex<Value>>,
     /// Latest validated ledger index the fake reports (0 = "unknown", the call errors).
     validated: Arc<Mutex<u64>>,
+    /// Credential entries keyed `subject|issuer|type`, how often they were asked for, and a switch
+    /// that makes the lookup fail like an unreachable RPC.
+    credentials: Arc<Mutex<BTreeMap<String, Value>>>,
+    credential_calls: Arc<Mutex<u64>>,
+    credential_fail: Arc<Mutex<bool>>,
 }
 
 impl FakeLedger {
+    /// A Credential ledger entry for `(subject, issuer, credential_type)`.
+    fn put_credential(
+        &self,
+        subject: &str,
+        issuer: &str,
+        credential_type: &str,
+        accepted: bool,
+        expiration: Option<u64>,
+    ) {
+        let mut e = json!({ "LedgerEntryType": "Credential", "Subject": subject, "Issuer": issuer, "CredentialType": credential_type,
+            "Flags": if accepted { LSF_ACCEPTED } else { 0 } });
+        if let Some(x) = expiration {
+            e["Expiration"] = json!(x);
+        }
+        self.credentials
+            .lock()
+            .unwrap()
+            .insert(format!("{subject}|{issuer}|{credential_type}"), e);
+    }
+    fn clear_credentials(&self) {
+        self.credentials.lock().unwrap().clear();
+    }
+    fn credential_calls(&self) -> u64 {
+        *self.credential_calls.lock().unwrap()
+    }
+    fn fail_credentials(&self, on: bool) {
+        *self.credential_fail.lock().unwrap() = on;
+    }
     fn put_tx(&self, hash: &str, v: Value) {
         self.txs.lock().unwrap().insert(hash.to_owned(), v);
     }
@@ -89,6 +123,23 @@ impl Ledger for FakeLedger {
             return Err(LedgerError::Rpc("ledger: unavailable".into()));
         }
         Ok(n)
+    }
+    async fn credential(
+        &self,
+        subject: &str,
+        issuer: &str,
+        credential_type: &str,
+    ) -> Result<Option<Value>, LedgerError> {
+        *self.credential_calls.lock().unwrap() += 1;
+        if *self.credential_fail.lock().unwrap() {
+            return Err(LedgerError::Rpc("ledger_entry: unavailable".into()));
+        }
+        Ok(self
+            .credentials
+            .lock()
+            .unwrap()
+            .get(&format!("{subject}|{issuer}|{credential_type}"))
+            .cloned())
     }
 }
 
@@ -545,6 +596,7 @@ async fn new_node_rebuilds_from_ledger_memos_and_refuses_bad_ledgers() {
         account: ledger.account.clone(),
         info: ledger.info.clone(),
         validated: ledger.validated.clone(),
+        ..FakeLedger::default()
     };
     let caught =
         Node::<FakeLedger>::rebuild_from_ledger(&ledger2, POOL, &mirror, &FeePolicy::off())
@@ -1434,4 +1486,232 @@ async fn protocol_fees_accrue_net_and_sweep_verified_on_ledger() {
     .await;
     assert_eq!((s, v["available"].as_u64()), (StatusCode::OK, Some(0)));
     std::fs::remove_dir_all(&dir).ok();
+}
+
+#[tokio::test]
+async fn credential_gate_refuses_deposits_without_an_accepted_credential_at_submit_and_endorse() {
+    const ISSUER: &str = "rwbgyYBhFiBExQ7K5yJKyYdvHYwGHdBamt";
+    const TYPE: &str = "436F6E666964616E744B5943"; // "ConfidantKYC"
+
+    // Policy parsing: the issuer must be an address, the type 1–64 bytes of hex; text is derived.
+    assert!(!CredentialGate::off().is_active());
+    assert!(matches!(
+        CredentialGate::new("not-an-address", TYPE, None),
+        Err(CredentialError::Policy(_))
+    ));
+    for bad in ["", "ABC", "zz", &"AB".repeat(65)] {
+        assert!(
+            matches!(
+                CredentialGate::new(ISSUER, bad, None),
+                Err(CredentialError::Policy(_))
+            ),
+            "{bad}"
+        );
+    }
+    let gate = CredentialGate::new(ISSUER, "436f6e666964616e744b5943", None).unwrap();
+    let p = gate.policy().unwrap();
+    assert_eq!(
+        (
+            p.issuer.as_str(),
+            p.credential_type.as_str(),
+            p.type_text.as_deref()
+        ),
+        (ISSUER, TYPE, Some("ConfidantKYC"))
+    );
+    assert_eq!(
+        CredentialGate::new(ISSUER, "00FF", None)
+            .unwrap()
+            .policy()
+            .unwrap()
+            .type_text,
+        None
+    );
+    assert_eq!(
+        CredentialGate::new(ISSUER, TYPE, Some("KYC"))
+            .unwrap()
+            .policy()
+            .unwrap()
+            .type_text
+            .as_deref(),
+        Some("KYC")
+    );
+
+    // check(): every refusal names issuer, type and account; the gate off passes anything.
+    let entry = |accepted: bool, exp: Option<u64>| {
+        let mut e = json!({ "Subject": "rAlice", "Issuer": ISSUER, "CredentialType": TYPE, "Flags": if accepted { LSF_ACCEPTED } else { 0 } });
+        if let Some(x) = exp {
+            e["Expiration"] = json!(x);
+        }
+        e
+    };
+    let why = |r: Result<(), CredentialError>| match r {
+        Err(CredentialError::Missing {
+            issuer,
+            type_text,
+            account,
+            why,
+        }) => {
+            assert_eq!(
+                (issuer.as_str(), type_text.as_str(), account.as_str()),
+                (ISSUER, "ConfidantKYC", "rAlice")
+            );
+            why
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    };
+    assert_eq!(why(gate.check("rAlice", None, 1_000)), "none on the ledger");
+    assert_eq!(
+        why(gate.check("rAlice", Some(&entry(false, None)), 1_000)),
+        "issued but not accepted by the subject"
+    );
+    assert_eq!(
+        why(gate.check("rAlice", Some(&entry(true, Some(1_000))), 1_000)),
+        "expired"
+    );
+    assert_eq!(
+        why(gate.check("rAlice", Some(&entry(true, Some(999))), 1_000)),
+        "expired"
+    );
+    for (k, v) in [
+        ("Issuer", "rSomeoneElse"),
+        ("Subject", "rBob"),
+        ("CredentialType", "00FF"),
+    ] {
+        let mut other = entry(true, None);
+        other[k] = json!(v);
+        assert_eq!(
+            why(gate.check("rAlice", Some(&other), 1_000)),
+            "the ledger answered for another credential",
+            "{k}"
+        );
+    }
+    assert!(gate
+        .check("rAlice", Some(&entry(true, None)), 1_000)
+        .is_ok());
+    assert!(gate
+        .check("rAlice", Some(&entry(true, Some(1_001))), 1_000)
+        .is_ok());
+    let mut lower = entry(true, None);
+    lower["CredentialType"] = json!(TYPE.to_lowercase());
+    assert!(
+        gate.check("rAlice", Some(&lower), 1_000).is_ok(),
+        "type hex case does not matter"
+    );
+    assert!(CredentialGate::off().check("rAlice", None, 1_000).is_ok());
+    assert!(ripple_now() > 800_000_000);
+    // A policy error reads as one; a refusal carries the contract's wording.
+    assert!(CredentialError::Policy("x".into())
+        .to_string()
+        .starts_with("credential policy:"));
+    assert!(gate
+        .check("rAlice", None, 1)
+        .unwrap_err()
+        .to_string()
+        .starts_with(&format!(
+            "no accepted credential from {ISSUER} of type ConfidantKYC for rAlice"
+        )));
+
+    // The node: gated vs open, at submit and at endorse, reading the ledger each time.
+    let ledger = FakeLedger::default();
+    let open = node(&ledger);
+    let gated =
+        Node::new(Verifier::new(), ledger.clone(), POOL, None).with_credential(gate.clone());
+    assert_eq!(
+        gated.credential_policy().map(|p| p.issuer.as_str()),
+        Some(ISSUER)
+    );
+    assert!(open.credential_policy().is_none());
+    let alice = Wallet::new();
+    let p1 = alice.build_shield(100).unwrap();
+    ledger.put_tx("DEP1", deposit_tx(POOL, "100", &p1.hash_hex()));
+    match gated.submit_shield(&p1.record, "DEP1").await {
+        Err(NodeError::Credential(m)) => assert!(
+            m.contains("no accepted credential")
+                && m.contains(ISSUER)
+                && m.contains("rAlice")
+                && m.contains("none on the ledger"),
+            "{m}"
+        ),
+        other => panic!("expected a credential refusal, got {other:?}"),
+    }
+    ledger.put_credential("rAlice", ISSUER, TYPE, false, None); // issued, not accepted
+    assert!(
+        matches!(gated.submit_shield(&p1.record, "DEP1").await, Err(NodeError::Credential(m)) if m.contains("not accepted"))
+    );
+    ledger.put_credential("rAlice", ISSUER, TYPE, true, Some(1)); // accepted long ago, expired
+    assert!(
+        matches!(gated.submit_shield(&p1.record, "DEP1").await, Err(NodeError::Credential(m)) if m.contains("expired"))
+    );
+    // The open node never asks the ledger for credentials.
+    let before = ledger.credential_calls();
+    let acc = open.submit_shield(&p1.record, "DEP1").await.unwrap();
+    assert_eq!(ledger.credential_calls(), before);
+    // Endorse runs the same gate: refused while expired, accepted once the credential is good.
+    let sub = Submission::Shield {
+        record: p1.record.clone(),
+        deposit: DepositRef {
+            tx_hash: "DEP1".into(),
+            delivered: 100,
+            memo_hash: p1.hash_hex(),
+        },
+    };
+    assert!(matches!(
+        gated.endorse(&sub, &acc.memo_hex).await,
+        Err(NodeError::Credential(_))
+    ));
+    ledger.put_credential("rAlice", ISSUER, TYPE, true, Some(ripple_now() + 3_600));
+    gated.endorse(&sub, &acc.memo_hex).await.unwrap();
+    let bob = Wallet::new();
+    let p2 = bob.build_shield(50).unwrap();
+    ledger.put_tx("DEP2", deposit_tx(POOL, "50", &p2.hash_hex()));
+    gated.submit_shield(&p2.record, "DEP2").await.unwrap();
+    // The ledger unreachable for the lookup: fail closed with a ledger error, never an acceptance.
+    ledger.fail_credentials(true);
+    let carol = Wallet::new();
+    let p3 = carol.build_shield(70).unwrap();
+    ledger.put_tx("DEP3", deposit_tx(POOL, "70", &p3.hash_hex()));
+    assert!(matches!(
+        gated.submit_shield(&p3.record, "DEP3").await,
+        Err(NodeError::Ledger(LedgerError::Rpc(_)))
+    ));
+    ledger.fail_credentials(false);
+
+    // HTTP: /policy reports the gate; a refusal is 403 and names the credential.
+    let app = http::router(Arc::new(
+        Node::new(Verifier::new(), ledger.clone(), POOL, None).with_credential(gate.clone()),
+    ));
+    let (s, v) = call(&app, "GET", "/policy", None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        (
+            v["credential"]["issuer"].as_str(),
+            v["credential"]["type"].as_str(),
+            v["credential"]["typeText"].as_str()
+        ),
+        (Some(ISSUER), Some(TYPE), Some("ConfidantKYC"))
+    );
+    assert_eq!(
+        (
+            v["screening"]["active"].as_bool(),
+            v["screening"]["standbyLedgers"].as_u64()
+        ),
+        (Some(false), Some(0))
+    );
+    ledger.clear_credentials();
+    let dave = Wallet::new();
+    let p4 = dave.build_shield(30).unwrap();
+    ledger.put_tx("DEP4", deposit_tx(POOL, "30", &p4.hash_hex()));
+    let (s, v) = call(
+        &app,
+        "POST",
+        "/submit/shield",
+        Some(json!({ "record": p4.record, "depositTxHash": "DEP4" })),
+    )
+    .await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    assert!(v["error"].as_str().unwrap().contains("credential"), "{v}");
+    let open_app = http::router(Arc::new(node(&ledger)));
+    let (s, v) = call(&open_app, "GET", "/policy", None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(v["credential"].is_null());
 }

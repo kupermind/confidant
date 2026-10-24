@@ -188,6 +188,10 @@
     <div id="issuer-none">
       <p>No issuer account in this browser yet. Creating one takes a testnet faucet call (10–30 s).</p>
       <div class="row"><button class="btn primary" id="btn-create-issuer" type="button">Create issuer account</button></div>
+      <details><summary>Use an existing issuer (the one the pool's nodes are configured for)</summary>
+        <div class="row"><input type="password" id="seed" placeholder="issuer seed (s…)" autocomplete="off"><button class="btn" id="btn-import-issuer" type="button">Import</button></div>
+        <div class="src">The seed stays in this browser's storage; nothing is sent anywhere. Testnet only.</div>
+      </details>
     </div>
     <div id="issuer-has" hidden>
       <div class="row"><span class="mono" id="issuer-addr"></span><button class="btn" id="btn-copy-issuer" type="button">Copy</button><a id="issuer-link" href="#" target="_blank" rel="noopener">on the explorer</a></div>
@@ -308,6 +312,11 @@
     else $("net").textContent = "testnet (demo data)";
     const sub = new URLSearchParams(location.search).get("subject"); if (sub) $("subject").value = sub;
     render(); $("btn-create-issuer").addEventListener("click", createIssuer); $("btn-issue").addEventListener("click", issue); $("btn-refresh").addEventListener("click", refresh);
+    $("btn-import-issuer").addEventListener("click", async () => {
+      const seed = $("seed").value.trim();
+      try { const w = xrpl.Wallet.fromSeed(seed); store.set("issuer", { seed, address: w.address }); $("seed").value = ""; msg("issuer-msg", `Issuer imported: <span class="mono">${w.address}</span>`, "ok"); render(); await refresh(); }
+      catch (e) { msg("issuer-msg", "That is not a valid seed.", "err"); }
+    });
     $("btn-copy-issuer").addEventListener("click", async () => { try { await navigator.clipboard.writeText(issuer().address); } catch {} });
     await refresh();
   })();

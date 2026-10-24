@@ -364,6 +364,14 @@ is a public, verifiable policy of the pool (every shield, unshield and sweep is 
 in the log); it is not a privacy feature, and the treasury is an ordinary XRPL account under the
 same k-of-N as the pool account.
 
+**Credential gate (optional policy; every node enforces its own; hackathon feature A).** A node started with
+`--credential-issuer` and `--credential-type` accepts a shield only if the deposit's sender holds an XLS-70
+Credential on the ledger from that issuer, of that type, accepted by the subject and not expired — read by the
+node itself from the validated ledger at submit and again at endorse (the sidecar rule is unchanged: it signs
+nothing its node did not accept), failing closed when the ledger cannot be read; refusals are 403 and name
+issuer, type and account. Do not say "KYC'd pool": it is gatekeeping on a trusted issuer's say-so at the public
+boundary — the issuer vouches for whoever it chooses — and it says nothing about anyone's notes.
+
 **Boundary screening (optional policy; every node enforces its own).** A node started with
 `--screening-list FILE` (one XRPL address per line or a JSON array — e.g. OFAC's "Digital Currency
 Address - XRP" entries via `backend/quorum/screening/fetch-ofac.mjs`) and

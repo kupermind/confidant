@@ -60,6 +60,29 @@ impl Ledger for JsonRpc {
         .await
     }
 
+    async fn credential(
+        &self,
+        subject: &str,
+        issuer: &str,
+        credential_type: &str,
+    ) -> Result<Option<Value>, LedgerError> {
+        let r = self
+            .call(
+                "ledger_entry",
+                json!({
+                    "credential": { "subject": subject, "issuer": issuer, "credential_type": credential_type },
+                    "ledger_index": "validated",
+                }),
+            )
+            .await;
+        match r {
+            Ok(v) => Ok(v.get("node").cloned()),
+            // No such entry is an ordinary answer, not a failure.
+            Err(LedgerError::Rpc(m)) if m.contains("entryNotFound") => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     async fn validated_ledger_index(&self) -> Result<u64, LedgerError> {
         let r = self
             .call("ledger", json!({ "ledger_index": "validated" }))
