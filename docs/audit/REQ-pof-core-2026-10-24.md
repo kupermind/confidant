@@ -72,3 +72,13 @@ IMPL-PASS for the core slice under conditions 2–4; a view on amount == value b
 chooses X; "≥ X" is what it proves about the balance, not the bundle); confirm pool_bundle + verify() +
 memo refusals are the complete set of apply-path entries.
 ```
+
+## Supplement — the dev session's firsthand code map (sent 2026-10-24 with the REQ, verbatim excerpt)
+
+```text
+- Decode sites: bundle_from_record is called at exactly three places in verifier.rs — :306 inside pool_bundle (after the op refusal), :323 inside verify_proof_of_funds, and :648 inside rebuild_inner. Apply paths: submit_shield :458, endorse :517 (after AnchorMemo::from_record :511 refuses a PoF record first → MemoMalformed), submit_transfer :533, submit_unshield :547, replay :560 (restore → replay) all go through pool_bundle. verify() :226 refuses op == ProofOfFunds before the sign check.
+- ONE GAP vs the owner's "complete set" claim: rebuild_inner (:648) decodes the mirror's record directly, not through pool_bundle. What protects it: the anchor memo is decoded first and AnchorMemo::decode refuses op byte 4, so a PoF MEMO cannot drive a rebuild; a PoF RECORD substituted in the mirror under a genuine pool memo (op 1–3) is then decoded and reaches accept → verify(bundle, memo.op, …) → refused by signature under the pool sighash (InvalidSpendAuth; the PoF was signed under the PoF domain), state unchanged — i.e. fail-closed, but refused by SIGNATURE DOMAIN, not by TYPE, which is exactly what condition 2 wanted avoided on every path. Fix is one line (use v.pool_bundle(&record) at :648) plus a test row (PoF record in the mirror under a pool memo → NotAPoolOperation).
+```
+
+The fix and the two test rows (the forged-memo rebuild row; a value-balance-zero record relabelled as a
+proof of funds refused by amount) landed on the branch the same day; the audit's RESP records the ruling.

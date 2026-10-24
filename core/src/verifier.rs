@@ -298,7 +298,7 @@ impl Verifier {
 
     /// Decodes a record for an apply path. A proof of funds is refused here by its op tag — before
     /// decoding, before the sign check, before any signature — on every path that could apply or
-    /// anchor it (submit, endorse, replay).
+    /// anchor it (submit, endorse, replay, and the mirror's records during a rebuild).
     fn pool_bundle(&self, record: &BundleRecord) -> Result<Bundle<Authorized, i64>, Error> {
         if record.op == OpTag::ProofOfFunds {
             return Err(Error::NotAPoolOperation);
@@ -645,7 +645,9 @@ impl Verifier {
                 check_deposit_binding(&record, &deposit)?;
                 expected = Some(deposit.delivered);
             }
-            let bundle = bundle_from_record(&record, v.params.version)?;
+            // The mirror's record is refused by type here too: a proof of funds under a genuine
+            // pool memo must not rest on the signature domain alone (audit condition 2).
+            let bundle = v.pool_bundle(&record)?;
             let acc = v.accept(bundle, memo.op, &memo.external, expected, record.timestamp)?;
             if acc.new_root != hex::encode(memo.root) {
                 return Err(Error::MemoMismatch {
