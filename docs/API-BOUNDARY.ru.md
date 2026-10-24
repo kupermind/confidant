@@ -133,9 +133,7 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
 
 *Построено 2026-10-24 (день события) поверх слайса ядра (`core`: `OpTag::ProofOfFunds`, домен `ConfidantPoF_v1_`).
 Сторона узла: `backend/node/src/pof.rs` и `POST /pof/verify`; сторона держателя: экспорт wasm
-`buildProofOfFunds(amount, challenge)` и операция воркера `pof({ amount, challenge })` (одно имя на всех поверхностях: операция воркера, маршрут wallet-сервиса, эндпоинт узла). Путь подписи
-`credential-pof` (кворум записывает истекающий Credential на аккаунт заёмщика) — отдельный слайс под правилом
-отгрузки из `docs/PROOF-OF-FUNDS.md` §6.*
+`buildProofOfFunds(amount, challenge)` и операция воркера `pof({ amount, challenge })` (одно имя на всех поверхностях: операция воркера, маршрут wallet-сервиса, эндпоинт узла). Путь подписи `credential-pof` (кворум записывает истекающий Credential на аккаунт заёмщика) тоже в проде — IMPL-PASS 2026-10-24, `docs/audit/RESP-pof-credential-2026-10-24.md`.*
 
 - **Challenge.** Кредитор заполняет `{ borrower, lender, ledgerIndex, expiry }`: `borrower` — классический XRPL-адрес
   заёмщика (X-адреса отклоняются, чтобы обе стороны подписывали одни и те же байты); `lender` — непрозрачный идентификатор
@@ -174,7 +172,7 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
   узел из `/config.nodes`, таблица вердиктов с «k из N узлов подтвердили» и `meaning` узлов дословно; 400 (устарел /
   истёк) и 409 (не проходит) объяснены. Карточка «что сказано / что не сказано / не блокировка» закрывает страницу.
   `?demo=1` имитирует четыре узла (один занят, 429) и загружает демо-пакет.
-- **На леджере (путь подписи, построен 2026-10-24 — отгружается только со своим IMPL-PASS).** Когда k из N узлов
+- **На леджере (путь подписи, построен, прошёл аудит и развёрнут 2026-10-24).** Когда k из N узлов
   подтвердили, вкладка Prove funds предлагает *записать на леджер как Credential*: `POST /pof/credential` с тем же телом.
   Ответ называет транзакцию `CredentialCreate` и поля; затем приложение предлагает **Confirm with my signature** —
   `CredentialAccept { Account: заёмщик, Issuer: пул, CredentialType }`, подписанный в браузере XRPL-аккаунтом держателя

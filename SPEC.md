@@ -222,8 +222,7 @@ was judged against. The record is never applied, persisted or logged. The verdic
 not a lock, not proof that the borrower owns the notes; nothing reaches the ledger in this slice (the `credential-pof`
 signing path is separate, under the ship rule).
 
-**Proof of funds on the ledger (feature C, Tier 1 signing path; built on-site 2026-10-24, ships only with its own IMPL-PASS
-in-window).** A verdict may be recorded by the quorum as an expiring XLS-70 Credential from the pool account to the
+**Proof of funds on the ledger (feature C, Tier 1 signing path; built on-site 2026-10-24, IMPL-PASS the same day, live on the testnet quorum).** A verdict may be recorded by the quorum as an expiring XLS-70 Credential from the pool account to the
 borrower: `CredentialType` "ConfidantPoF", `Expiration` = the close time of ledger `L` plus 4 s per ledger to `E`, `URI` =
 `confidant/pof/v1|X|L|E|<digest of the challenge>` — every node derives these from the challenge it verified, and a sidecar
 signs only a `CredentialCreate` equal to **its own node's** fields after that node re-verified the proof at signing time

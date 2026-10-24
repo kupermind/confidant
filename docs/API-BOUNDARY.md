@@ -132,8 +132,7 @@ coordinator copies into `/config.credential`.*
 
 *Built 2026-10-24 (event day) on the core slice (`core`: `OpTag::ProofOfFunds`, domain `ConfidantPoF_v1_`). Node side:
 `backend/node/src/pof.rs` and `POST /pof/verify`; holder side: the wasm export `buildProofOfFunds(amount, challenge)` and
-the worker op `pof({ amount, challenge })` (one name on every surface: worker op, wallet-service route, node endpoint). The `credential-pof` signing path (the quorum writing an expiring
-Credential on the borrower's account) is a separate slice under the ship rule in `docs/PROOF-OF-FUNDS.md` §6.*
+the worker op `pof({ amount, challenge })` (one name on every surface: worker op, wallet-service route, node endpoint). The `credential-pof` signing path (the quorum writing an expiring Credential on the borrower's account) is live too — IMPL-PASS 2026-10-24, `docs/audit/RESP-pof-credential-2026-10-24.md`.*
 
 - **Challenge.** The lender fills `{ borrower, lender, ledgerIndex, expiry }`: `borrower` is the borrower's classic XRPL
   address (X-addresses refused, so both sides sign the same bytes); `lender` an opaque id — a name, an account, a request
@@ -174,7 +173,7 @@ Credential on the borrower's account) is a separate slice under the ship rule in
   verified" and the nodes' `meaning` verbatim; a 400 (stale / expired) and a 409 (does not verify) are explained. A
   "told / not told / not a lock" card closes the page. `?demo=1` fakes four nodes (one busy, 429) and loads a demo
   package.
-- **On the ledger (signing path, built 2026-10-24 — ships only with its own IMPL-PASS).** When k of N nodes verified, the
+- **On the ledger (signing path, built, passed and deployed 2026-10-24).** When k of N nodes verified, the
   Prove funds tab offers *record it on the ledger as a Credential*: `POST /pof/credential` with the same body. The answer
   names the `CredentialCreate` transaction and the fields; the app then offers **Confirm with my signature** —
   `CredentialAccept { Account: borrower, Issuer: pool, CredentialType }` signed in the browser by the holder's XRPL account
