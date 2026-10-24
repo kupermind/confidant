@@ -159,6 +159,7 @@ loopback to the services; add the browser's proof time from the table above for 
 | C: `POST /pof/credential` → `CredentialCreate` validated (3 sidecars re-verify, 2-of-3 multisign) | ≈ 9 s |
 | C: the holder's `CredentialAccept` validated | ≈ 7 s |
 | C: lender page, "Check the ledger" (`account_objects`) | < 1 s |
+| Mastercard track: 402 → channel open → voucher redeemed → relay → anchor on L1 → settlement receipt (2026-10-25, live) | 68 s wall; ≈ 44 s with an open channel (`CHANNEL_ID`) |
 
 So the on-stage lending beat (prove → every node → record on the ledger → confirm → lender reads it) is ≈ 30 s of waiting
 after the proof, all of it visible as explorer links.

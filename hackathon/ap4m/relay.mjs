@@ -68,16 +68,24 @@ const paymentRequired = (res, why) => send(res, 402, {
   then: "POST /relay/transfer { record, channelId, claimId }",
 });
 
+/** The public RPC occasionally fails a read ("failed to fetch header by number"); a read is retried before it is a 502. */
+async function rpc(fn, what) {
+  let last;
+  for (let i = 1; i <= 3; i++) { try { return await fn(); } catch (e) { last = e; console.error(`relay: ${what} attempt ${i} failed: ${String(e.message).slice(0, 120)}`); await new Promise((ok) => setTimeout(ok, 1500 * i)); } }
+  throw last;
+}
+const LOOKBACK_BLOCKS = 50_000; // ≈ 2 days of XRPL EVM testnet blocks: the event's lifetime
+
 /** The claim must be redeemed on the PaymentLedger for this channel, cover the price, and be unused. */
 async function verifyClaim(channelId, claimId) {
   if (!/^0x[0-9a-f]{64}$/.test(channelId ?? "") || !/^0x[0-9a-f]{64}$/.test(claimId ?? "")) return "channelId and claimId must be 32-byte hex";
   if (spent.has(claimId)) return "claim already used for a relay";
   const ledger = context.x402.merchant.ledger;
-  const latest = await provider.getBlockNumber();
+  const latest = await rpc(() => provider.getBlockNumber(), "latest block");
   const event = PARTICIPANT_LEDGER_INTERFACE.getEvent("VoucherRedeemed");
-  const logs = await readPublicLogs(provider, { address: ledger, topics: [event.topicHash, channelId, claimId], fromBlock: Math.max(0, latest - 200_000), toBlock: latest });
+  const logs = await rpc(() => readPublicLogs(provider, { address: ledger, topics: [event.topicHash, channelId, claimId], fromBlock: Math.max(0, latest - LOOKBACK_BLOCKS), toBlock: latest }), "VoucherRedeemed logs");
   if (logs.length !== 1) return `no VoucherRedeemed for this claim at the PaymentLedger (${logs.length} found)`;
-  const claim = await readParticipantClaim(provider, context.participantRequest, claimId, latest);
+  const claim = await rpc(() => readParticipantClaim(provider, context.participantRequest, claimId, latest), "claim read");
   if (claim.channelId !== channelId) return "claim belongs to another channel";
   if (BigInt(claim.amount) < price) return `claim pays ${ethers.formatUnits(claim.amount, 18)} RLUSD, the relay costs ${PRICE_RLUSD}`;
   return { tx: logs[0].transactionHash, amount: claim.amount };

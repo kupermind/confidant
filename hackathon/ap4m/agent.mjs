@@ -88,8 +88,13 @@ say(`paid: claim ${purchase.claimId.slice(0, 12)}…, VoucherRedeemed ${config.n
 await fetch(`${AP4M_API_URL}/public/participant/record-redemption`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ tx_hash: purchase.transactionHash }) }).catch(() => {});
 
 // 5. Now the relay forwards the bundle to the quorum.
-r = await post(`${RELAY_URL}/relay/transfer`, { record, channelId, claimId: purchase.claimId }, 6);
-if (r.status !== 200) { console.error(`relay refused after payment: ${r.status} ${JSON.stringify(r.body).slice(0, 300)} — the claim is kept; rerun to retry`); process.exit(1); }
+for (let i = 1; ; i++) {
+  r = await post(`${RELAY_URL}/relay/transfer`, { record, channelId, claimId: purchase.claimId }, 6);
+  if (r.status === 200) break;
+  // A 5xx with the claim kept is the relay's own upstream (the public RPC or the quorum) having a moment: retry.
+  if (r.status >= 500 && r.body?.claimKept && i < 6) { say(`relay ${r.status} (${String(r.body.error).slice(0, 80)}…) — claim kept, retrying in 5 s`); await new Promise((ok) => setTimeout(ok, 5000)); continue; }
+  console.error(`relay refused after payment: ${r.status} ${JSON.stringify(r.body).slice(0, 300)} — the claim is kept; rerun to retry`); process.exit(1);
+}
 try { unlinkSync(PENDING); } catch {}
 say(`relayed: anchored on XRPL L1 — https://testnet.xrpl.org/transactions/${r.body.anchorTx} (no sender, receiver or amount in the memo)`);
 
