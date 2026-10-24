@@ -50,7 +50,9 @@ impl IntoResponse for ApiError {
             NodeError::Fee(_) => StatusCode::CONFLICT,
             NodeError::Ledger(_) => StatusCode::BAD_GATEWAY,
             NodeError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            NodeError::Screened(_) | NodeError::Credential(_) => StatusCode::FORBIDDEN,
+            NodeError::Screened(_) | NodeError::Credential(_) | NodeError::PofDisabled => {
+                StatusCode::FORBIDDEN
+            }
             NodeError::Pof(_) => StatusCode::BAD_REQUEST,
             NodeError::Busy => StatusCode::TOO_MANY_REQUESTS,
         };

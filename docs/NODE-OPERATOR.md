@@ -37,6 +37,12 @@ transactions — only for roots it computed itself.
   yourself), `submit-transfer`, `submit-unshield`. Reject = nothing changes.
 - Serve your log (`export-log`) so wallets can sync and other nodes can rebuild.
 
+- **The nullifier-revealing proof-of-funds path is OFF by default** (`--pof-revealing-enabled` turns it on). It is
+  rejected at the design level: a verified proof reveals the proven notes' nullifiers to your node, so a later spend
+  can be relinked to the proof's metadata — a regression of graph-hiding (see
+  `docs/design/TIER4-PROOF-OF-FUNDS-REWRITE.md`). The flag exists only so a deliberate, controlled demo can enable it
+  until the Tier-4 circuit (which reveals no nullifier) replaces the proof. With it off, `POST /pof/verify`, the
+  `credential-pof` sidecar kind and the coordinator route all refuse (403), and the rest of this section does not apply.
 - Answer `POST /pof/verify` (proof of funds, feature C) **read-only on your own state**, judging the challenge's
   ledger window against the validated ledger index you read yourself. **Never log or persist the record** — it carries the
   holder's nullifiers. The node caps the body at 256 KiB and runs at most four verifications at a time (429 beyond);

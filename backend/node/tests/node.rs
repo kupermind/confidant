@@ -1840,13 +1840,49 @@ async fn credential_gate_refuses_deposits_without_an_accepted_credential_at_subm
 }
 
 #[tokio::test]
+async fn proof_of_funds_revealing_disabled_by_default() {
+    // The nullifier-revealing proof-of-funds path is OFF unless a node opts in. With the default
+    // node, /pof/verify refuses with PofDisabled (403) BEFORE the record is read — the node never
+    // sees a nullifier. (The Tier-4 circuit replaces the proof; until then this path stays off.)
+    use confidant_node::PofChallenge;
+    let ledger = FakeLedger::default();
+    let n = Arc::new(node(&ledger)); // default: revealing OFF
+    let app = http::router(n.clone());
+    let ch = PofChallenge {
+        borrower: "rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf".into(),
+        lender: "lender-1".into(),
+        ledger_index: 990,
+        expiry: 1500,
+    };
+    // The node refuses before reading the record, so any BundleRecord serves (no funds needed).
+    let alice = Wallet::new();
+    let p = alice.build_shield(150).unwrap();
+    // Node level: refused as PofDisabled, before any permit, ledger read or verification.
+    assert!(matches!(
+        n.verify_proof_of_funds(&p.record, 120, &ch, true).await,
+        Err(NodeError::PofDisabled)
+    ));
+    // Over HTTP: 403 Forbidden.
+    let (s, _v) = call(
+        &app,
+        "POST",
+        "/pof/verify",
+        Some(json!({ "record": p.record, "amount": 120, "challenge": ch, "credential": true })),
+    )
+    .await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge() {
     use confidant_node::{
         PofChallenge, CHALLENGE_PREFIX, MAX_EXPIRY_WINDOW, MAX_LENDER_LEN, MEANING,
         POF_CREDENTIAL_CAP, POF_CREDENTIAL_TYPE, POF_PERMITS, RECENT_WINDOW, SECONDS_PER_LEDGER,
     };
     let ledger = FakeLedger::default();
-    let n = Arc::new(node(&ledger));
+    // This test exercises the deprecated nullifier-revealing path, so it opts the node in; the
+    // default (off) is covered by `proof_of_funds_revealing_disabled_by_default`.
+    let n = Arc::new(node(&ledger).with_pof_revealing(true));
     let app = http::router(n.clone());
     let mut alice = Wallet::new();
     for (i, amount) in [100u64, 50].iter().enumerate() {
@@ -2058,7 +2094,9 @@ async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge()
     const ISSUER_A: &str = "rwbgyYBhFiBExQ7K5yJKyYdvHYwGHdBamt";
     const TYPE_A: &str = "436F6E666964616E744B5943";
     let gate = CredentialGate::new(ISSUER_A, TYPE_A, Some("ConfidantKYC")).unwrap();
-    let gated = Node::new(Verifier::new(), ledger.clone(), POOL, None).with_credential(gate);
+    let gated = Node::new(Verifier::new(), ledger.clone(), POOL, None)
+        .with_credential(gate)
+        .with_pof_revealing(true);
     ledger.put_credential("rAlice", ISSUER_A, TYPE_A, true, None); // the depositor of the fake deposits
     for (i, r) in n.log(0).iter().enumerate() {
         gated.submit_shield(r, &format!("D{i}")).await.unwrap();
