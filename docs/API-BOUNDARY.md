@@ -113,7 +113,9 @@ the same PR as the code, if the node needs it different.*
 - **Holder side (UI).** The wallet card shows an *Eligibility* row: `accepted ✓` / `issued — press Accept`
   / `none — get one from the issuer`; *Accept* signs `CredentialAccept { Account: holder, Issuer,
   CredentialType }` with the holder's XRPL account in the browser (xrpl.js); a refused shield links to
-  the issuer page. The demo issuer is a static page (`frontend/issuer.html`): a faucet-funded XRPL
+  the issuer page. Until the node side ships `credential` in `/config`, the issuer page hands the holder over with
+  `/?accept=<issuer>:<typeHex>`, which the app keeps in storage and treats as the gate's config (demo path only).
+  The demo issuer is a static page (`frontend/issuer.html`): a faucet-funded XRPL
   account playing the KYC provider, which signs `CredentialCreate { Account: issuer, Subject: holder,
   CredentialType, Expiration? }` for any address pasted in and prints its own address and the type for
   the node operators' config. Honest label: the issuer is a demo persona; the gate is real on the ledger.

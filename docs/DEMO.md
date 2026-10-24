@@ -56,6 +56,15 @@ is who holds what and who paid whom inside."
 Keep the fee line short: "the pool takes 0.25 % on the way in and out — public policy, every sweep is
 on the ledger — transfers inside are free."
 
+## Credential gate (feature A) — the holder side on stage
+
+1. Open `/issuer.html` ("the KYC provider"): Create issuer account once, paste the holder's XRPL address, **Issue**.
+   Say: "a demo persona; the credential it writes is a real XLS-70 object on the ledger."
+2. In the app the wallet card's **Eligibility** row reads "issued — accept it to shield"; press **Accept** (the holder's
+   own signature binds the account). It turns into "accepted ✓".
+3. Shield as usual. Without the credential the verifiers refuse with a 403 that names the issuer, and the app links to
+   the issuer page. While the node side is not configured, the issuer page's hand-off link (`/?accept=…`) shows the row.
+
 ## The "what if your server dies" question
 
 Answer with the snapshot: the ledger names every bundle by hash; the public log is pinned on IPFS under

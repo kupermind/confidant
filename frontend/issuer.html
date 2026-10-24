@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Confidant — demo issuer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+  // Theme: the saved choice wins, otherwise the system setting. Runs before the first paint, so no flash.
+  (function () { var t = null; try { t = localStorage.getItem("confidant-theme"); } catch (e) {}
+    if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", t); })();
+</script>
+<meta name="description" content="A demo KYC issuer for Confidant: a testnet account that issues XLS-70 Credentials the pool can require before accepting a deposit.">
+<style>
+  /* Palette and scale shared by every page. Surfaces, grays and the type scale follow liminal-ui;
+     the violet is the one accent: --accent for fills, --accent-text for text on the page background. */
+  :root {
+    color-scheme: light;
+    --bg: oklch(0.967 0.004 250); --sunken: oklch(0.950 0.005 250); --surface: #FFFFFF;
+    --line: oklch(0.915 0.007 250); --line-2: oklch(0.86 0.010 250);
+    --text: oklch(0.1448 0 0); --muted: oklch(0.4419 0.0146 250); --faint: oklch(0.5517 0.0138 250);
+    --accent: #7919FF; --accent-hover: #6B16E3; --accent-active: #5E13C8; --accent-ink: #FFFFFF;
+    --accent-text: #6412D9; --accent-soft: rgba(121,25,255,.08); --link: var(--accent-text);
+    --live: #15804A; --warn: #B8740F; --danger: #C93838;
+    --alpha-1: rgba(0,0,0,.05); --alpha-2: rgba(0,0,0,.10); --alpha-3: rgba(0,0,0,.15);
+    --edge-a: .22; --edge-neutral: 0 0 0; --edge-neutral-a: .07;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 12px rgba(0,0,0,.04);
+    --f-display: "Sora", system-ui, sans-serif;
+    --f-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --f-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; --mono: var(--f-mono);
+    --ease: cubic-bezier(.2, 0, 0, 1);
+    --ease-release: linear(0, 0.173, 0.5162, 0.8384, 1.0501, 1.1407, 1.1426, 1.0993, 1.0468, 1.0059, 0.9836, 0.9775, 0.9814, 0.9891, 0.9964, 1.0011, 1.0032, 1.0032, 1.0022, 1.0011, 1.0001);
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: oklch(0.1535 0.0072 258.4); --sunken: oklch(0.1381 0.0059 245.02); --surface: oklch(0.1938 0.0077 248.22);
+    --line: rgba(255,255,255,.10); --line-2: rgba(255,255,255,.16);
+    --text: oklch(0.9851 0 0); --muted: rgba(255,255,255,.64); --faint: rgba(255,255,255,.46);
+    --accent-text: oklch(0.9851 0 0); --accent-soft: rgba(121,25,255,.16);
+    --live: #4FD08A; --warn: #F5A524; --danger: #F08080;
+    --alpha-1: rgba(255,255,255,.09); --alpha-2: rgba(255,255,255,.12); --alpha-3: rgba(255,255,255,.17);
+    --edge-a: .28; --edge-neutral: 255 255 255; --edge-neutral-a: .05;
+    --shadow: none;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  [hidden] { display: none !important; }
+  body { background: var(--bg); color: var(--text); font-family: var(--f-body); -webkit-font-smoothing: antialiased; }
+  a { color: var(--link); text-decoration: none; } a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  h1, h2, h3 { font-family: var(--f-display); font-weight: 600; margin: 0; }
+  .mono { font-family: var(--f-mono); }
+
+  /* Buttons: the liminal-ui contract. No border; depth is a bottom bevel that moves to the top on press;
+     hover is one shade darker and a half-pixel lift; press sinks and scales to .99. Default = neutral. */
+  button, .btn {
+    --btn-bg: var(--alpha-1); --btn-bg-hover: var(--alpha-2); --btn-bg-active: var(--alpha-3); --btn-fg: var(--text);
+    --btn-edge: var(--edge-neutral); --btn-edge-a: var(--edge-neutral-a); --btn-edge-y: 3px;
+    position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font: 500 14px/1.25 var(--f-body); color: var(--btn-fg); background: var(--btn-bg);
+    border: 0; border-radius: 12px; padding: 9px 16px; cursor: pointer; white-space: nowrap; user-select: none; text-decoration: none;
+    corner-shape: squircle;
+    box-shadow: inset 0 calc(var(--btn-edge-y) * -1) 0 0 rgb(var(--btn-edge) / var(--btn-edge-a)), inset 0 0 0 0 rgb(var(--btn-edge) / var(--btn-edge-a));
+    transition: background-color 320ms var(--ease), color 320ms var(--ease), box-shadow 320ms var(--ease), translate 500ms var(--ease-release), scale 500ms var(--ease-release);
+  }
+  @media (hover: hover) { button:hover, .btn:hover { background: var(--btn-bg-hover); color: var(--btn-fg); translate: 0 -.5px; text-decoration: none; } }
+  button:active, .btn:active {
+    background: var(--btn-bg-active); translate: 0 .5px; scale: .99;
+    box-shadow: inset 0 0 0 0 rgb(var(--btn-edge) / var(--btn-edge-a)), inset 0 var(--btn-edge-y) 1px 0 rgb(var(--btn-edge) / var(--btn-edge-a));
+    transition: background-color 320ms var(--ease), color 320ms var(--ease), box-shadow 160ms var(--ease), translate 160ms var(--ease), scale 160ms var(--ease);
+  }
+  button:disabled, .btn[aria-disabled="true"] { opacity: .5; pointer-events: none; }
+  .primary { --btn-bg: var(--accent); --btn-bg-hover: var(--accent-hover); --btn-bg-active: var(--accent-active); --btn-fg: var(--accent-ink); --btn-edge: 0 0 0; --btn-edge-a: var(--edge-a); font-weight: 600; }
+  .ghost { --btn-bg: transparent; --btn-bg-hover: var(--alpha-1); --btn-bg-active: var(--alpha-2); --btn-edge-a: 0; --btn-fg: var(--muted); }
+  @media (hover: hover) { .ghost:hover { --btn-fg: var(--text); } }
+  .small { font-size: 13px; padding: 5px 10px; border-radius: 10px; --btn-edge-y: 2px; }
+  .lg { font-size: 16px; padding: 12px 22px; border-radius: 14px; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: r .8s linear infinite; vertical-align: -2px; opacity: .8; }
+  @keyframes r { to { transform: rotate(360deg); } }
+
+  /* Header: brand · navigation · backend status · theme switch */
+  header.bar { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .mark { font-family: var(--f-display); font-weight: 700; letter-spacing: .12em; font-size: 16px; color: var(--text); }
+  .mark:hover { text-decoration: none; color: var(--accent-text); }
+  .brand .sep { width: 1px; height: 18px; background: var(--line-2); }
+  .brand small { font-size: 13px; color: var(--faint); white-space: nowrap; }
+  nav.nav { display: flex; align-items: center; gap: 6px 20px; flex-wrap: wrap; margin-left: auto; }
+  nav.nav > a { font-size: 14px; color: var(--muted); } nav.nav > a:hover { color: var(--text); text-decoration: none; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 9px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--muted); background: var(--surface); white-space: nowrap; }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 22%, transparent); }
+  .pill.off .dot { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 22%, transparent); }
+  .pill.wait .dot { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 22%, transparent); }
+  .theme { width: 32px; height: 32px; padding: 0; border-radius: 999px; --btn-bg: transparent; --btn-bg-hover: var(--alpha-1); --btn-bg-active: var(--alpha-2); --btn-edge-a: 0; --btn-fg: var(--muted); border: 1px solid var(--line); }
+  .theme svg { width: 15px; height: 15px; }
+  .theme .sun { display: none; } :root[data-theme="dark"] .theme .sun { display: block; } :root[data-theme="dark"] .theme .moon { display: none; }
+  @media (max-width: 560px) { .brand .sep, .brand small { display: none; } header.bar { gap: 10px; } .theme { margin-left: auto; } nav.nav { order: 3; width: 100%; margin: 0; gap: 6px 14px; } }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; corner-shape: squircle; padding: 24px; box-shadow: var(--shadow); min-width: 0; }
+  .card h2 { font-size: 15px; line-height: 1.4; margin: 0 0 12px; }
+
+  body { font-size: 15px; line-height: 1.55; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 20px 48px; }
+  header.bar { margin-bottom: 24px; }
+  h1 { font-size: 28px; line-height: 1.25; letter-spacing: -.015em; margin: 6px 0 8px; }
+  h2 { font-size: 18px; line-height: 1.35; margin: 28px 0 10px; }
+  p { margin: 0 0 10px; }
+  .lede { color: var(--muted); max-width: 64ch; font-size: 16px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .two { grid-template-columns: 1fr; } }
+  .big { font-family: var(--f-display); font-size: 28px; font-weight: 700; letter-spacing: -.01em; color: var(--text); margin: 4px 0 6px; font-variant-numeric: tabular-nums; }
+  .big small { font-family: var(--f-body); font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+  .k { font-size: 12px; color: var(--faint); }
+  .eq { font-family: var(--mono); font-size: 13px; color: var(--text); background: var(--sunken); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 12px; overflow-wrap: anywhere; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--faint); font-weight: 500; }
+  td.n, th.n { text-align: right; font-family: var(--mono); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  tr.total td { font-weight: 700; border-bottom: 0; }
+  tr.check td { color: var(--muted); font-size: 13px; border-bottom: 0; }
+  @media (max-width: 480px) {
+    thead { display: none; }
+    tr, td { display: block; }
+    tr { border-bottom: 1px solid var(--line); padding: 6px 0; }
+    td { border-bottom: 0; padding: 2px 0; }
+    td.n { text-align: right; white-space: normal; padding-top: 4px; }
+    tr.total, tr.check { border-bottom: 0; }
+  }
+  td .why { display: block; color: var(--muted); font-size: 12.5px; }
+  .ok { color: var(--live); font-weight: 600; } .bad { color: var(--danger); font-weight: 600; }
+  .src { color: var(--muted); font-size: 12.5px; margin-top: 10px; overflow-wrap: anywhere; }
+  .mono { font-size: 13px; }
+  details { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 0 16px; margin-bottom: 8px; box-shadow: var(--shadow); }
+  summary { cursor: pointer; padding: 12px 0; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; color: var(--accent-text); font-weight: 700; flex: none; }
+  details[open] summary::after { content: "–"; }
+  details > div { padding: 0 0 14px; color: var(--text); }
+  details p { margin: 0 0 8px; }
+  code { font-family: var(--mono); font-size: 13px; background: var(--sunken); padding: 1px 5px; border-radius: 5px; }
+  .note { color: var(--muted); font-size: 13px; margin-top: 16px; max-width: 72ch; }
+  footer { margin-top: 28px; color: var(--faint); font-size: 13px; border-top: 1px solid var(--line); padding-top: 14px; max-width: 76ch; }
+</style>
+<style>
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+  input[type=text], input[type=number] { font: inherit; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); min-width: 0; flex: 1 1 220px; }
+  button { font: inherit; }
+  .btn { padding: 9px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2, var(--surface)); color: var(--text); cursor: pointer; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink, #fff); border-color: transparent; font-weight: 600; }
+  .btn:disabled { opacity: .6; cursor: default; }
+  .msg { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 14px; }
+  .msg.ok { border-color: var(--accent); } .msg.err { border-color: var(--danger, #D23C3C); }
+  table.cred { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 8px; }
+  table.cred th, table.cred td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.cred th { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  @media (max-width: 480px) { table.cred thead { display: none; } table.cred tr, table.cred td { display: block; } table.cred tr { border-bottom: 1px solid var(--line); padding: 6px 0; } table.cred td { border: 0; padding: 2px 0; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <div class="brand">
+      <a class="mark" href="/">CONFIDANT</a>
+      <span class="sep"></span>
+      <small>Demo issuer · <span id="net">testnet</span></small>
+    </div>
+    <nav class="nav">
+      <a href="/">Open the app</a>
+      <a href="how-it-works.html">How it works</a>
+      <a href="balances.html">Balances</a>
+    </nav>
+    <button class="theme" id="theme-toggle" type="button" aria-label="Switch theme" title="Switch theme"><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  </header>
+
+  <h1>Demo issuer: a KYC provider persona</h1>
+  <p class="lede">The pool can be told to accept deposits only from XRPL accounts that hold an accepted
+    <b>XLS-70 Credential</b> from a trusted issuer. This page is that issuer, for the demo: an ordinary testnet
+    account that signs <code>CredentialCreate</code> for an address you paste in. The holder then accepts it in the
+    app (<code>CredentialAccept</code>, signed by their own account), and only then does the pool count it. The persona
+    is a demo; the gate on the ledger is real.</p>
+
+  <div class="card">
+    <div class="k">Issuer account</div>
+    <div id="issuer-none">
+      <p>No issuer account in this browser yet. Creating one takes a testnet faucet call (10–30 s).</p>
+      <div class="row"><button class="btn primary" id="btn-create-issuer" type="button">Create issuer account</button></div>
+    </div>
+    <div id="issuer-has" hidden>
+      <div class="row"><span class="mono" id="issuer-addr"></span><button class="btn" id="btn-copy-issuer" type="button">Copy</button><a id="issuer-link" href="#" target="_blank" rel="noopener">on the explorer</a></div>
+      <div class="src">Credential type <code id="type-text">ConfidantKYC</code> = <code class="mono" id="type-hex"></code>.
+        For the node operators' config: issuer <code class="mono" id="cfg-issuer"></code>, type <code class="mono" id="cfg-type"></code>.</div>
+    </div>
+    <div id="issuer-msg"></div>
+  </div>
+
+  <h2>Issue a credential</h2>
+  <div class="card">
+    <div class="row"><input type="text" id="subject" placeholder="Holder's XRPL address (r…)" autocomplete="off" spellcheck="false"><input type="number" id="days" value="30" min="1" max="3650" title="valid for N days" style="flex:0 0 90px"><button class="btn primary" id="btn-issue" type="button">Issue</button></div>
+    <div class="src">Signs <code>CredentialCreate { Account: issuer, Subject, CredentialType, Expiration }</code> from the issuer account. The holder must
+      accept it before it counts: send them to the app with <span class="mono" id="accept-link">—</span>.</div>
+    <div id="issue-msg"></div>
+  </div>
+
+  <h2>Issued by this issuer</h2>
+  <div class="card">
+    <div class="row"><button class="btn" id="btn-refresh" type="button">Refresh</button><span class="src" id="list-src"></span></div>
+    <table class="cred" id="cred-table"><thead><tr><th>Subject</th><th>Type</th><th>Status</th><th>Expires</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <p class="note">What this proves on stage: eligibility is an on-ledger fact anyone can check (<code>account_objects</code>,
+    type <code>credential</code>), issued by a party the pool trusts and accepted by the holder's own signature; the pool's
+    verifiers read it from the ledger themselves and refuse a deposit without it. What it does not prove: anything about the
+    issuer's diligence — a demo persona vouches for whoever you paste in.</p>
+
+  <footer>This page holds the demo issuer's seed in this browser's storage (testnet only, never real value) and talks to the
+    public XRPL WebSocket. It never touches the pool or anyone's notes. <code>?demo=1</code> simulates everything.</footer>
+</div>
+
+<script src="https://unpkg.com/xrpl@5.3.0/build/xrpl-latest-min.js"></script>
+<script>
+  const DEMO = new URLSearchParams(location.search).has("demo");
+  const $ = (id) => document.getElementById(id);
+  const TYPE_TEXT = "ConfidantKYC";
+  const TYPE_HEX = Array.from(new TextEncoder().encode(TYPE_TEXT)).map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+  const RIPPLE_EPOCH = 946684800;
+  const LSF_ACCEPTED = 0x00010000;
+  const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("confidant." + k); return v ? JSON.parse(v) : d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("confidant." + k, JSON.stringify(v)); } catch {} },
+  };
+  const msg = (id, text, kind) => { $(id).innerHTML = text ? `<div class="msg ${kind ?? ""}">${text}</div>` : ""; };
+  const busy = (b, on) => { b.disabled = on; };
+  let cfg = { explorer: "https://testnet.xrpl.org", xrplWs: "wss://s.altnet.rippletest.net:51233" };
+  let client = null;
+  async function xrpl_() { if (DEMO) return null; if (client?.isConnected()) return client; client = new xrpl.Client(cfg.xrplWs); await client.connect(); return client; }
+  const issuer = () => store.get("issuer");
+  const appAccept = (iss) => `${location.origin}/?accept=${iss}:${TYPE_HEX}`;
+
+  // Demo data: one issued, one accepted credential; issuing adds a row.
+  const demo = { list: [] };
+
+  function render() {
+    const i = issuer();
+    $("issuer-none").hidden = !!i; $("issuer-has").hidden = !i;
+    $("type-hex").textContent = TYPE_HEX; $("cfg-type").textContent = TYPE_HEX;
+    if (i) { $("issuer-addr").textContent = i.address; $("cfg-issuer").textContent = i.address; $("issuer-link").href = `${cfg.explorer}/accounts/${i.address}`; $("accept-link").textContent = appAccept(i.address); }
+    $("btn-issue").disabled = !i;
+  }
+  async function createIssuer() {
+    const b = $("btn-create-issuer"); busy(b, true); msg("issuer-msg", "Funding a testnet account from the faucet…", "warn");
+    try {
+      let w;
+      if (DEMO) { await new Promise((r) => setTimeout(r, 800)); w = xrpl.Wallet.generate(); }
+      else { const c = await xrpl_(); ({ wallet: w } = await c.fundWallet()); }
+      store.set("issuer", { seed: w.seed, address: w.address }); msg("issuer-msg", `Issuer account ready: <span class="mono">${w.address}</span>`, "ok"); render(); await refresh();
+    } catch (e) { msg("issuer-msg", esc(e.message), "err"); } finally { busy(b, false); }
+  }
+  async function issue() {
+    const i = issuer(); if (!i) return;
+    const subject = $("subject").value.trim(); const days = Math.max(1, Math.min(3650, Number($("days").value) || 30));
+    if (!/^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(subject)) { msg("issue-msg", "Enter the holder's XRPL address (starts with r).", "err"); return; }
+    const b = $("btn-issue"); busy(b, true); msg("issue-msg", "Signing CredentialCreate from the issuer account…", "warn");
+    try {
+      const expiration = Math.floor(Date.now() / 1000) - RIPPLE_EPOCH + days * 86400;
+      let hash;
+      if (DEMO) { await new Promise((r) => setTimeout(r, 900)); hash = Array.from({ length: 64 }, () => "0123456789ABCDEF"[Math.floor(Math.random() * 16)]).join(""); demo.list.push({ Subject: subject, CredentialType: TYPE_HEX, Flags: 0, Expiration: expiration }); }
+      else {
+        const c = await xrpl_(); const w = xrpl.Wallet.fromSeed(i.seed);
+        const tx = await c.autofill({ TransactionType: "CredentialCreate", Account: w.address, Subject: subject, CredentialType: TYPE_HEX, Expiration: expiration });
+        const signed = w.sign(tx); const res = await c.submitAndWait(signed.tx_blob);
+        const code = res.result.meta?.TransactionResult; if (code !== "tesSUCCESS") throw new Error(`Ledger refused: ${code}`);
+        hash = signed.hash;
+      }
+      msg("issue-msg", `Issued to <span class="mono">${esc(subject)}</span>, valid ${days} day${days === 1 ? "" : "s"} — <a href="${cfg.explorer}/transactions/${hash}" target="_blank" rel="noopener">transaction</a>. Now the holder accepts it in the app: <a href="${appAccept(i.address)}">${esc(appAccept(i.address))}</a>`, "ok");
+      await refresh();
+    } catch (e) { msg("issue-msg", esc(e.message), "err"); } finally { busy(b, false); }
+  }
+  async function revoke(subject) {
+    const i = issuer(); if (!i) return;
+    try {
+      if (DEMO) { demo.list = demo.list.filter((x) => x.Subject !== subject); }
+      else { const c = await xrpl_(); const w = xrpl.Wallet.fromSeed(i.seed); const tx = await c.autofill({ TransactionType: "CredentialDelete", Account: w.address, Subject: subject, CredentialType: TYPE_HEX }); const res = await c.submitAndWait(w.sign(tx).tx_blob); const code = res.result.meta?.TransactionResult; if (code !== "tesSUCCESS") throw new Error(`Ledger refused: ${code}`); }
+      await refresh();
+    } catch (e) { msg("issue-msg", esc(e.message), "err"); }
+  }
+  async function refresh() {
+    const i = issuer(); const tb = $("cred-table").querySelector("tbody"); tb.innerHTML = ""; if (!i) return;
+    let rows = [];
+    if (DEMO) rows = demo.list;
+    else { const c = await xrpl_(); const r = await c.request({ command: "account_objects", account: i.address, type: "credential", ledger_index: "validated" }); rows = (r.result.account_objects ?? []).filter((o) => o.Issuer === i.address); }
+    const now = Math.floor(Date.now() / 1000) - RIPPLE_EPOCH;
+    for (const o of rows) {
+      const accepted = (o.Flags & LSF_ACCEPTED) !== 0, expired = o.Expiration && o.Expiration < now;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="mono">${esc(o.Subject)}</td><td class="mono">${esc(o.CredentialType === TYPE_HEX ? TYPE_TEXT : o.CredentialType)}</td><td>${expired ? "expired" : accepted ? "accepted ✓" : "issued, not yet accepted"}</td><td>${o.Expiration ? new Date((o.Expiration + RIPPLE_EPOCH) * 1000).toLocaleDateString("en-US") : "—"}</td><td><button class="btn" type="button">Revoke</button></td>`;
+      tr.querySelector("button").addEventListener("click", () => revoke(o.Subject));
+      tb.append(tr);
+    }
+    $("list-src").textContent = rows.length ? `${rows.length} credential${rows.length === 1 ? "" : "s"} on the ledger${DEMO ? " (demo data)" : ""}` : "nothing issued yet";
+  }
+  (async () => {
+    if (!DEMO) { try { const c = await (await fetch("/api/config")).json(); cfg = { ...cfg, ...c }; $("net").textContent = c.network ?? "testnet"; } catch {} }
+    else $("net").textContent = "testnet (demo data)";
+    const sub = new URLSearchParams(location.search).get("subject"); if (sub) $("subject").value = sub;
+    render(); $("btn-create-issuer").addEventListener("click", createIssuer); $("btn-issue").addEventListener("click", issue); $("btn-refresh").addEventListener("click", refresh);
+    $("btn-copy-issuer").addEventListener("click", async () => { try { await navigator.clipboard.writeText(issuer().address); } catch {} });
+    await refresh();
+  })();
+</script>
+<script>
+  // Theme switch: flips data-theme and remembers the choice; the script in <head> applies it on the next load.
+  (function () { var b = document.getElementById("theme-toggle"); if (!b) return;
+    b.addEventListener("click", function () { var n = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", n); try { localStorage.setItem("confidant-theme", n); } catch (e) {} }); })();
+  // Demo mode (?demo=1) is kept when moving between the three pages.
+  (function () { var q = location.search; if (!/[?&]demo(=|&|$)/.test(q)) return;
+    document.querySelectorAll("a[href]").forEach(function (a) { var h = a.getAttribute("href"); if (/^([/]|index[.]html|how-it-works[.]html|balances[.]html)$/.test(h)) a.setAttribute("href", h + q); }); })();
+</script>
+</body>
+</html>
