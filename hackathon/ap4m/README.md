@@ -51,7 +51,7 @@ shows how).
 
 Walk-in sign-up (no form answered) needs a connected browser wallet that signs the sign-up message; staff approve.
 
-## Demo (5 minutes, live — the deck's "what a strong demo proves": control, payment, proof)
+## Demo (a 5-minute slot; the flow itself in under 3 — the deck's "what a strong demo proves": control, payment, proof)
 
 1. **Control.** "Two verified parties: the agent is registered in AP4M's registry (KYA), the merchant is our relay; the
    channel has a funded cap." Terminal: wallet synced, bundle built. "This agent holds shielded funds on the XRP Ledger
@@ -67,7 +67,9 @@ Walk-in sign-up (no form answered) needs a connected browser wallet that signs t
    contract, the agent only decides inside it."
 
 Judging (deck): real-world utility 25 %, trust & control 25 %, technical execution 25 %, path to production 15 %,
-demo & story 10 %.
+demo & story 10 %. The web guide's rubric adds: autonomy (the agent reads the 402 and decides), use-case clarity (the
+payment is load-bearing), on-chain proof (`VoucherRedeemed` at the PaymentLedger), RLUSD settlement (the payout wallet's
+balance changed), demo quality (live, no recordings, the flow in 3 minutes), creativity.
 
 **Path to production (one paragraph for the judges).** The relay is a metered gateway in front of an API that already
 runs on testnet with a k-of-N quorum; the same x402 exchange works against AP4M's production rails when they exist. The
