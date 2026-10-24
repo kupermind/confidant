@@ -620,7 +620,7 @@
   /* sync status: one line in the card header */
   .wallet .actions .hint { max-width: 34ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* XRPL balance may wrap again, so the faucet hint is never cut */
-  #xrpl-balance { white-space: normal; overflow: visible; text-overflow: clip; }
+  #xrpl-balance, #cred-status { white-space: normal; overflow: visible; text-overflow: clip; }
   /* keyboard focus readable in the dark theme */
   :root[data-theme="dark"] :focus-visible { outline-color: rgba(255,255,255,.85); }
   @media (max-width: 700px) { .two-col { margin-bottom: 0; } }
@@ -676,7 +676,7 @@
             <h4>XRPL account<span class="pub">public</span></h4>
             <div class="kv"><span class="k">Address</span><span class="v" id="xrpl-addr"></span><button class="small ghost copy" data-copy="xrpl-addr">Copy</button></div>
             <div class="kv"><span class="k">Balance</span><span class="v" id="xrpl-balance">—</span><button class="small" id="btn-fund">Fund from faucet</button></div>
-            <div class="kv" id="cred-row" hidden title="Credential-gated pool: deposits are accepted only from accounts holding an accepted XLS-70 Credential from the pool's trusted issuer — an on-ledger fact every verifier reads itself."><span class="k">Eligibility</span><span class="v" id="cred-status">—</span><button class="small" id="btn-accept-cred" hidden>Accept</button></div>
+            <div class="kv" id="cred-row" hidden title="Compliance-gated pool: a deposit is accepted only from an address that an authorized compliance provider has verified. The provider checks the holder off-ledger and records an XLS-70 Credential on the XRP Ledger; the holder confirms it with their own signature; every verifier node reads it from the ledger itself. The pool never sees documents and the credential says nothing about anyone's notes. It is the operator's policy for regulated use, applied to every depositor alike — not a suspicion about you. What is checked, by whom and why: see the provider page."><span class="k">Compliance</span><span class="v" id="cred-status">—</span><button class="small" id="btn-accept-cred" hidden>Confirm</button></div>
           </div>
           <div class="col-kv">
             <h4>Pool wallet<span class="pub">off ledger</span></h4>
@@ -945,10 +945,11 @@
     if (!x) { $("cred-status").textContent = "needs an XRPL account first"; return; }
     let state; try { state = await credentialState(c, x.address); } catch (e) { $("cred-status").textContent = "ledger not readable"; return; }
     const issuerHref = `issuer.html?subject=${encodeURIComponent(x.address)}`;
-    if (state === "accepted") $("cred-status").textContent = `accepted ✓ (${c.typeText ?? "credential"})`;
-    else if (state === "issued") { $("cred-status").textContent = `issued — accept it to shield`; $("btn-accept-cred").hidden = false; }
-    else if (state === "expired") $("cred-status").innerHTML = `expired — <a href="${issuerHref}">get a new one from the issuer</a>`;
-    else $("cred-status").innerHTML = `none — <a href="${issuerHref}">get one from the issuer</a>`;
+    // Short on purpose: the cell is narrow; the tooltip and the provider page carry the explanation.
+    if (state === "accepted") $("cred-status").textContent = `verified ✓ (${c.typeText ?? "compliance credential"})`;
+    else if (state === "issued") { $("cred-status").textContent = `verified by the provider — confirm it`; $("btn-accept-cred").hidden = false; }
+    else if (state === "expired") $("cred-status").innerHTML = `expired — <a href="${issuerHref}">renew with the provider</a>`;
+    else $("cred-status").innerHTML = `not verified — <a href="${issuerHref}">how to get verified</a>`;
   }
   async function acceptCredential() {
     const c = credentialCfg(); const x = store.get("xrpl"); if (!c || !x) return;
@@ -960,7 +961,7 @@
         const tx = await cl.autofill({ TransactionType: "CredentialAccept", Account: w.address, Issuer: c.issuer, CredentialType: c.type });
         const res = await cl.submitAndWait(w.sign(tx).tx_blob);
         const code = res.result.meta?.TransactionResult; if (code !== "tesSUCCESS") throw new Error(`The ledger refused the acceptance: ${code}`);
-        addActivity({ type: "credential", text: `accepted the ${c.typeText ?? "credential"} credential from ${short(c.issuer)}`, links: [["Accept", res.result.hash ?? ""]] });
+        addActivity({ type: "compliance", text: `confirmed the ${c.typeText ?? "compliance"} credential issued by the pool's compliance provider ${short(c.issuer)}`, links: [["Confirmation", res.result.hash ?? ""]] });
       }
     } catch (e) { alert(e.message); }
     finally { busy(b, false); refreshCredential().catch(() => {}); }
@@ -1029,7 +1030,7 @@
     } catch (e) {
       const p = store.get("pending-shield");
       if (p) showResume(p, e.message);
-      else if (e.status === 403 && /credential/i.test(e.message)) { const x = store.get("xrpl"); setMsg("msg-shield", `${esc(e.message)} — <a href="issuer.html?subject=${encodeURIComponent(x?.address ?? "")}">get a credential from the issuer</a>, accept it in the wallet card, then shield again.`, "err"); }
+      else if (e.status === 403 && /credential/i.test(e.message)) { const x = store.get("xrpl"); setMsg("msg-shield", `${esc(e.message)} — this pool accepts deposits only from addresses verified by its compliance provider. <a href="issuer.html?subject=${encodeURIComponent(x?.address ?? "")}">How to get verified</a>; once verified, confirm it in the wallet card and shield again.`, "err"); }
       else setMsg("msg-shield", esc(e.message), "err");
     }
     finally { busy(btn, false); refreshWallet(); refreshStatus(); }
@@ -1169,7 +1170,7 @@
     }
     await refreshWallet();
     { const p = store.get("pending-shield"); if (p && wallet()) showResume(p); }
-    { const a = new URLSearchParams(location.search).get("accept"); const m = a && /^(r[1-9A-HJ-NP-Za-km-z]{24,34}):([0-9A-Fa-f]{2,128})$/.exec(a); if (m) { store.set("credential", { issuer: m[1], type: m[2].toUpperCase(), typeText: "credential" }); refreshCredential().catch(() => {}); } }
+    { const a = new URLSearchParams(location.search).get("accept"); const m = a && /^(r[1-9A-HJ-NP-Za-km-z]{24,34}):([0-9A-Fa-f]{2,128})$/.exec(a); if (m) { store.set("credential", { issuer: m[1], type: m[2].toUpperCase(), typeText: "compliance credential" }); refreshCredential().catch(() => {}); } }
     setInterval(refreshStatus, 20000);
   })();
 })();
