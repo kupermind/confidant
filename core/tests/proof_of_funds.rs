@@ -12,6 +12,10 @@ use confidant_core::record::bundle_from_record;
 use confidant_core::record::bundle_hash;
 use confidant_core::{DepositRef, Error, OpTag, Submission, Verifier, Wallet, BUNDLE_VERSION};
 
+fn arr(hex_str: &str) -> [u8; 32] {
+    hex::decode(hex_str).unwrap().try_into().unwrap()
+}
+
 const CH: &[u8] = b"lender-nonce-42|rBorrower|ledger 1234|expiry 1300";
 
 /// Flips one hex digit in `s` at `at` so the string stays valid hex but the bytes change.
@@ -204,4 +208,85 @@ fn proof_of_funds_is_bound_and_read_only_and_never_a_pool_operation() {
         v.verify_proof_of_funds(&p.record, 120, CH),
         Err(Error::DoubleSpend)
     ));
+}
+
+/// Audit condition 2 on the ledger-driven path, and the amount arm on its own. (1) A proof-of-funds
+/// record served by a mirror under a genuine-looking pool memo (a memo naming a pool op but the
+/// proof's bundle hash) is refused by TYPE at `rebuild` and `rebuild_checked` — never left to the
+/// signature domain — and the state stays empty. (2) A value-balance-zero bundle (a transfer to self)
+/// relabelled as a proof of funds is refused by amount, before any signature work.
+#[test]
+fn a_proof_of_funds_in_the_mirror_is_refused_by_type_at_rebuild_and_a_zero_amount_by_amount() {
+    let mut v = Verifier::new();
+    let mut alice = Wallet::new();
+    shield(&mut v, &mut alice, 100, "D1");
+    alice.sync(v.records()).unwrap();
+    let p = alice.build_proof_of_funds(60, CH).unwrap();
+    let pof_hash = bundle_hash(&p.record).unwrap();
+
+    // The genuine memo for the log, then a memo that claims an unshield but names the proof's hash.
+    let genuine = v.anchor_memo(0).unwrap();
+    let forged = AnchorMemo {
+        op: OpTag::Unshield,
+        root: [0u8; 32],
+        bundle_hash: pof_hash,
+        external: "rAlice".into(),
+        actions: p
+            .record
+            .actions
+            .iter()
+            .map(|a| (arr(&a.nullifier), arr(&a.cmx)))
+            .collect(),
+    };
+    let log = v.records().to_vec();
+    let mut mirror = |h: &[u8; 32]| {
+        if *h == pof_hash {
+            return Some(p.record.clone());
+        }
+        log.iter().find(|r| bundle_hash(r).unwrap() == *h).cloned()
+    };
+    // Sanity: the genuine memo alone rebuilds the state.
+    assert_eq!(
+        Verifier::rebuild(std::slice::from_ref(&genuine), &mut mirror)
+            .unwrap()
+            .state()
+            .root,
+        v.state().root
+    );
+    // The forged entry after the genuine log: refused by type, not by signature.
+    assert!(matches!(
+        Verifier::rebuild(&[genuine.clone(), forged.clone()], &mut mirror),
+        Err(Error::NotAPoolOperation)
+    ));
+    // The checked rebuild refuses the same way; the forged entry first means the deposit lookup
+    // is never even consulted (it is only asked about shield memos).
+    let mut lookup =
+        |_: &str| -> Option<DepositRef> { unreachable!("no shield memo reaches the lookup") };
+    assert!(matches!(
+        Verifier::rebuild_checked(&[forged], &mut mirror, &mut lookup),
+        Err(Error::NotAPoolOperation)
+    ));
+
+    // amount > 0 is pinned on its own: value balance 0 == amount 0 is refused by amount.
+    let mut zero = alice
+        .build_transfer(&[out(&alice.info().address, 40)])
+        .unwrap()
+        .record;
+    assert_eq!(zero.value_balance, 0);
+    zero.op = OpTag::ProofOfFunds;
+    assert!(matches!(
+        v.verify_proof_of_funds(&zero, 0, CH),
+        Err(Error::ValueBalance {
+            expected: 0,
+            actual: 0
+        })
+    ));
+    assert!(matches!(
+        v.verify_proof_of_funds(&zero, 40, CH),
+        Err(Error::ValueBalance {
+            expected: 40,
+            actual: 0
+        })
+    ));
+    assert_eq!(v.state().bundle_count, 1, "nothing was applied");
 }
