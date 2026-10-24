@@ -206,8 +206,8 @@ the bundle's own `value_balance`.
 **Proof of funds (hackathon feature C, core slice).** A fourth op tag, `ProofOfFunds` (4), names a bundle built like an
 unshield of X with the change back to the holder and signed under a separate BLAKE2b domain, `ConfidantPoF_v1_`, over
 `bundle_commitment ‖ len(challenge) ‖ challenge ‖ X`. No pool sighash is ever computed under that domain and no
-proof-of-funds signature verifies under a pool sighash; every apply path (submit, endorse, replay, anchor-memo decoding)
-refuses the op before any signature check, and the allow-list test pins the set of domains. `verify_proof_of_funds` is
+proof-of-funds signature verifies under a pool sighash; every apply path (submit, endorse, replay, rebuild from the ledger,
+anchor-memo decoding) refuses the op before any signature check, and the allow-list test pins the set of domains. `verify_proof_of_funds` is
 read-only: known anchor, nullifiers unspent and distinct, proof, both signatures under the proof-of-funds sighash, value
 balance = X. Honest reading: "someone controlling ≥ X answered this challenge" as of this state — an underwriting signal,
 a snapshot, not a lock, and not proof that the named account owns the notes.
