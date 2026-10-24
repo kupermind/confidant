@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use confidant_core::{BundleRecord, Verifier, VerifierSnapshot};
-use confidant_node::{http, FeeLedger, FeePolicy, JsonRpc, Node, Screening};
+use confidant_node::{http, CredentialGate, FeeLedger, FeePolicy, JsonRpc, Node, Screening};
 
 fn arg(args: &[String], name: &str) -> Option<String> {
     args.iter()
@@ -66,6 +66,26 @@ async fn main() {
             .unwrap_or_else(|e| die(format!("--screening-list {p}: {e}"))),
         None => Screening::new(Vec::<String>::new(), standby),
     };
+    let credential = match (
+        arg(&args, "--credential-issuer"),
+        arg(&args, "--credential-type"),
+    ) {
+        (Some(issuer), Some(t)) => {
+            CredentialGate::new(&issuer, &t, arg(&args, "--credential-type-text").as_deref())
+                .unwrap_or_else(|e| die(e))
+        }
+        (None, None) => CredentialGate::off(),
+        _ => die("--credential-issuer and --credential-type go together"),
+    };
+    match credential.policy() {
+        Some(p) => eprintln!(
+            "credential gate: deposits only from accounts holding an accepted, unexpired credential of type {} ({}) from issuer {}",
+            p.credential_type,
+            p.type_text.as_deref().unwrap_or("non-text"),
+            p.issuer
+        ),
+        None => eprintln!("credential gate: OFF (no --credential-issuer / --credential-type)"),
+    }
     if screening.is_active() {
         eprintln!(
             "screening: {} listed addresses ({} canonical, {} undecodable and inert), standby {} ledgers (shields from listed or too-fresh deposits and unshields to listed addresses are refused with 403)",
@@ -163,6 +183,7 @@ async fn main() {
     let node = Arc::new(
         Node::new(verifier, ledger, pool, state)
             .with_screening(screening)
+            .with_credential(credential)
             .with_fees(fees, fee_ledger),
     );
     let listener = tokio::net::TcpListener::bind(&listen)

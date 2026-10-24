@@ -12,6 +12,7 @@ use confidant_core::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::credential::{ripple_now, CredentialGate, CredentialPolicy};
 use crate::fees::{FeeLedger, FeePolicy, FeeReport};
 use crate::screening::Screening;
 use crate::xrpl::{
@@ -30,6 +31,9 @@ pub enum NodeError {
     /// Refused by this node's boundary screening policy (list or standby); HTTP 403.
     #[error("refused by screening policy: {0}")]
     Screened(String),
+    /// Refused by this node's credential gate (XLS-70, feature A); HTTP 403.
+    #[error("refused by credential policy: {0}")]
+    Credential(String),
     /// A fee sweep that does not match this node's fee ledger; HTTP 409.
     #[error("fee sweep refused: {0}")]
     Fee(String),
@@ -55,6 +59,7 @@ pub struct Node<L: Ledger> {
     pool: String,
     state_path: Option<PathBuf>,
     screening: Screening,
+    credential: CredentialGate,
     fees: FeePolicy,
     fee_ledger: Mutex<FeeLedger>,
 }
@@ -72,6 +77,7 @@ impl<L: Ledger> Node<L> {
             pool: pool.into(),
             state_path,
             screening: Screening::off(),
+            credential: CredentialGate::off(),
             fees: FeePolicy::off(),
             fee_ledger: Mutex::new(FeeLedger::default()),
         }
@@ -224,6 +230,16 @@ impl<L: Ledger> Node<L> {
         &self.screening
     }
 
+    /// Installs the credential gate this node enforces on deposits (default: off).
+    pub fn with_credential(mut self, gate: CredentialGate) -> Self {
+        self.credential = gate;
+        self
+    }
+
+    pub fn credential_policy(&self) -> Option<&CredentialPolicy> {
+        self.credential.policy()
+    }
+
     pub fn pool(&self) -> &str {
         &self.pool
     }
@@ -312,6 +328,19 @@ impl<L: Ledger> Node<L> {
             self.screening
                 .check_deposit(&account, deposit_ledger, validated)
                 .map_err(|e| NodeError::Screened(e.to_string()))?;
+        }
+        // Credential gate: the depositor's XLS-70 credential, read from the ledger by this node
+        // (never from the client), judged by issuer, type, acceptance and expiry. Runs on every
+        // path that vouches for a deposit — submit and endorse alike.
+        if let Some(p) = self.credential.policy() {
+            let (account, _) = deposit_source(&tx)?;
+            let entry = self
+                .ledger
+                .credential(&account, &p.issuer, &p.credential_type)
+                .await?;
+            self.credential
+                .check(&account, entry.as_ref(), ripple_now())
+                .map_err(|e| NodeError::Credential(e.to_string()))?;
         }
         Ok(deposit)
     }

@@ -38,8 +38,9 @@ Everything is JSON. Errors are `{ "error": "<message>", "details"?: {…} }` wit
 | `POST /submit/transfer` | `{ record }` | `Accepted` + quorum fields |
 | `POST /submit/unshield` | `{ record, destination }` | `Accepted` (with `payout`) + quorum fields incl. `payoutTx` / `payoutBlob` |
 | `POST /audit/reveal` | `{ viewingKey }` | `RevealReport` |
-| `GET /config` | — | `{ network, explorer, xrplWs, pool, sink, quorum, signers, fees: { shieldBps, unshieldBps, treasury } }` — public facts the UI needs; no secrets |
+| `GET /config` | — | `{ network, explorer, xrplWs, pool, sink, quorum, signers, fees: { shieldBps, unshieldBps, treasury }, credential: { issuer, type, typeText } \| null }` — public facts the UI needs; no secrets |
 | `GET /fees` | — | `FeeReport` of the coordinator's node |
+| `GET /policy` (node) | — | `{ credential: { issuer, type, typeText } \| null, screening: { active, standbyLedgers } }` — the deposit gates the node enforces; the coordinator copies `credential` into `GET /config` |
 | `POST /fees/sweep` | `{ amount? }` (drops; default: everything available) | `{ amount, tx, treasury, recorded, refusals }` — operator call, k-of-N Payment pool → treasury |
 
 Shapes (camelCase on the wire):
@@ -95,8 +96,9 @@ Copy from there.
 
 ### Credential gate (hackathon feature A) — the contract between the node and the holder side
 
-*Proposed 2026-10-24 (event day) by the API/XRPL lead for the crypto/ZK lead's node slice; adjust here, in
-the same PR as the code, if the node needs it different.*
+*Proposed 2026-10-24 (event day); implemented the same day on both sides (`backend/node/src/credential.rs`,
+`frontend/issuer.html`, the app's Eligibility row). The node reports its gate through `GET /policy`, which the
+coordinator copies into `/config.credential`.*
 
 - **Config.** `GET /config` gains `credential: { issuer: "r…", type: "<hex>", typeText: "ConfidantKYC",
   expiresAfter?: <seconds> } | null`. `null` (or absent) means the gate is off and the UI shows nothing.

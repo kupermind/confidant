@@ -9,6 +9,7 @@
     "prepopulate": "node prepopulate.mjs",
     "log:snapshot": "node log-snapshot.mjs",
     "snapshot:verify": "node verify-snapshot.mjs",
+    "credential:check": "node credential-check.mjs",
     "screening:fetch-ofac": "node screening/fetch-ofac.mjs",
     "screening:audit": "node screening/audit.mjs",
     "test": "node --test \"test/**/*.test.mjs\"",

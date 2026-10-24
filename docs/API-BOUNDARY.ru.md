@@ -40,6 +40,7 @@
 | `POST /audit/reveal` | `{ viewingKey }` | `RevealReport` |
 | `GET /config` | — | `{ network, explorer, xrplWs, pool, sink, quorum, signers, fees: { shieldBps, unshieldBps, treasury } }` — публичные факты для UI; без секретов |
 | `GET /fees` | — | `FeeReport` узла координатора |
+| `GET /policy` (узел) | — | `{ credential: { issuer, type, typeText } \| null, screening: { active, standbyLedgers } }` — ворота депозитов, которые узел применяет; координатор копирует `credential` в `GET /config` |
 | `POST /fees/sweep` | `{ amount? }` (дропы; по умолчанию всё доступное) | `{ amount, tx, treasury, recorded, refusals }` — вызов оператора, k-of-N Payment пул → казна |
 
 Формы (на проводе camelCase):
@@ -97,8 +98,9 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
 
 ### Ворота по Credential (фича хакатона A) — контракт между узлом и стороной держателя
 
-*Предложено 2026-10-24 (день события) API/XRPL-лидом для слайса узла крипто/ZK-лида; если узлу нужно иначе —
-правится здесь, в том же PR, что и код.*
+*Предложено 2026-10-24 (день события); в тот же день реализовано с обеих сторон (`backend/node/src/credential.rs`,
+`frontend/issuer.html`, строка Eligibility в приложении). Узел сообщает свои ворота через `GET /policy`, координатор
+копирует их в `/config.credential`.*
 
 - **Конфиг.** `GET /config` получает `credential: { issuer: "r…", type: "<hex>", typeText: "ConfidantKYC",
   expiresAfter?: <секунды> } | null`. `null` (или отсутствие) — ворота выключены, UI ничего не показывает.

@@ -62,8 +62,9 @@ on the ledger — transfers inside are free."
    Say: "a demo persona; the credential it writes is a real XLS-70 object on the ledger."
 2. In the app the wallet card's **Eligibility** row reads "issued — accept it to shield"; press **Accept** (the holder's
    own signature binds the account). It turns into "accepted ✓".
-3. Shield as usual. Without the credential the verifiers refuse with a 403 that names the issuer, and the app links to
-   the issuer page. While the node side is not configured, the issuer page's hand-off link (`/?accept=…`) shows the row.
+3. Shield as usual. Without the credential the verifiers refuse with a 403 that names the issuer (every node reads the
+   credential from the ledger at submit and at endorse), and the app links to the issuer page. The gate is on when the
+   nodes run with `CREDENTIAL_ARGS` (then `/config.credential` is set); off, the row hides and shields are open.
 
 ## The "what if your server dies" question
 

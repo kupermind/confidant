@@ -47,6 +47,14 @@ pub trait Ledger: Send + Sync {
     ) -> impl Future<Output = Result<Value, LedgerError>> + Send;
     /// Index of the latest validated ledger (for the screening standby).
     fn validated_ledger_index(&self) -> impl Future<Output = Result<u64, LedgerError>> + Send;
+    /// The Credential ledger entry for `(subject, issuer, credential_type)` on the validated ledger
+    /// (`ledger_entry` with `credential`): `Some(node)`, or `None` when there is no such entry.
+    fn credential(
+        &self,
+        subject: &str,
+        issuer: &str,
+        credential_type: &str,
+    ) -> impl Future<Output = Result<Option<Value>, LedgerError>> + Send;
 }
 
 fn tx_json(tx: &Value) -> &Value {
