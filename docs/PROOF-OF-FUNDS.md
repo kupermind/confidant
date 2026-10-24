@@ -318,7 +318,40 @@ longer on a phone); verification tens of milliseconds on a node. Nothing about t
   time, fields from its own node). The outstanding-credentials cap stays (it bounds the pool's reserve, not privacy).
 - Cost at the node: one proof verification per request, as today; the indexed tree costs O(log n) per nullifier insert.
 
-### 5.5 Slices and what the audit pins
+### 5.5 The audit's ruling (DESIGN-PASS, 2026-10-25) and its pins
+
+The audit session ruled the statement sound for "controls unspent notes worth ≥ X at S" and the leak surface
+reduced to (R_S, N_S, X, c, k) — nothing note-level (`docs/audit/RESP-pof-tier4-design-2026-10-25.md`). Nine
+pins are gates for the implementation slices; the starred ones are load-bearing for soundness:
+
+1. ⭐ **Bit-exact nullifier.** The in-circuit `DeriveNullifier` equals `orchard::Note::nullifier` bit for bit, tested
+   on random notes — otherwise (d) proves the non-membership of a phantom and "unspent" means nothing.
+2. ⭐ **Atomic `(R_S, N_S)`.** One snapshot object taken at one log position; the verifier rejects unpaired roots.
+   The attack otherwise: a note spent between S1 and S2 is a member at `R_S1` and a non-member at `N_S2`.
+3. ⭐ **The indexed tree equals the spent set.** `N_S` commits to exactly the nullifiers the verifier's `is_spent`
+   knows, rebuilt deterministically from the log; a test replays a log and checks tree membership == the set at
+   every position. One missing nullifier = a spent note provable unspent.
+4. ⭐ **No apply path.** The proof is not a `BundleRecord` and can never be decoded or applied as a spend —
+   type-enforced and mutation-tested as in `core/tests/apply_path_guards.rs` (drive it through every mutating
+   entrypoint → refused).
+5. **Threshold range-sizing.** `Σ v_i` can reach `k·2^64` in the field; range-check the **sum** to the width the
+   bound allows, not only each `v_i` and the difference. For XRP the pool's total value is below 2^57 drops (the
+   supply), so a 64-bit range check on the sum is sound; the circuit states that bound as an assertion.
+6. ⭐ **k never forces a consolidation.** If a holder had to merge notes to fit k slots before proving, that merge
+   would be a spend revealing their nullifiers and a human step — the failure this design removes. k is sized so a
+   realistic X needs no pre-consolidation; the wallet refuses to prove rather than consolidate.
+7. **Freshness binding.** "Unspent as of S" is a current signal only while S is recent: the node accepts only its own
+   current snapshot (or one within the challenge's window of `L`), and `check_window` on `L`/`E` stays.
+8. **Own proving-key domain**, and the SPEC §11 hash-domain inventory gains the challenge hash domain
+   (`ConfidantPoFChal_`), diffed at the ref.
+9. **A mutation row on every clause (a)–(g) and on pins 1–7**; a survived mutation on any clause is an unsound proof.
+
+Ruled sound: no signatures (c is a genuine public input in the transcript); nf strict order for distinctness; the
+new circuit as a non-Action, non-record type; reusing the endpoint/sidecar scaffolding with the proof swapped and
+removing the revealing proof from the product path. Interim recommendation to the owner: the revealing endpoint
+**off by default** (feature flag), enabled deliberately for a demo if at all — a label documents, a flag enforces.
+
+### 5.6 Slices
 
 1. **Core:** `NullifierTree` (indexed, Poseidon) with its root in `PoolState`, rebuilt from the log; mutation rows on
    insertion order, sentinel, root in the snapshot.
@@ -330,10 +363,10 @@ longer on a phone); verification tens of milliseconds on a node. Nothing about t
    fail-closed on any mismatch; the revealing path removed.
 5. **UI:** the one-button shape of `docs/UI-RULE.md`; no refresh step exists any more.
 
-Each slice gets its REQ → RESP before merge. Until slice 4 ships, the repository carries the 2026-10-25 ruling: the
-nullifier-revealing proof of funds is a demo of the flow, not the feature.
+Each slice gets its REQ → RESP before merge, against the pins of §5.5. Until slice 4 ships, the repository carries
+the 2026-10-25 ruling: the nullifier-revealing proof of funds is a demo of the flow, not the feature.
 
-### 5.6 Still outside this design
+### 5.7 Still outside this design
 
 Notes with **spending conditions** (time locks, covenants, a lock without moving) need another circuit change and
 stay a roadmap item; collateral escrow stays the separate construction of §6.
