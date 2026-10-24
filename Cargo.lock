@@ -301,6 +301,7 @@ name = "confidant-node"
 version = "0.0.1"
 dependencies = [
  "axum",
+ "blake2b_simd",
  "confidant-core",
  "hex",
  "http-body-util",

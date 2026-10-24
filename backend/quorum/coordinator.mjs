@@ -104,6 +104,25 @@ await serve(Number(env.PORT), {
     const recorded = await Promise.allSettled(NODES.map((n) => http("POST", `${n}/fees/swept`, { txHash: hash })));
     return { amount, tx: hash, treasury: fees.treasury, recorded: recorded.filter((r) => r.status === "fulfilled").length, refusals };
   },
+  // Proof of funds → an expiring XLS-70 Credential from the pool account to the borrower (feature C,
+  // Tier 1 signing path). The coordinator's node verifies first (a cheap early refusal); every sidecar
+  // then re-verifies on ITS node at signing time and signs only a CredentialCreate equal to that
+  // node's own credential fields. The record is forwarded for verification only — never kept or logged.
+  "POST /pof/credential": async (body) => {
+    const { record, amount, challenge } = body ?? {};
+    if (!record || !challenge || !Number.isInteger(amount)) throw refuse(400, "need { record, amount, challenge }");
+    const verdict = await http("POST", `${env.NODE_URL}/pof/verify`, { record, amount, challenge });
+    const c = verdict.credential;
+    if (!c?.subject) throw refuse(502, "my node's verdict carries no credential fields");
+    const tx = await client.autofill({ TransactionType: "CredentialCreate", Account: env.POOL, Subject: c.subject, CredentialType: c.credentialType, Expiration: c.expiration, URI: c.uri }, SIGNERS.length);
+    tx.LastLedgerSequence = (await client.getLedgerIndex()) + ANCHOR_LLS_OFFSET;
+    const results = await Promise.allSettled(SIGNERS.map((s) => http("POST", `${s}/sign`, { txs: [{ kind: "credential-pof", tx }], pof: { record, amount, challenge } })));
+    const signed = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+    const refusals = results.filter((r) => r.status === "rejected").map((r) => r.reason?.message ?? String(r.reason));
+    if (signed.length < QUORUM) throw refuse(409, `only ${signed.length}/${SIGNERS.length} signers verified the proof on their own nodes (quorum ${QUORUM})`, { refusals });
+    const hash = await submitMultisigned(signed.slice(0, QUORUM).map((s) => s.blobs[0].tx_blob), "proof-of-funds credential");
+    return { tx: hash, issuer: env.POOL, subject: c.subject, credentialType: c.credentialType, credentialTypeText: c.credentialTypeText, expiration: c.expiration, uri: c.uri, amount, challenge, validatedLedger: verdict.validatedLedger, signers: signed.slice(0, QUORUM).map((s) => s.signer), refusals };
+  },
   "GET /state": async () => http("GET", `${env.NODE_URL}/state`),
   "GET /log": async (_b, url) => http("GET", `${env.NODE_URL}/log?from=${url.searchParams.get("from") ?? 0}`),
   "POST /audit/reveal": async (body) => http("POST", `${env.NODE_URL}/audit/reveal`, body),

@@ -726,6 +726,7 @@
         <div class="action"><button class="primary" id="btn-prove">Prove funds</button></div>
         <div class="out" id="msg-prove" aria-live="polite"></div>
         <div class="out" id="prove-verdicts"></div>
+        <div class="out" id="msg-prove-ledger" aria-live="polite"></div>
       </div>
       <div class="op audit" id="tab-audit" role="tabpanel" aria-labelledby="tabbtn-audit" hidden>
         <div class="head"><p class="note">Hand an auditor your viewing key: they can check your history without taking your word for it. Share it only with an auditor you trust. <span class="ro">read-only</span></p><div class="facts">
@@ -792,6 +793,7 @@
     build: (id, op, body) => http("POST", `${WALLET}/wallets/${id}/${op}`, body),
     submit: (op, body) => http("POST", `${API}/submit/${op}`, body),
     reveal: (viewingKey) => http("POST", `${API}/audit/reveal`, { viewingKey }),
+    pofCredential: (body) => http("POST", `${API}/pof/credential`, body),
   };
   // Simulated backend for design review (no network).
   const fakeHex = (n) => Array.from({ length: n }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
@@ -807,6 +809,7 @@
       build: async (_id, op, body) => { await sleep(900); return { record: { op, _amount: body.amount }, bundleHash: fakeHex(64) }; },
       submit: async (op, body) => { if (op === "shield" && failSubmitOnce) { failSubmitOnce = false; await sleep(300); throw Object.assign(new Error("Backend unreachable (simulated)"), { status: 502 }); } await sleep(1400); bundles++; const amt = Number(body.record?._amount ?? 0); if (op === "shield") { pool += amt; } if (op === "unshield") { pool -= amt; } if (op === "shield") { balance += amt; notes.push({ direction: "incoming", amount: amt, spent: false }); } if (op === "transfer" || op === "unshield") { balance -= amt; } return { newRoot: fakeHex(64), anchorTx: fakeHex(64).toUpperCase(), payoutTx: op === "unshield" ? fakeHex(64).toUpperCase() : null, payout: op === "unshield" ? { amount: amt - Math.floor(amt * 25 / 10000), destination: body.destination } : undefined, signers: ["rA", "rB"] }; },
       reveal: async () => ({ balance, notes }),
+      pofCredential: async (body) => { await sleep(1500); return { tx: fakeHex(64).toUpperCase(), issuer: "r45VYa4BuuKYFTbiLzomvLWTLjpg15bJcH", subject: body.challenge.borrower, credentialType: "436F6E666964616E74506F46", credentialTypeText: "ConfidantPoF", expiration: 846720000, uri: "636F6E66", signers: ["rA", "rB"], refusals: [] }; },
     };
   })();
   const be = DEMO ? mock : real;
@@ -1124,7 +1127,7 @@
       const drops = toDrops($("prove-amount").value); const amount = Number(drops);
       const hours = Number($("prove-hours").value) || 1;
       const nodes = nodeUrls(); if (!nodes.length) throw new Error("This coordinator lists no verifier nodes to ask (config.nodes)");
-      busy(btn, true); setMsg("msg-prove", ""); $("prove-verdicts").innerHTML = "";
+      busy(btn, true); setMsg("msg-prove", ""); $("prove-verdicts").innerHTML = ""; setMsg("msg-prove-ledger", "");
       setSteps("steps-prove", 0);
       const L = await validatedLedger();
       const challenge = { borrower, lender, ledgerIndex: L, expiry: L + hours * LEDGERS_PER_HOUR };
@@ -1139,13 +1142,47 @@
       if (!okCount) throw new Error(`No node verified the proof: ${verdicts[0]?.e?.message ?? "unknown"}`);
       setSteps("steps-prove", 2, true);
       const pkg = JSON.stringify({ amount, challenge, record: built.record, bundleHash: built.bundleHash });
-      setMsg("msg-prove", `<b>${okCount} of ${nodes.length} nodes</b> verified it: someone controlling at least <b>${fmt(drops)} XRP</b> in this pool answered the challenge of "${esc(lender)}" for ${esc(borrower)} as of ledger ${L}, valid until ledger ${challenge.expiry} (≈ ${hours} h). An underwriting signal, a snapshot — not a lock, and not proof that the borrower owns the notes. <button class="link" type="button" id="btn-pof-copy">Copy the proof package</button> · <button class="link" type="button" id="btn-pof-download">Download it</button> · the lender checks it on <a href="lender.html">the lender page</a>. Then <button class="link" type="button" id="btn-pof-rotate">rotate your notes</button> so the nodes cannot link your next spend to this proof.${proved(built)}`, "ok");
+      setMsg("msg-prove", `<b>${okCount} of ${nodes.length} nodes</b> verified it: someone controlling at least <b>${fmt(drops)} XRP</b> in this pool answered the challenge of "${esc(lender)}" for ${esc(borrower)} as of ledger ${L}, valid until ledger ${challenge.expiry} (≈ ${hours} h). An underwriting signal, a snapshot — not a lock, and not proof that the borrower owns the notes. <button class="link" type="button" id="btn-pof-copy">Copy the proof package</button> · <button class="link" type="button" id="btn-pof-download">Download it</button> · the lender checks it on <a href="lender.html">the lender page</a>. Then <button class="link" type="button" id="btn-pof-rotate">rotate your notes</button> so the nodes cannot link your next spend to this proof.${okCount >= Number(cfg.quorum) && cfg.pool ? ` Or have the quorum <button class="link" type="button" id="btn-pof-record">record it on the ledger as a Credential</button> on ${esc(borrower)} — the lender then reads XRPL, not a file.` : ""}${proved(built)}`, "ok");
+      $("btn-pof-record")?.addEventListener("click", () => recordCredential(body, lender));
       $("btn-pof-copy").addEventListener("click", async () => { $("btn-pof-copy").textContent = (await copyText(pkg)) ? "Copied" : "Copy failed — use Download"; });
       $("btn-pof-download").addEventListener("click", () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([pkg], { type: "application/json" })); a.download = `confidant-proof-${L}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); });
       $("btn-pof-rotate").addEventListener("click", () => { $("transfer-to").value = w.address; $("transfer-amount").value = ($("priv-balance").textContent || "").replace(/,/g, ""); $("tabbtn-transfer").click(); setMsg("msg-transfer", "Rotating: a transfer to your own address replaces the proven notes with fresh ones. Nothing leaves the pool; the anchor is the only trace.", "warn"); });
       addActivity({ type: "proof", text: `proved ≥ ${fmt(drops)} XRP to "${esc(lender)}" as of ledger ${L} — ${okCount} of ${nodes.length} nodes`, links: [] });
     } catch (e) { setMsg("msg-prove", esc(e.message), "err"); }
     finally { busy(btn, false); refreshWallet(); refreshStatus(); }
+  }
+  // Tier 1 signing path: the quorum records the verdict as an expiring XLS-70 Credential from the pool
+  // account to the borrower (each sidecar re-verifies on its own node and signs only its node's fields);
+  // the borrower confirms it with their own signature (CredentialAccept), which is what binds the account.
+  async function recordCredential(body, lender) {
+    const b = $("btn-pof-record"); busy(b, true); setMsg("msg-prove-ledger", "Asking the quorum: every signer's node re-verifies the proof now, then signs CredentialCreate…", "warn");
+    try {
+      const r = await be.pofCredential(body);
+      const exp = new Date((r.expiration + 946684800) * 1000);
+      setMsg("msg-prove-ledger", `Credential <b>${esc(r.credentialTypeText ?? "ConfidantPoF")}</b> issued by the pool account to ${esc(r.subject)}, signed by ${r.signers?.length ?? "?"} of ${cfg.signers}, expires ${exp.toLocaleString()} — ${link("CredentialCreate", r.tx)}. It counts only once you confirm it with your account's signature: <button class="link" type="button" id="btn-pof-accept">Confirm with my signature</button>. On the ledger it says "controlled ≥ X as of ledger L", not "controls it now".`, "ok");
+      $("btn-pof-accept").addEventListener("click", () => acceptPofCredential(r));
+      addActivity({ type: "credential", text: `proof-of-funds credential issued to ${short(r.subject)} for "${esc(lender)}"`, links: [["CredentialCreate", r.tx]] });
+    } catch (e) { setMsg("msg-prove-ledger", esc(e.message), "err"); }
+    finally { busy(b, false); }
+  }
+  async function acceptPofCredential(r) {
+    const b = $("btn-pof-accept"); busy(b, true);
+    try {
+      const x = store.get("xrpl"); if (!x) throw new Error("No XRPL account in this browser");
+      if (x.address !== r.subject) throw new Error(`The credential names ${r.subject}; this browser's account is ${x.address}`);
+      let hash;
+      if (DEMO) { await sleep(900); hash = fakeHex(64).toUpperCase(); }
+      else {
+        const c = await xrpl_(); const w = xrplWallet();
+        const tx = await c.autofill({ TransactionType: "CredentialAccept", Account: w.address, Issuer: r.issuer, CredentialType: r.credentialType });
+        const signed = w.sign(tx); const res = await c.submitAndWait(signed.tx_blob);
+        const code = res.result.meta?.TransactionResult; if (code !== "tesSUCCESS") throw new Error(`Ledger refused: ${code}`);
+        hash = signed.hash;
+      }
+      setMsg("msg-prove-ledger", `Confirmed ✓ — the credential on ${esc(r.subject)} is accepted; a lender reading the ledger sees it until it expires. ${link("CredentialAccept", hash)}`, "ok");
+      addActivity({ type: "credential", text: `confirmed the proof-of-funds credential on ${short(r.subject)}`, links: [["CredentialAccept", hash]] });
+    } catch (e) { setMsg("msg-prove-ledger", esc(e.message), "err"); }
+    finally { busy(b, false); }
   }
   async function doReveal() {
     const btn = $("btn-reveal");
@@ -1239,8 +1276,8 @@
   let had = null;
   function resetOps() {
     /* Forget wallet: clear what the old wallet left on screen, including the viewing key in the Audit field. */
-    [...ops, "audit"].forEach((n) => { $("msg-" + n).innerHTML = ""; });
-    $("audit-table").innerHTML = "";
+    [...ops, "audit", "prove-ledger"].forEach((n) => { $("msg-" + n).innerHTML = ""; });
+    $("audit-table").innerHTML = ""; $("prove-verdicts").innerHTML = "";
     document.querySelectorAll(".ops input").forEach((i) => { i.value = ""; });
     document.querySelectorAll(".ops .steps .step").forEach((s) => s.classList.remove("on", "done"));
   }

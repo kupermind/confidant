@@ -33,6 +33,8 @@ struct FakeLedger {
     credentials: Arc<Mutex<BTreeMap<String, Value>>>,
     credential_calls: Arc<Mutex<u64>>,
     credential_fail: Arc<Mutex<bool>>,
+    /// `close_time` by ledger index (missing = the ledger cannot be read).
+    close_times: Arc<Mutex<BTreeMap<u64, u64>>>,
 }
 
 impl FakeLedger {
@@ -89,6 +91,9 @@ impl FakeLedger {
     fn set_validated(&self, n: u64) {
         *self.validated.lock().unwrap() = n;
     }
+    fn set_close_time(&self, index: u64, close_time: u64) {
+        self.close_times.lock().unwrap().insert(index, close_time);
+    }
     fn push_anchor(&self, memo_hex: &str) {
         self.account.lock().unwrap().push(json!({
             "validated": true,
@@ -123,6 +128,14 @@ impl Ledger for FakeLedger {
             return Err(LedgerError::Rpc("ledger: unavailable".into()));
         }
         Ok(n)
+    }
+    async fn ledger_close_time(&self, index: u64) -> Result<u64, LedgerError> {
+        self.close_times
+            .lock()
+            .unwrap()
+            .get(&index)
+            .copied()
+            .ok_or_else(|| LedgerError::Rpc(format!("ledger {index}: unavailable")))
     }
     async fn credential(
         &self,
@@ -1737,8 +1750,8 @@ async fn credential_gate_refuses_deposits_without_an_accepted_credential_at_subm
 #[tokio::test]
 async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge() {
     use confidant_node::{
-        PofChallenge, CHALLENGE_PREFIX, MAX_EXPIRY_WINDOW, MAX_LENDER_LEN, MEANING, POF_PERMITS,
-        RECENT_WINDOW,
+        PofChallenge, CHALLENGE_PREFIX, MAX_EXPIRY_WINDOW, MAX_LENDER_LEN, MEANING,
+        POF_CREDENTIAL_TYPE, POF_PERMITS, RECENT_WINDOW, SECONDS_PER_LEDGER,
     };
     let ledger = FakeLedger::default();
     let n = Arc::new(node(&ledger));
@@ -1777,6 +1790,13 @@ async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge()
     );
     let pof = alice.build_proof_of_funds(120, &ch.bytes(120)).unwrap();
     ledger.set_validated(1_000);
+    // Ledger L's close time is what every node turns the expiry ledger into a Credential Expiration with.
+    const CLOSE_990: u64 = 800_000_000;
+    ledger.set_close_time(990, CLOSE_990);
+    ledger.set_close_time(
+        1_000 - RECENT_WINDOW,
+        CLOSE_990 - RECENT_WINDOW * SECONDS_PER_LEDGER,
+    );
 
     // Happy path, node level: the verdict names what it was judged against; nothing changed.
     let v = n
@@ -1796,6 +1816,50 @@ async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge()
     assert!(v.meaning.contains("not a lock"));
     assert_eq!(snap(&n), before, "verification mutates nothing");
     assert_eq!(n.log(0).len(), 2, "nothing is logged");
+    // The Credential a sidecar may sign: this node's own derivation, pinned field by field.
+    let c = &v.credential;
+    assert_eq!(c.subject, BORROWER);
+    assert_eq!(c.credential_type, POF_CREDENTIAL_TYPE);
+    assert_eq!(c.credential_type, hex::encode_upper(b"ConfidantPoF"));
+    assert_eq!(c.credential_type_text, "ConfidantPoF");
+    assert_eq!(c.expiration, CLOSE_990 + (1500 - 990) * SECONDS_PER_LEDGER);
+    assert_eq!(hex::decode(&c.uri).unwrap(), c.uri_text.as_bytes());
+    assert_eq!(
+        c.uri,
+        c.uri.to_uppercase(),
+        "URI hex as the ledger stores it"
+    );
+    let parts: Vec<&str> = c.uri_text.split('|').collect();
+    assert_eq!(&parts[..4], &[CHALLENGE_PREFIX, "120", "990", "1500"]);
+    assert_eq!(parts.len(), 5);
+    assert!(
+        parts[4].len() == 16 && hex::decode(parts[4]).is_ok(),
+        "{}",
+        c.uri_text
+    );
+    assert!(
+        !c.uri_text.contains("lender-1"),
+        "the lender is bound by digest, not named"
+    );
+    // Another lender, another challenge bytes → another digest, same everything else.
+    let mut other_lender = ch.clone();
+    other_lender.lender = "lender-2".into();
+    let c2 = other_lender.credential(120, CLOSE_990);
+    assert_ne!(c2.uri, c.uri);
+    assert_eq!(
+        (c2.subject.as_str(), c2.expiration),
+        (BORROWER, c.expiration)
+    );
+    assert_ne!(
+        ch.credential(121, CLOSE_990).uri,
+        c.uri,
+        "the amount is in the digest and in clear"
+    );
+    assert_ne!(
+        ch.credential(121, CLOSE_990).uri_text.split('|').nth(4),
+        parts.get(4).copied(),
+        "digest covers the amount"
+    );
 
     // Through HTTP.
     let body = |amount: u64, ch: &PofChallenge| json!({ "record": pof.record, "amount": amount, "challenge": ch });
@@ -1806,6 +1870,13 @@ async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge()
     assert_eq!(v["challenge"]["ledgerIndex"], 990);
     assert_eq!(v["root"], n.state().root);
     assert!(v["meaning"].as_str().unwrap().contains("snapshot"));
+    assert_eq!(v["credential"]["subject"], BORROWER);
+    assert_eq!(v["credential"]["credentialType"], POF_CREDENTIAL_TYPE);
+    assert_eq!(
+        v["credential"]["expiration"],
+        CLOSE_990 + 510 * SECONDS_PER_LEDGER
+    );
+    assert_eq!(v["credential"]["uri"], c.uri);
 
     // The proof is bound: another amount or a challenge with one field changed is a core refusal.
     let (s, v) = call(&app, "POST", "/pof/verify", Some(body(100, &ch))).await;
@@ -1889,6 +1960,18 @@ async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge()
     let (s, v) = call(&app, "POST", "/pof/verify", Some(body(120, &ch))).await;
     assert_eq!(s, StatusCode::BAD_GATEWAY, "{v}");
     ledger.set_validated(1_000);
+    // Ledger L unreadable ⇒ 502 too: no Credential fields can be derived, so no verdict at all.
+    let mut unread = ch.clone();
+    unread.ledger_index = 995;
+    let unread_pof = alice.build_proof_of_funds(120, &unread.bytes(120)).unwrap();
+    let (s, v) = call(
+        &app,
+        "POST",
+        "/pof/verify",
+        Some(json!({ "record": unread_pof.record, "amount": 120, "challenge": unread })),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_GATEWAY, "{v}");
 
     // Bounded: with every permit held the node answers 429 and verifies nothing.
     let held = n

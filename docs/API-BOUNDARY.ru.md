@@ -42,7 +42,8 @@
 | `GET /fees` | — | `FeeReport` узла координатора |
 | `GET /policy` (узел) | — | `{ credential: { issuer, type, typeText } \| null, screening: { active, standbyLedgers } }` — ворота депозитов, которые узел применяет; координатор копирует `credential` в `GET /config` |
 | `POST /fees/sweep` | `{ amount? }` (дропы; по умолчанию всё доступное) | `{ amount, tx, treasury, recorded, refusals }` — вызов оператора, k-of-N Payment пул → казна |
-| `POST /pof/verify` (узел, доступен как `/node/<i>/pof/verify` — никогда через координатор) | `{ record, amount, challenge: { borrower, lender, ledgerIndex, expiry } }` | `{ ok, amount, challenge, validatedLedger, root, bundleHash, meaning }` — доказательство средств, проверенное только чтением на собственном состоянии узла; не логируется и не сохраняется. 400 challenge отклонён · 409 доказательство не проходит · 413 тело > 256 КиБ · 429 узел занят · 502 нет валидированного леджера |
+| `POST /pof/verify` (узел, доступен как `/node/<i>/pof/verify` — никогда через координатор) | `{ record, amount, challenge: { borrower, lender, ledgerIndex, expiry } }` | `{ ok, amount, challenge, validatedLedger, root, bundleHash, meaning, credential: { subject, credentialType, credentialTypeText, expiration, uri, uriText } }` — доказательство средств, проверенное только чтением на собственном состоянии узла; не логируется и не сохраняется; `credential` — XLS-70 Credential, который этот узел позволил бы подписать сайдкару. 400 challenge отклонён · 409 доказательство не проходит · 413 тело > 256 КиБ · 429 узел занят · 502 нет валидированного леджера / леджер L не читается |
+| `POST /pof/credential` | `{ record, amount, challenge }` | `{ tx, issuer, subject, credentialType, credentialTypeText, expiration, uri, amount, challenge, validatedLedger, signers, refusals }` — кворум записывает проверенное доказательство как истекающий `CredentialCreate` с аккаунта пула на заёмщика; каждый сайдкар перепроверяет на своём узле в момент подписи. 409 меньше k подписантов подтвердили · 502 леджер |
 
 Формы (на проводе camelCase):
 
@@ -171,6 +172,17 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
   узел из `/config.nodes`, таблица вердиктов с «k из N узлов подтвердили» и `meaning` узлов дословно; 400 (устарел /
   истёк) и 409 (не проходит) объяснены. Карточка «что сказано / что не сказано / не блокировка» закрывает страницу.
   `?demo=1` имитирует четыре узла (один занят, 429) и загружает демо-пакет.
+- **На леджере (путь подписи, построен 2026-10-24 — отгружается только со своим IMPL-PASS).** Когда k из N узлов
+  подтвердили, вкладка Prove funds предлагает *записать на леджер как Credential*: `POST /pof/credential` с тем же телом.
+  Ответ называет транзакцию `CredentialCreate` и поля; затем приложение предлагает **Confirm with my signature** —
+  `CredentialAccept { Account: заёмщик, Issuer: пул, CredentialType }`, подписанный в браузере XRPL-аккаунтом держателя
+  (аккаунтом из challenge; для другого аккаунта приложение отказывается). Оба попадают в Activity. `Expiration` Credential
+  — `close_time(L) + 4 с × (E − L)`, `URI` — текст `confidant/pof/v1|X|L|E|<digest16>`; оба выводит каждый узел, поэтому
+  сайдкары подписывают только то, что вычислил их узел. Шаг 3 страницы кредитора читает credentials заёмщика с леджера
+  (`account_objects type credential`, issuer = пул, тип `ConfidantPoF`), сообщает accepted / issued / expired со временем
+  истечения, декодирует URI и говорит, совпадает ли он с проверенным пакетом (`credential.uri` узлов из вердиктов).
+  Честная подпись на обеих поверхностях: credential говорит «контролировал ≥ X на момент леджера L», а не «контролирует
+  сейчас».
 
 ## 3. Что обязан подготовить UI — `record`
 

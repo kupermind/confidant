@@ -76,9 +76,15 @@ on the ledger — transfers inside are free."
    package.**
 3. Tab C: paste, **Verify with every node** → "4 of 4 nodes verified it", the same meaning, the borrower's account with
    an explorer link, the lender id flagged ✓ as yours. Say: nothing moved, nothing was logged, the nodes kept no copy —
-   the lender holds the only record; between the proof and the loan the holder can still spend, which is why the next
-   step of the design is an expiring Credential on the borrower's account and a tripwire on spend (slides).
-4. Optional, if time: back in tab A press **rotate your notes** (a self-transfer): the nodes can no longer link the
+   the lender holds the only record; between the proof and the loan the holder can still spend.
+4. **On the ledger** (only if the signing path got its IMPL-PASS in-window; otherwise the slide): tab A, press
+   **record it on the ledger as a Credential** — every signer's node re-verifies the proof now and signs
+   `CredentialCreate` from the pool account to the borrower (≈ 10 s). Read the line: issued, expires at …, URI
+   `confidant/pof/v1|50000000|L|E|…`. Press **Confirm with my signature** (the borrower's `CredentialAccept`). Tab C,
+   step 3 **Check the ledger** → "accepted ✓ … matches the package you verified ✓". Say: a loan broker reads one
+   credential, no file; it says "controlled ≥ X as of ledger L", not "controls it now" — the tripwire on spend is the
+   next slide.
+5. Optional, if time: back in tab A press **rotate your notes** (a self-transfer): the nodes can no longer link the
    holder's next spend to the proof. Then paste the old package again on tab C → every node answers **409** (the notes
    moved): the snapshot is honest about being a snapshot.
 

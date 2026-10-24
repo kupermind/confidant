@@ -17,6 +17,13 @@ pub const RECENT_WINDOW: u64 = 200;
 pub const MAX_EXPIRY_WINDOW: u64 = 21_600;
 /// The lender id is opaque but bounded.
 pub const MAX_LENDER_LEN: usize = 64;
+/// The XLS-70 credential type a verified proof is recorded under (Tier 1 signing path), and its hex.
+pub const POF_CREDENTIAL_TYPE_TEXT: &str = "ConfidantPoF";
+pub const POF_CREDENTIAL_TYPE: &str = "436F6E666964616E74506F46";
+/// Seconds per ledger assumed when the challenge's expiry ledger becomes the Credential's `Expiration`.
+pub const SECONDS_PER_LEDGER: u64 = 4;
+/// BLAKE2b personalization of the challenge digest inside the Credential's URI.
+pub const URI_PERSONALIZATION: &[u8; 16] = b"ConfidantPoFURI_";
 
 /// The verdict's meaning, verbatim for the lender's surface.
 pub const MEANING: &str = "someone controlling at least `amount` in this pool answered this \
@@ -99,6 +106,52 @@ impl PofChallenge {
     }
 }
 
+/// The XLS-70 Credential a verified proof may be recorded as (Tier 1 signing path): every field is
+/// this node's own derivation from the challenge it verified, so a sidecar can pin the coordinator's
+/// `CredentialCreate` against it field by field. `Expiration` is the close time of ledger `L` (read
+/// from the ledger, immutable) plus `SECONDS_PER_LEDGER` per ledger up to `E` — identical on every
+/// node. The URI is UTF-8 text with the threshold, the ledger window and a short digest of the
+/// challenge bytes (binds the lender without naming it); the lender recomputes the digest from the
+/// package it holds.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PofCredential {
+    pub subject: String,
+    pub credential_type: String,
+    pub credential_type_text: String,
+    /// Seconds since the Ripple epoch.
+    pub expiration: u64,
+    /// Hex of `uri_text`, as the ledger stores it.
+    pub uri: String,
+    pub uri_text: String,
+}
+
+impl PofChallenge {
+    /// The Credential fields for a verified proof of `amount`, given the close time of ledger
+    /// `self.ledger_index`. Call after `validate()` (expiry > ledger index).
+    pub fn credential(&self, amount: u64, close_time_of_ledger_index: u64) -> PofCredential {
+        let digest = blake2b_simd::Params::new()
+            .hash_length(8)
+            .personal(URI_PERSONALIZATION)
+            .hash(&self.bytes(amount));
+        let uri_text = format!(
+            "{CHALLENGE_PREFIX}|{amount}|{}|{}|{}",
+            self.ledger_index,
+            self.expiry,
+            hex::encode(digest.as_bytes())
+        );
+        PofCredential {
+            subject: self.borrower.clone(),
+            credential_type: POF_CREDENTIAL_TYPE.to_owned(),
+            credential_type_text: POF_CREDENTIAL_TYPE_TEXT.to_owned(),
+            expiration: close_time_of_ledger_index
+                + (self.expiry - self.ledger_index) * SECONDS_PER_LEDGER,
+            uri: hex::encode_upper(uri_text.as_bytes()),
+            uri_text,
+        }
+    }
+}
+
 /// What `POST /pof/verify` answers on success. Nothing of the proof itself is echoed beyond its
 /// hash; the node keeps no copy.
 #[derive(Clone, Debug, Serialize)]
@@ -113,4 +166,6 @@ pub struct PofVerdict {
     pub root: String,
     pub bundle_hash: String,
     pub meaning: String,
+    /// The Credential this verdict authorizes a sidecar to sign (Tier 1 signing path).
+    pub credential: PofCredential,
 }

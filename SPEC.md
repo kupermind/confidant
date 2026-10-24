@@ -222,6 +222,15 @@ was judged against. The record is never applied, persisted or logged. The verdic
 not a lock, not proof that the borrower owns the notes; nothing reaches the ledger in this slice (the `credential-pof`
 signing path is separate, under the ship rule).
 
+**Proof of funds on the ledger (feature C, Tier 1 signing path; built on-site 2026-10-24, ships only with its own IMPL-PASS
+in-window).** A verdict may be recorded by the quorum as an expiring XLS-70 Credential from the pool account to the
+borrower: `CredentialType` "ConfidantPoF", `Expiration` = the close time of ledger `L` plus 4 s per ledger to `E`, `URI` =
+`confidant/pof/v1|X|L|E|<digest of the challenge>` — every node derives these from the challenge it verified, and a sidecar
+signs only a `CredentialCreate` equal to **its own node's** fields after that node re-verified the proof at signing time
+(unspent re-checked). The borrower's `CredentialAccept` binds the account. What the Credential says is exactly the verdict:
+"controlled ≥ X as of ledger L", not "controls it now"; it is not a lock, and between the proof and a lender's read the
+holder can spend.
+
 ### 5.6 Deposit binding (backing)
 
 A verifier accepts a shield only if: (a) the XRPL side found the deposit as a validated Payment to

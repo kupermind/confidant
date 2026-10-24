@@ -171,7 +171,8 @@
   .label { font-size: 13px; color: var(--muted); line-height: 1.5; margin-top: 8px; }
   dl.pkg { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; font-size: 13px; margin: 8px 0 0; }
   dl.pkg dt { color: var(--muted); } dl.pkg dd { margin: 0; overflow-wrap: anywhere; }
-  #pkg-summary, #verdict-msg, #ask-text { overflow-wrap: anywhere; }
+  #pkg-summary, #verdict-msg, #ask-text, #ledger-msg { overflow-wrap: anywhere; }
+  #btn-ledger, #btn-verify { white-space: normal; }
 </style>
 </head>
 <body>
@@ -215,6 +216,16 @@
     <p class="label" id="verdict-label" hidden></p>
   </div>
 
+  <h2>3 · On the ledger (when the borrower recorded it)</h2>
+  <div class="card">
+    <p>The borrower can have the pool's quorum record the verdict as an expiring <b>XLS-70 Credential</b> on their XRPL
+      account (<code>ConfidantPoF</code>, issued by the pool account, confirmed by the borrower's own signature). Then you need
+      no file at all: a loan broker reads one credential. Its URI carries the threshold, the ledger window and a digest of
+      the challenge — this page compares it with the package you verified.</p>
+    <div class="row"><button class="btn" id="btn-ledger" type="button">Check the ledger</button></div>
+    <div id="ledger-msg"></div>
+  </div>
+
   <h2>What you are — and are not — told</h2>
   <div class="card">
     <p><b>Told.</b> That whoever answered the challenge controlled unspent notes worth at least the amount, as of the ledger
@@ -251,10 +262,14 @@
   }
   let cfg = { explorer: "https://testnet.xrpl.org", xrplWs: "wss://s.altnet.rippletest.net:51233", nodes: [] };
   const DEMO_ROOT = fakeHex(64); // demo nodes agree on one state, as real synced nodes do
+  const POF_TYPE = "436F6E666964616E74506F46", LSF_ACCEPTED = 0x00010000, RIPPLE_EPOCH = 946684800;
+  const DEMO_URI = Array.from(new TextEncoder().encode("confidant/pof/v1|25000000|12345650|12346550|9f3a1c7e5b2d4a60")).map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+  const hexToText = (h) => { try { return new TextDecoder().decode(new Uint8Array((h.match(/../g) ?? []).map((x) => parseInt(x, 16)))); } catch { return ""; } };
+  let last = null; // the package and the nodes' credential URI from the last verification
   let client = null;
   async function validatedLedger() { if (DEMO) return 12_345_700; if (!client?.isConnected()) { client = new xrpl.Client(cfg.xrplWs); await client.connect(); } return client.getLedgerIndex(); }
   async function verifyAt(url, body) {
-    if (DEMO) { await sleep(400 + Math.random() * 500); if (/\/node\/3$/.test(url)) throw Object.assign(new Error("proof of funds: this node is busy verifying, retry shortly"), { status: 429 }); return { ok: true, amount: body.amount, validatedLedger: 12_345_701, root: DEMO_ROOT, meaning: "someone controlling at least `amount` in this pool answered this challenge as of the validated ledger: an underwriting signal, a snapshot, not a lock, and not proof that the borrower owns the notes" }; }
+    if (DEMO) { await sleep(400 + Math.random() * 500); if (/\/node\/3$/.test(url)) throw Object.assign(new Error("proof of funds: this node is busy verifying, retry shortly"), { status: 429 }); return { ok: true, amount: body.amount, validatedLedger: 12_345_701, root: DEMO_ROOT, credential: { subject: body.challenge.borrower, credentialType: POF_TYPE, expiration: 846720000, uri: DEMO_URI }, meaning: "someone controlling at least `amount` in this pool answered this challenge as of the validated ledger: an underwriting signal, a snapshot, not a lock, and not proof that the borrower owns the notes" }; }
     return http("POST", `${url}/pof/verify`, body);
   }
 
@@ -299,10 +314,28 @@
       const ok = rs.filter((r) => r.ok).length;
       if (ok === 0) { msg("verdict-msg", `<b>No node verified this proof.</b> ${esc(rs[0]?.e?.message ?? "")} — a stale or expired challenge gets a 400, a proof that no longer verifies (spent since, another amount or challenge) a 409.`, "err"); return; }
       const roots = new Set(rs.filter((r) => r.ok).map((r) => r.v.root));
+      last = { pkg: p, uri: rs.find((r) => r.ok).v.credential?.uri ?? null };
       msg("verdict-msg", `<b>${ok} of ${nodes.length} nodes verified it${ok === nodes.length ? "" : ` (${nodes.length - ok} did not answer or refused)`}</b>: someone controlling at least <b>${fmt(p.amount)} XRP</b> in this pool answered the challenge of "${esc(p.challenge.lender)}" for ${esc(p.challenge.borrower)} as of ledger ${p.challenge.ledgerIndex}${roots.size > 1 ? ` — the agreeing nodes report ${roots.size} different state roots (one may be syncing)` : ""}.`, "ok");
       $("verdict-label").textContent = `Meaning, from the nodes: ${rs.find((r) => r.ok).v.meaning}. The nodes kept no copy and logged nothing; this verdict is read-only evidence computed by each node from the public log.`;
       $("verdict-label").hidden = false;
     } catch (e) { msg("verdict-msg", esc(e.message), "err"); }
+    finally { b.disabled = false; }
+  }
+  async function checkLedger() {
+    const b = $("btn-ledger"); b.disabled = true; msg("ledger-msg", "Reading the borrower's account…", "warn");
+    try {
+      if (!last) throw new Error("Verify a package first — the ledger check compares the credential against it");
+      const { borrower } = last.pkg.challenge;
+      let objs;
+      if (DEMO) { await sleep(600); objs = [{ Issuer: cfg.pool, CredentialType: POF_TYPE, Subject: borrower, Flags: LSF_ACCEPTED, Expiration: 846720000, URI: last.uri }]; }
+      else { if (!client?.isConnected()) { client = new xrpl.Client(cfg.xrplWs); await client.connect(); } const r = await client.request({ command: "account_objects", account: borrower, type: "credential", ledger_index: "validated" }); objs = r.result.account_objects ?? []; }
+      const hit = objs.find((o) => o.Issuer === cfg.pool && String(o.CredentialType).toUpperCase() === POF_TYPE);
+      if (!hit) { msg("ledger-msg", `No proof-of-funds credential from the pool (${esc(cfg.pool ?? "?")}) on ${esc(borrower)} — the borrower has not recorded this verdict, or it was deleted after expiry.`, "warn"); return; }
+      const now = Math.floor(Date.now() / 1000) - RIPPLE_EPOCH;
+      const accepted = (hit.Flags & LSF_ACCEPTED) !== 0, expired = !!hit.Expiration && hit.Expiration <= now;
+      const matches = !!last.uri && String(hit.URI ?? "").toUpperCase() === String(last.uri).toUpperCase();
+      msg("ledger-msg", `Credential from the pool on ${esc(borrower)}: <b>${expired ? "expired" : accepted ? "accepted ✓ (confirmed by the borrower's signature)" : "issued, not yet confirmed by the borrower"}</b>${hit.Expiration ? `, expires ${new Date((hit.Expiration + RIPPLE_EPOCH) * 1000).toLocaleString()}` : ""}. URI <span class="mono">${esc(hexToText(hit.URI ?? ""))}</span> — ${matches ? "matches the package you verified ✓" : "<b>does not match</b> the package you verified (another proof, amount or window)"}. It says "controlled ≥ X as of ledger L", not "controls it now".`, matches && accepted && !expired ? "ok" : "warn");
+    } catch (e) { msg("ledger-msg", esc(e.message), "err"); }
     finally { b.disabled = false; }
   }
   function demoPackage() {
@@ -316,8 +349,9 @@
     $("btn-copy-ask").addEventListener("click", async () => { try { await navigator.clipboard.writeText($("ask-text").textContent); $("btn-copy-ask").textContent = "Copied"; } catch { $("btn-copy-ask").textContent = "Select and copy"; } });
     $("pkg-file").addEventListener("change", async () => { const f = $("pkg-file").files?.[0]; if (f) $("pkg").value = await f.text(); });
     $("btn-verify").addEventListener("click", verify);
+    $("btn-ledger").addEventListener("click", checkLedger);
     $("btn-demo-pkg").hidden = !DEMO; $("btn-demo-pkg").addEventListener("click", demoPackage);
-    try { cfg = DEMO ? { network: "testnet (demo data)", explorer: "https://testnet.xrpl.org", nodes: ["/node/0", "/node/1", "/node/2", "/node/3"] } : await http("GET", `${API}/config`); } catch (e) { msg("verdict-msg", `Coordinator unreachable: ${esc(e.message)}`, "err"); }
+    try { cfg = DEMO ? { network: "testnet (demo data)", explorer: "https://testnet.xrpl.org", pool: "r45VYa4BuuKYFTbiLzomvLWTLjpg15bJcH", nodes: ["/node/0", "/node/1", "/node/2", "/node/3"] } : await http("GET", `${API}/config`); } catch (e) { msg("verdict-msg", `Coordinator unreachable: ${esc(e.message)}`, "err"); }
     $("net").textContent = cfg.network ?? "testnet";
   })();
 </script>

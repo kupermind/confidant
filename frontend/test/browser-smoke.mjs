@@ -153,6 +153,14 @@ for (const name of ["index.html", "how-it-works.html", "balances.html", "lender.
     `{steps:[...document.getElementById("steps-prove").children].map(e=>(e.classList.contains("on")?"on":"")+(e.classList.contains("done")?"✓":"")).join("|"),msg:${text("msg-prove")},rows:document.querySelectorAll("#prove-verdicts tr").length,copy:!!document.getElementById("btn-pof-copy"),hidden:document.getElementById("tab-prove").hidden}`);
   const r = sample(file, 390, 7000);
   check("prove: 4 of 4 nodes verified, every step done, package offered", r.steps === "✓|✓|✓" && /^4 of 4 nodes verified it/.test(r.msg ?? "") && r.rows === 5 && r.copy === true && r.hidden === false, r);
+  // The signing path on stage: record the verdict as a Credential (quorum), then confirm with the account's signature.
+  const rec = probe("index.html",
+    `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("tabbtn-prove").click();document.getElementById("prove-amount").value="5";document.getElementById("prove-borrower").value=JSON.parse(localStorage.getItem("confidant.xrpl")).address;document.getElementById("prove-lender").value="ACME-1";document.getElementById("btn-prove").click()},3200);setTimeout(()=>document.getElementById("btn-pof-record")?.click(),6200);setTimeout(()=>document.getElementById("btn-pof-accept")?.click(),8200)`,
+    `{led:${text("msg-prove-ledger")},acts:[...document.querySelectorAll("#activity .type")].map(e=>e.textContent).join(",")}`);
+  const mid = sample(rec, 390, 8000);
+  check("prove → credential: issued by the pool, Confirm offered", /^Credential ConfidantPoF issued by the pool account/.test(mid.led ?? "") && /Confirm with my signature/.test(mid.led ?? ""), mid);
+  const fin = sample(rec, 390, 9800);
+  check("prove → credential: confirmed with the account's signature, two activity lines", /^Confirmed ✓/.test(fin.led ?? "") && (fin.acts ?? "").split(",").filter((t) => t === "credential").length === 2, fin);
   const bad = probe("index.html",
     `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("tabbtn-prove").click();document.getElementById("prove-amount").value="5";document.getElementById("prove-borrower").value="nobody";document.getElementById("prove-lender").value="a|b";document.getElementById("btn-prove").click()},3200)`,
     `{msg:${text("msg-prove")},steps:[...document.getElementById("steps-prove").children].map(e=>e.classList.contains("on")||e.classList.contains("done")?"x":"").join("|")}`);
@@ -167,6 +175,11 @@ for (const name of ["index.html", "how-it-works.html", "balances.html", "lender.
     `setTimeout(()=>{const a=document.getElementById("ask-lender");a.value="ACME-4471";a.dispatchEvent(new Event("input"));document.getElementById("btn-demo-pkg").click();document.getElementById("btn-verify").click()},400)`,
     `{msg:${text("verdict-msg")},rows:document.querySelectorAll("#verdict-table tbody tr").length,sum:${text("pkg-summary")},label:${text("verdict-label")},ask:${text("ask-text")}}`);
   const r = sample(file, 390, 3000);
+  const led = probe("lender.html",
+    `setTimeout(()=>{document.getElementById("btn-demo-pkg").click();document.getElementById("btn-verify").click()},400);setTimeout(()=>document.getElementById("btn-ledger").click(),2600)`,
+    `{led:${text("ledger-msg")}}`);
+  const l = sample(led, 390, 4000);
+  check("lender: the credential read back from the ledger is accepted and matches the package", /accepted ✓/.test(l.led ?? "") && /matches the package you verified ✓/.test(l.led ?? "") && /confidant\/pof\/v1\|25000000\|12345650\|12346550\|/.test(l.led ?? ""), l);
   check("lender: 3 of 4 nodes verified, claims summarised, own id flagged, meaning shown",
     /^3 of 4 nodes verified it \(1 did not answer or refused\)/.test(r.msg ?? "") && r.rows === 4 && /at least 25 XRP/.test(r.sum ?? "") && /your id ✓/.test(r.sum ?? "") && /not a lock/.test(r.label ?? "") && /lender id "ACME-4471"/.test(r.ask ?? ""), r);
   const bad = probe("lender.html", `setTimeout(()=>{document.getElementById("pkg").value="{not json";document.getElementById("btn-verify").click()},400)`, `{msg:${text("verdict-msg")}}`);

@@ -280,6 +280,11 @@ impl<L: Ledger> Node<L> {
         challenge
             .check_window(validated)
             .map_err(|e| NodeError::Pof(e.to_string()))?;
+        // Immutable once validated: every node derives the same Credential expiration from it.
+        let close_time = self
+            .ledger
+            .ledger_close_time(challenge.ledger_index)
+            .await?;
         let bytes = challenge.bytes(amount);
         let (root, hash) = {
             let v = self.lock();
@@ -294,6 +299,7 @@ impl<L: Ledger> Node<L> {
             root,
             bundle_hash: hash,
             meaning: MEANING.to_owned(),
+            credential: challenge.credential(amount, close_time),
         })
     }
 
