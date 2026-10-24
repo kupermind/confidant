@@ -12,7 +12,7 @@ use confidant_core::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::credential::{ripple_now, CredentialGate, CredentialPolicy};
+use crate::credential::{CredentialGate, CredentialPolicy};
 use crate::fees::{FeeLedger, FeePolicy, FeeReport};
 use crate::screening::Screening;
 use crate::xrpl::{
@@ -338,8 +338,13 @@ impl<L: Ledger> Node<L> {
                 .ledger
                 .credential(&account, &p.issuer, &p.credential_type)
                 .await?;
+            // `Expiration` is judged against the ledger's own clock — the close time of the latest
+            // validated ledger, read here — never this host's system clock (a clock running behind
+            // would be the one fail-open of the gate). Unreadable ⇒ a ledger error, never an acceptance.
+            let validated = self.ledger.validated_ledger_index().await?;
+            let now = self.ledger.ledger_close_time(validated).await?;
             self.credential
-                .check(&account, entry.as_ref(), ripple_now())
+                .check(&account, entry.as_ref(), now)
                 .map_err(|e| NodeError::Credential(e.to_string()))?;
         }
         Ok(deposit)

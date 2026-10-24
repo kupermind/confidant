@@ -152,7 +152,9 @@ pub fn is_entry_not_found(rpc_error: &str) -> bool {
         || rpc_error.to_ascii_lowercase().contains("entry not found")
 }
 
-/// Now, in seconds since the Ripple epoch (what `Expiration` is compared against).
+/// This host's clock in seconds since the Ripple epoch. **Not** what the gate judges `Expiration`
+/// against — the node uses the validated ledger's `close_time` for that; this is for logs, tooling
+/// and tests that need a plausible "now".
 pub fn ripple_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

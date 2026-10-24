@@ -33,6 +33,8 @@ struct FakeLedger {
     credentials: Arc<Mutex<BTreeMap<String, Value>>>,
     credential_calls: Arc<Mutex<u64>>,
     credential_fail: Arc<Mutex<bool>>,
+    /// `close_time` by ledger index (missing = the ledger cannot be read).
+    close_times: Arc<Mutex<BTreeMap<u64, u64>>>,
 }
 
 impl FakeLedger {
@@ -89,6 +91,9 @@ impl FakeLedger {
     fn set_validated(&self, n: u64) {
         *self.validated.lock().unwrap() = n;
     }
+    fn set_close_time(&self, index: u64, close_time: u64) {
+        self.close_times.lock().unwrap().insert(index, close_time);
+    }
     fn push_anchor(&self, memo_hex: &str) {
         self.account.lock().unwrap().push(json!({
             "validated": true,
@@ -123,6 +128,14 @@ impl Ledger for FakeLedger {
             return Err(LedgerError::Rpc("ledger: unavailable".into()));
         }
         Ok(n)
+    }
+    async fn ledger_close_time(&self, index: u64) -> Result<u64, LedgerError> {
+        self.close_times
+            .lock()
+            .unwrap()
+            .get(&index)
+            .copied()
+            .ok_or_else(|| LedgerError::Rpc(format!("ledger {index}: unavailable")))
     }
     async fn credential(
         &self,
@@ -220,10 +233,15 @@ async fn node_refuses_to_serve_unless_the_pool_custody_is_the_configured_quorum(
 }
 
 fn deposit_tx(dest: &str, drops: &str, memo_hash: &str) -> Value {
+    deposit_tx_from("rAlice", dest, drops, memo_hash)
+}
+
+/// A validated deposit Payment from `account` (the depositor the credential gate judges).
+fn deposit_tx_from(account: &str, dest: &str, drops: &str, memo_hash: &str) -> Value {
     json!({
         "validated": true,
         "ledger_index": 100,
-        "tx_json": { "TransactionType": "Payment", "Account": "rAlice", "Destination": dest,
+        "tx_json": { "TransactionType": "Payment", "Account": account, "Destination": dest,
             "Memos": [{ "Memo": { "MemoType": hex::encode(MEMO_SHIELD), "MemoData": memo_hash.to_uppercase() } }] },
         "meta": { "delivered_amount": drops }
     })
@@ -1629,8 +1647,14 @@ async fn credential_gate_refuses_deposits_without_an_accepted_credential_at_subm
             "no accepted credential from {ISSUER} of type ConfidantKYC for rAlice"
         )));
 
-    // The node: gated vs open, at submit and at endorse, reading the ledger each time.
+    // The node: gated vs open, at submit and at endorse, reading the ledger each time. `Expiration`
+    // is judged against the validated ledger's close time (the ledger's clock), which the fake sets
+    // far from this host's clock on purpose.
     let ledger = FakeLedger::default();
+    const NOW: u64 = 500_000_000; // ≈ 2015-11 in Ripple-epoch seconds: a credential that would be
+                                  // fresh by the host clock yet expired by the ledger's must be refused.
+    ledger.set_validated(2_000);
+    ledger.set_close_time(2_000, NOW);
     let open = node(&ledger);
     let gated =
         Node::new(Verifier::new(), ledger.clone(), POOL, None).with_credential(gate.clone());
@@ -1660,7 +1684,28 @@ async fn credential_gate_refuses_deposits_without_an_accepted_credential_at_subm
     assert!(
         matches!(gated.submit_shield(&p1.record, "DEP1").await, Err(NodeError::Credential(m)) if m.contains("expired"))
     );
-    // The open node never asks the ledger for credentials.
+    // Expired by the ledger's clock although still in the future by this host's clock: refused.
+    assert!(ripple_now() > NOW + 86_400);
+    ledger.put_credential("rAlice", ISSUER, TYPE, true, Some(NOW));
+    assert!(
+        matches!(gated.submit_shield(&p1.record, "DEP1").await, Err(NodeError::Credential(m)) if m.contains("expired"))
+    );
+    // Valid by the ledger's clock although long past by this host's clock: accepted at endorse below.
+    // First: the ledger's clock unreadable ⇒ a ledger error, never an acceptance (fail closed).
+    ledger.put_credential("rAlice", ISSUER, TYPE, true, Some(NOW + 1));
+    ledger.set_validated(0);
+    assert!(matches!(
+        gated.submit_shield(&p1.record, "DEP1").await,
+        Err(NodeError::Ledger(LedgerError::Rpc(_)))
+    ));
+    ledger.set_validated(2_001); // index known, its close time not
+    assert!(matches!(
+        gated.submit_shield(&p1.record, "DEP1").await,
+        Err(NodeError::Ledger(LedgerError::Rpc(_)))
+    ));
+    ledger.set_validated(2_000);
+    ledger.put_credential("rAlice", ISSUER, TYPE, true, Some(NOW)); // expired again: endorse below must refuse
+                                                                    // The open node never asks the ledger for credentials.
     let before = ledger.credential_calls();
     let acc = open.submit_shield(&p1.record, "DEP1").await.unwrap();
     assert_eq!(ledger.credential_calls(), before);
@@ -1677,11 +1722,17 @@ async fn credential_gate_refuses_deposits_without_an_accepted_credential_at_subm
         gated.endorse(&sub, &acc.memo_hex).await,
         Err(NodeError::Credential(_))
     ));
-    ledger.put_credential("rAlice", ISSUER, TYPE, true, Some(ripple_now() + 3_600));
+    ledger.put_credential("rAlice", ISSUER, TYPE, true, Some(NOW + 1)); // one second of ledger time
     gated.endorse(&sub, &acc.memo_hex).await.unwrap();
+    // A second depositor: the subject the gate checks is THIS deposit's account (M8 of the ruling) —
+    // Bob's credential admits Bob's deposit, and Alice's would not.
     let bob = Wallet::new();
     let p2 = bob.build_shield(50).unwrap();
-    ledger.put_tx("DEP2", deposit_tx(POOL, "50", &p2.hash_hex()));
+    ledger.put_tx("DEP2", deposit_tx_from("rBob", POOL, "50", &p2.hash_hex()));
+    assert!(
+        matches!(gated.submit_shield(&p2.record, "DEP2").await, Err(NodeError::Credential(m)) if m.contains("rBob") && m.contains("none on the ledger"))
+    );
+    ledger.put_credential("rBob", ISSUER, TYPE, true, None);
     gated.submit_shield(&p2.record, "DEP2").await.unwrap();
     // The ledger unreachable for the lookup: fail closed with a ledger error, never an acceptance.
     ledger.fail_credentials(true);

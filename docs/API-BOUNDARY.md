@@ -105,7 +105,8 @@ coordinator copies into `/config.credential`.*
   The UI reads the issuer and the type from here and from nowhere else.
 - **Rule.** A shield is accepted only if the deposit's `Account` holds an XLS-70 Credential on the ledger
   with `Issuer == credential.issuer`, `CredentialType == credential.type`, the **accepted** flag set
-  (`lsfAccepted`) and no past `Expiration`, read by each node from the ledger itself (`ledger_entry`
+  (`lsfAccepted`) and an `Expiration`, if any, later than the **validated ledger's `close_time`** (the ledger's clock,
+  never the node host's), read by each node from the ledger itself (`ledger_entry`
   `credential` or `account_objects` of the depositor) at submit and again at endorse. The sidecar signs
   nothing its own node did not accept (unchanged rule).
 - **Refusal.** HTTP **403** with `{ error: "no accepted credential from <issuer> of type <typeText> for

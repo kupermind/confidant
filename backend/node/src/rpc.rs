@@ -84,6 +84,16 @@ impl Ledger for JsonRpc {
         }
     }
 
+    async fn ledger_close_time(&self, index: u64) -> Result<u64, LedgerError> {
+        let r = self
+            .call("ledger", json!({ "ledger_index": index }))
+            .await?;
+        r.get("ledger")
+            .and_then(|l| l.get("close_time"))
+            .and_then(Value::as_u64)
+            .ok_or_else(|| LedgerError::Rpc(format!("ledger {index}: no close_time in the answer")))
+    }
+
     async fn validated_ledger_index(&self) -> Result<u64, LedgerError> {
         let r = self
             .call("ledger", json!({ "ledger_index": "validated" }))
