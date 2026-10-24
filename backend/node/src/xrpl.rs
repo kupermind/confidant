@@ -53,12 +53,14 @@ pub trait Ledger: Send + Sync {
         &self,
         index: u64,
     ) -> impl Future<Output = Result<u64, LedgerError>> + Send;
-    /// Every Credential ledger object held by `account` on the validated ledger (`account_objects`
-    /// with `type: credential`) — issued to it, or by it.
+    /// The Credential ledger objects held by `account` on the validated ledger (`account_objects`
+    /// with `type: credential`) — issued to it, or by it: the first page (rippled's maximum, 400)
+    /// and whether a further page exists. A further page is never a count: the caller refuses
+    /// rather than judge a partial list.
     fn account_credentials(
         &self,
         account: &str,
-    ) -> impl Future<Output = Result<Vec<Value>, LedgerError>> + Send;
+    ) -> impl Future<Output = Result<(Vec<Value>, bool), LedgerError>> + Send;
     /// The Credential ledger entry for `(subject, issuer, credential_type)` on the validated ledger
     /// (`ledger_entry` with `credential`): `Some(node)`, or `None` when there is no such entry.
     fn credential(

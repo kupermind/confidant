@@ -149,3 +149,20 @@ Whether (A)+(B)+(C) close the finding for the event, and whether the ship rule n
 value (8) and the one-per-borrower rule are defaults without flags, as the windows are.
 ```
 
+
+## Supplement 2 — reconciliation on the owner's bound (2026-10-24, dev session)
+
+The owner's 793614a (gate eligibility A, one credential per borrower B, outstanding cap C = 8, `credential: true`
+opt-in, 1 MiB body cap, SPEC §11 inventory) superseded the dev session's #74; two deltas from the audit's seven
+checks landed on top of it: a further `account_objects` page (marker) is refused rather than judged from a partial
+list — for the pool's count and for the borrower's "already holds" read alike — and the read-failure direction is
+pinned per read (pool count, borrower list, compliance entry: a ledger error, never a derivation; the plain verdict
+needs no such read). `POF_CREDENTIAL_CAP` carries a compile-time bound (≤ 200) and the page-size / not-a-hard-ceiling
+conditions are documented (PROOF-OF-FUNDS, NODE-OPERATOR).
+
+Mutations, run alone against the endpoint test, sources restored after each row:
+D1 pool further page ignored (partial list judged)              → killed
+D2 borrower further page ignored                                → killed
+D3 pool count read failure treated as empty (derives anyway)    → killed
+D4 borrower read failure treated as empty                       → killed
+D5 compliance read failure treated as "no entry"                → killed

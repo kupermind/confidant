@@ -64,3 +64,11 @@ desktop.ini
 # wasm-pack output of frontend/wasm (built at deploy time)
 frontend/pkg/
 frontend/pkg-threads/
+
+# hackathon/ap4m: keys, state and the hackathon-only AP4M kit fetched by setup.sh (never vendored)
+hackathon/ap4m/.env
+hackathon/ap4m/node_modules/
+hackathon/ap4m/*-state/
+hackathon/ap4m/ap4m-hackathon-sdk.cjs
+hackathon/ap4m/ap4m-x402.mjs
+hackathon/ap4m/package-lock.json

@@ -348,14 +348,28 @@ impl<L: Ledger> Node<L> {
                 )));
             }
         }
-        let held = self.ledger.account_credentials(borrower).await?;
+        let (held, more) = self.ledger.account_credentials(borrower).await?;
+        if more {
+            return Ok(Some(
+                "the borrower holds more than one page of credential objects; refusing rather than judging a partial list"
+                    .to_owned(),
+            ));
+        }
         if held.iter().any(|o| is_pof_credential_from(&self.pool, o)) {
             return Ok(Some(
                 "borrower already holds a proof-of-funds credential from this pool (accept it or let it expire first)"
                     .to_owned(),
             ));
         }
-        let pool_objects = self.ledger.account_credentials(&self.pool).await?;
+        let (pool_objects, more) = self.ledger.account_credentials(&self.pool).await?;
+        // The cap is judged from one page only: a further page is "more than the cap", never a
+        // count. This holds while the cap stays well below the page size (400); raising it near or
+        // above needs true pagination first.
+        if more {
+            return Ok(Some(format!(
+                "the pool account holds more than one page of credential objects; the cap {POF_CREDENTIAL_CAP} cannot be judged from a partial list"
+            )));
+        }
         let outstanding = outstanding_pof_credentials(&self.pool, &pool_objects);
         if outstanding >= POF_CREDENTIAL_CAP {
             return Ok(Some(format!(

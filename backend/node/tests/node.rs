@@ -1,7 +1,7 @@
 //! Node logic and HTTP surface against a fake ledger: deposit facts, submissions, endorse
 //! (re-lookup + idempotency), rebuild from the ledger, a lagging node, error mapping.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use axum::body::Body;
@@ -38,6 +38,10 @@ struct FakeLedger {
     /// Credential objects by account (`account_objects type credential`), and how often asked.
     account_creds: Arc<Mutex<BTreeMap<String, Vec<Value>>>>,
     account_cred_calls: Arc<Mutex<u64>>,
+    /// Accounts whose credential objects span a further page, and a switch that makes the lookup fail.
+    account_creds_more: Arc<Mutex<BTreeSet<String>>>,
+    /// Accounts whose lookup fails like an unreachable RPC (per account: each read pinned alone).
+    account_cred_fail: Arc<Mutex<BTreeSet<String>>>,
 }
 
 impl FakeLedger {
@@ -111,6 +115,22 @@ impl FakeLedger {
     fn account_cred_calls(&self) -> u64 {
         *self.account_cred_calls.lock().unwrap()
     }
+    fn set_account_credentials_more(&self, account: &str, on: bool) {
+        let mut m = self.account_creds_more.lock().unwrap();
+        if on {
+            m.insert(account.to_owned());
+        } else {
+            m.remove(account);
+        }
+    }
+    fn fail_account_credentials(&self, account: &str, on: bool) {
+        let mut m = self.account_cred_fail.lock().unwrap();
+        if on {
+            m.insert(account.to_owned());
+        } else {
+            m.remove(account);
+        }
+    }
     fn push_anchor(&self, memo_hex: &str) {
         self.account.lock().unwrap().push(json!({
             "validated": true,
@@ -154,15 +174,22 @@ impl Ledger for FakeLedger {
             .copied()
             .ok_or_else(|| LedgerError::Rpc(format!("ledger {index}: unavailable")))
     }
-    async fn account_credentials(&self, account: &str) -> Result<Vec<Value>, LedgerError> {
+    async fn account_credentials(&self, account: &str) -> Result<(Vec<Value>, bool), LedgerError> {
         *self.account_cred_calls.lock().unwrap() += 1;
-        Ok(self
-            .account_creds
-            .lock()
-            .unwrap()
-            .get(account)
-            .cloned()
-            .unwrap_or_default())
+        if self.account_cred_fail.lock().unwrap().contains(account) {
+            return Err(LedgerError::Rpc(format!(
+                "account_objects {account}: unavailable"
+            )));
+        }
+        Ok((
+            self.account_creds
+                .lock()
+                .unwrap()
+                .get(account)
+                .cloned()
+                .unwrap_or_default(),
+            self.account_creds_more.lock().unwrap().contains(account),
+        ))
     }
     async fn credential(
         &self,
@@ -1945,6 +1972,50 @@ async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge()
         .unwrap();
     assert!(under.credential.is_some(), "{:?}", under.credential_refused);
     ledger.clear_account_credentials(POOL);
+    // A further page of credential objects is never judged from the partial list: withheld, for the
+    // pool's count and for the borrower's "already holds" check alike (fail closed).
+    ledger.set_account_credentials_more(POOL, true);
+    let paged = n
+        .verify_proof_of_funds(&pof.record, 120, &ch, true)
+        .await
+        .unwrap();
+    assert!(paged.ok && paged.credential.is_none());
+    assert!(
+        paged
+            .credential_refused
+            .as_deref()
+            .unwrap()
+            .contains("more than one page"),
+        "{paged:?}"
+    );
+    ledger.set_account_credentials_more(POOL, false);
+    ledger.set_account_credentials_more(BORROWER, true);
+    assert!(n
+        .verify_proof_of_funds(&pof.record, 120, &ch, true)
+        .await
+        .unwrap()
+        .credential
+        .is_none());
+    ledger.set_account_credentials_more(BORROWER, false);
+    // The credential objects unreadable: a ledger error when the Credential was asked for — never a
+    // derivation; the plain verdict needs no such read and still answers.
+    for account in [POOL, BORROWER] {
+        ledger.fail_account_credentials(account, true);
+        assert!(
+            matches!(
+                n.verify_proof_of_funds(&pof.record, 120, &ch, true).await,
+                Err(NodeError::Ledger(_))
+            ),
+            "{account}: a read failure is a ledger error, never a derivation"
+        );
+        assert!(
+            n.verify_proof_of_funds(&pof.record, 120, &ch, false)
+                .await
+                .unwrap()
+                .ok
+        );
+        ledger.fail_account_credentials(account, false);
+    }
     // Bound (A): with the pool's credential gate on, the borrower must hold the gate's accepted credential.
     const ISSUER_A: &str = "rwbgyYBhFiBExQ7K5yJKyYdvHYwGHdBamt";
     const TYPE_A: &str = "436F6E666964616E744B5943";
@@ -1985,6 +2056,15 @@ async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge()
         .credential
         .is_none());
     ledger.put_credential(BORROWER, ISSUER_A, TYPE_A, true, None);
+    // The compliance read failing on the gated node: a ledger error, never a derivation.
+    ledger.fail_credentials(true);
+    assert!(matches!(
+        gated
+            .verify_proof_of_funds(&pof.record, 120, &ch, true)
+            .await,
+        Err(NodeError::Ledger(_))
+    ));
+    ledger.fail_credentials(false);
 
     // Through HTTP.
     let body = |amount: u64, ch: &PofChallenge| json!({ "record": pof.record, "amount": amount, "challenge": ch, "credential": true });
