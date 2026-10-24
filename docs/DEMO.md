@@ -72,6 +72,9 @@ permanent; the ledger carries the state, not the bytes.
 - **Shield lingers on step 3 with "Anchoring — the verifiers wait until the deposit is 2 ledgers old (≈ 8 s)"**:
   that is the screening standby, not an error; the page retries by itself (the node's refusal text is in the
   tooltip). Say: "the verifiers only accept a deposit once it is two ledgers deep."
+- **Shield: deposit landed, anchoring failed** (lost answer, closed tab): the page kept the record and shows
+  "Resume anchoring" under the form, also after a reload; press it. The node is idempotent for the same bundle;
+  a 409 on resume means it was anchored already — press Sync.
 - **Payout error after the anchor**: the note is spent and the user unpaid — say so, click **Withdraw**
   again (same amount, same address): `/endorse` is idempotent, the sidecars re-sign, the payout lands.
 - **Backend offline** (status pill red): switch to the `?demo=1` tab and narrate the same six steps on

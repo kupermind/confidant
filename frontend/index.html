@@ -670,7 +670,7 @@
       </div>
       <div id="haswallet" hidden>
         <div class="k">Your private balance<button class="tip" type="button" aria-label="About your private balance" data-tip="What the notes you hold in the pool are worth, counted from your own key. Anyone you give your viewing key can see it too."></button></div>
-        <div class="big"><span id="priv-balance">0</span><small>XRP</small></div>
+        <div class="big"><span id="priv-balance">…</span><small>XRP</small></div>
         <div class="two-col">
           <div class="col-kv">
             <h4>XRPL account<span class="pub">public</span></h4>
@@ -787,6 +787,7 @@
   const fakeHex = (n) => Array.from({ length: n }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
   const mock = (() => {
     let bundles = 12, balance = 0, notes = [], pool = 1_234_500_000;
+    let failSubmitOnce = new URLSearchParams(location.search).has("failsubmit"); // simulate a lost answer once
     return {
       config: async () => ({ network: "testnet (demo data)", explorer: "https://testnet.xrpl.org", xrplWs: null, pool: "r45VYa4BuuKYFTbiLzomvLWTLjpg15bJcH", quorum: 2, signers: 3, fees: { shieldBps: 25, unshieldBps: 25, treasury: "rTreasuryDemo" } }),
       state: async () => ({ bundleCount: bundles, anchoredRoot: fakeHex(64) }),
@@ -794,7 +795,7 @@
       createWallet: async () => ({ id: fakeHex(32), address: fakeHex(86), viewingKey: fakeHex(192), balance: 0, synced: bundles }),
       wallet: async () => ({ balance, synced: bundles }),
       build: async (_id, op, body) => { await sleep(900); return { record: { op, _amount: body.amount }, bundleHash: fakeHex(64) }; },
-      submit: async (op, body) => { await sleep(1400); bundles++; const amt = Number(body.record?._amount ?? 0); if (op === "shield") { pool += amt; } if (op === "unshield") { pool -= amt; } if (op === "shield") { balance += amt; notes.push({ direction: "incoming", amount: amt, spent: false }); } if (op === "transfer" || op === "unshield") { balance -= amt; } return { newRoot: fakeHex(64), anchorTx: fakeHex(64).toUpperCase(), payoutTx: op === "unshield" ? fakeHex(64).toUpperCase() : null, payout: op === "unshield" ? { amount: amt - Math.floor(amt * 25 / 10000), destination: body.destination } : undefined, signers: ["rA", "rB"] }; },
+      submit: async (op, body) => { if (op === "shield" && failSubmitOnce) { failSubmitOnce = false; await sleep(300); throw Object.assign(new Error("Backend unreachable (simulated)"), { status: 502 }); } await sleep(1400); bundles++; const amt = Number(body.record?._amount ?? 0); if (op === "shield") { pool += amt; } if (op === "unshield") { pool -= amt; } if (op === "shield") { balance += amt; notes.push({ direction: "incoming", amount: amt, spent: false }); } if (op === "transfer" || op === "unshield") { balance -= amt; } return { newRoot: fakeHex(64), anchorTx: fakeHex(64).toUpperCase(), payoutTx: op === "unshield" ? fakeHex(64).toUpperCase() : null, payout: op === "unshield" ? { amount: amt - Math.floor(amt * 25 / 10000), destination: body.destination } : undefined, signers: ["rA", "rB"] }; },
       reveal: async () => ({ balance, notes }),
     };
   })();
@@ -820,15 +821,17 @@
     }
     async function syncNow() { const { records } = await http("GET", `${API}/log?from=0`); return call("sync", { records }); }
     let threads = 0, warmed = null;
-    // The proving keys are built once per worker; start that right after the wallet exists so the
-    // first operation does not wait for it (the worker serialises messages, so a build that arrives
-    // early simply queues behind the warm-up).
+    // The proving keys are built once per worker, started right after the first balance sync (see
+    // summary) so the first operation does not wait for them; the worker serialises messages, so
+    // anything sent during the build queues behind it.
     const warm = () => (warmed ??= call("warm").then((r) => { threads = r.threads; $("sync-hint").textContent = `Proving keys ready (${r.threads} thread${r.threads === 1 ? "" : "s"}, ${(r.ms / 1000).toFixed(1)} s)`; return r; }).catch((e) => { warmed = null; throw e; }));
     return {
       mode: "browser", get label() { return "In this browser, never sent anywhere"; },
-      async create() { start(); const s = await call("create"); threads = s.threads ?? 0; warm().catch(() => {}); return { mode: "browser", secret: s.secret, address: s.address, viewingKey: s.viewingKey }; },
-      async restore(w) { start(); const s = await call("restore", { secret: w.secret }); threads = s.threads ?? 0; warm().catch(() => {}); return w; },
-      async summary() { return syncNow(); },
+      async create() { start(); const s = await call("create"); threads = s.threads ?? 0; return { mode: "browser", secret: s.secret, address: s.address, viewingKey: s.viewingKey }; },
+      async restore(w) { start(); const s = await call("restore", { secret: w.secret }); threads = s.threads ?? 0; return w; },
+      // The first sync answers before the proving keys are built: the worker handles one message at a time,
+      // so a warm-up queued first would hold the balance back for the whole key build (up to ~30 s on a phone).
+      async summary() { const r = await syncNow(); warm().catch(() => {}); return r; },
       async build(w, op, body) { await warm(); await syncNow(); return call(op, body); },
       async forget() { if (worker) await call("forget"); },
       get threads() { return threads; },
@@ -903,7 +906,7 @@
     if (!w) return;
     $("orchard-addr").textContent = w.address;
     $("keys-mode").textContent = wbFor(w).label;
-    if (!walletReady) { $("sync-hint").textContent = "Preparing…"; }
+    if (!walletReady) { $("sync-hint").textContent = "Preparing…"; $("priv-balance").textContent = "…"; }
     else {
       try { const s = await wbFor(w).summary(w); $("priv-balance").textContent = fmt(s.balance); $("sync-hint").textContent = `Synced ${s.synced} bundle${s.synced === 1 ? "" : "s"}`; }
       catch (e) { $("sync-hint").textContent = `Sync failed: ${e.message}`; }
@@ -968,13 +971,45 @@
       busy(btn, true); setMsg("msg-shield", "");
       setSteps("steps-shield", 0); const built = await wbFor(w).build(w, "shield", { amount: net });
       setSteps("steps-shield", 1); const depositTxHash = await deposit(drops, built.bundleHash);
+      // The deposit is on the ledger now. Keep what anchoring needs, so a lost answer or a closed tab
+      // resumes instead of paying a second deposit (the node's submit is idempotent for the same bundle).
+      store.set("pending-shield", { record: built.record, bundleHash: built.bundleHash, depositTxHash, drops, net, when: new Date().toISOString() });
       setSteps("steps-shield", 2);
       const acc = await submitWithStandby("shield", { record: built.record, depositTxHash }, (m) => setMsg("msg-shield", standbyText(m), "warn"));
+      store.del("pending-shield");
       setSteps("steps-shield", 2, true);
       setMsg("msg-shield", `Shielded ${fmt(drops)} XRP (note ${fmt(net)} XRP after the ${pct(cfg.fees?.shieldBps ?? 0)} fee). Signed by ${acc.signers?.length ?? "k"} of ${cfg.signers}${proved(built)}. ${link("Deposit", depositTxHash)} ${link("Anchor", acc.anchorTx)}`, "ok");
       addActivity({ type: "shield", text: `${fmt(drops)} XRP into the pool (note ${fmt(net)} XRP)`, links: [["Deposit", depositTxHash], ["Anchor", acc.anchorTx]] });
-    } catch (e) { setMsg("msg-shield", esc(e.message), "err"); }
+    } catch (e) {
+      const p = store.get("pending-shield");
+      if (p) showResume(p, e.message); else setMsg("msg-shield", esc(e.message), "err");
+    }
     finally { busy(btn, false); refreshWallet(); refreshStatus(); }
+  }
+  // A deposit that landed but was never anchored: offer to resume rather than start over.
+  function showResume(p, why) {
+    setMsg("msg-shield", `${why ? esc(why) + " — " : ""}Your deposit of ${fmt(p.drops)} XRP is on the ledger (${link("Deposit", p.depositTxHash)}) but not anchored yet. Nothing is lost: <button type="button" class="link" id="btn-resume-shield">Resume anchoring</button>`, "warn");
+    $("btn-resume-shield").addEventListener("click", resumeShield);
+  }
+  async function resumeShield() {
+    const p = store.get("pending-shield"); if (!p) return;
+    const btn = $("btn-shield"); busy(btn, true);
+    try {
+      setSteps("steps-shield", 2);
+      const acc = await submitWithStandby("shield", { record: p.record, depositTxHash: p.depositTxHash }, (m) => setMsg("msg-shield", standbyText(m), "warn"));
+      store.del("pending-shield");
+      setSteps("steps-shield", 2, true);
+      setMsg("msg-shield", `Shielded ${fmt(p.drops)} XRP (note ${fmt(p.net)} XRP after the ${pct(cfg.fees?.shieldBps ?? 0)} fee). Signed by ${acc.signers?.length ?? "k"} of ${cfg.signers}. ${link("Deposit", p.depositTxHash)} ${link("Anchor", acc.anchorTx)}`, "ok");
+      addActivity({ type: "shield", text: `${fmt(p.drops)} XRP into the pool (note ${fmt(p.net)} XRP)`, links: [["Deposit", p.depositTxHash], ["Anchor", acc.anchorTx]] });
+    } catch (e) {
+      if (e.status === 409) {
+        // The nullifiers are already spent: the pool applied this shield earlier and only the answer was lost.
+        store.del("pending-shield");
+        setSteps("steps-shield", 2, true);
+        setMsg("msg-shield", `Already anchored: the pool has this shield, only the earlier answer was lost. ${link("Deposit", p.depositTxHash)} · press Sync to see the note.`, "ok");
+        addActivity({ type: "shield", text: `${fmt(p.drops)} XRP into the pool (note ${fmt(p.net)} XRP), anchored earlier`, links: [["Deposit", p.depositTxHash]] });
+      } else showResume(p, e.message);
+    } finally { busy(btn, false); refreshWallet(); refreshStatus(); }
   }
   async function doTransfer() {
     const btn = $("btn-transfer"); const w = wallet();
@@ -1084,6 +1119,7 @@
       } catch (e) { setMsg("wallet-progress", `Could not restore the wallet: ${e.message}`, "err"); }
     }
     await refreshWallet();
+    { const p = store.get("pending-shield"); if (p && wallet()) showResume(p); }
     setInterval(refreshStatus, 20000);
   })();
 })();

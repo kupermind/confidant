@@ -40,13 +40,13 @@ function probe(name, setup, report) {
   writeFileSync(file, src.replace("</body>", inj));
   return file;
 }
-function frame(file, width) {
+function frame(file, width, query = "?demo=1") {
   const f = join(dir, `frame-${Math.random().toString(36).slice(2, 8)}.html`);
-  writeFileSync(f, `<!doctype html><html><body style="margin:0"><iframe id="f" src="${file}?demo=1" style="width:${width}px;height:3000px;border:0;display:block"></iframe><script>setInterval(()=>{try{document.title=document.getElementById("f").contentDocument.title}catch(e){}},150)</script></body></html>`);
+  writeFileSync(f, `<!doctype html><html><body style="margin:0"><iframe id="f" src="${file}${query}" style="width:${width}px;height:3000px;border:0;display:block"></iframe><script>setInterval(()=>{try{document.title=document.getElementById("f").contentDocument.title}catch(e){}},150)</script></body></html>`);
   return f;
 }
-function sample(file, width, budgetMs) {
-  const out = execFileSync(CHROME, ["--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--allow-file-access-from-files", `--window-size=${width},3000`, `--virtual-time-budget=${budgetMs}`, "--dump-dom", `file://${frame(file, width)}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 120_000 });
+function sample(file, width, budgetMs, query) {
+  const out = execFileSync(CHROME, ["--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--allow-file-access-from-files", `--window-size=${width},3000`, `--virtual-time-budget=${budgetMs}`, "--dump-dom", `file://${frame(file, width, query)}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 120_000 });
   const m = out.match(/<title>([^<]*)<\/title>/);
   const raw = (m?.[1] ?? "").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
   try { return JSON.parse(raw); } catch { return { err: `no probe title: ${raw.slice(0, 80)}` }; }
@@ -106,6 +106,19 @@ for (const name of ["index.html", "how-it-works.html", "balances.html"]) {
   }
   const end = sample(file, 390, 7500);
   check("shield: success line", /^Shielded 25 XRP/.test(end.msg ?? ""), end);
+}
+
+// 6. Shield recovery: the deposit landed, the answer was lost (?failsubmit makes the demo's first submit fail
+//    once) → the page keeps the record and offers "Resume anchoring"; resuming anchors it and clears the record.
+{
+  const q = "?demo=1&failsubmit";
+  const file = probe("index.html",
+    `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("shield-amount").value="25";document.getElementById("btn-shield").click()},3200);setTimeout(()=>document.getElementById("btn-resume-shield")?.click(),6400)`,
+    `{msg:${text("msg-shield")},pending:(()=>{try{return !!localStorage.getItem("confidant.pending-shield")}catch(e){return null}})(),resume:!!document.getElementById("btn-resume-shield")}`);
+  const lost = sample(file, 390, 6000, q);
+  check("shield recovery: lost answer → record kept, 'Resume anchoring' offered", lost.pending === true && lost.resume === true && /not anchored yet/.test(lost.msg ?? ""), lost);
+  const done = sample(file, 390, 8600, q);
+  check("shield recovery: resume anchors it and clears the record", done.pending === false && /^Shielded 25 XRP/.test(done.msg ?? ""), done);
 }
 
 console.log(`\n${pass}/${pass + fail} checks ok${fail ? ` — ${fail} FAILED` : ""}`);
