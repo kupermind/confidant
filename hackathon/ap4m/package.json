@@ -1,0 +1,9 @@
+{
+  "name": "confidant-ap4m",
+  "private": true,
+  "type": "module",
+  "description": "Confidant x AP4M relay and agent (Mastercard track, hackathon use only): pay RLUSD on XRPL EVM testnet for the relay of a shielded transfer anchored on XRPL L1",
+  "engines": { "node": ">=22.13" },
+  "scripts": { "setup": "./setup.sh", "relay": "node relay.mjs", "agent": "node agent.mjs" },
+  "dependencies": { "ethers": "6.17.0", "@ap4m/sdk": "https://hackathon.ap4m.build/sdk/ap4m-sdk.tgz" }
+}
