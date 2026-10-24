@@ -66,9 +66,9 @@ for (const name of ["index.html", "how-it-works.html", "balances.html"]) {
 
 // 2. The app's header stat and the balances page's live check (demo data).
 {
-  const r = sample(probe("index.html", "", `{stat:${text("st-pool-big")},brk:${text("pool-breakdown")}}`), 390, 2500);
+  const r = sample(probe("index.html", "", `{stat:${text("st-pool-big")},brk:${text("pool-split")}}`), 390, 2500);
   check("index: shielded total shown in the header", /^[\d,.]+$/.test(r.stat ?? ""), r);
-  check("index: reconciliation line under the stat", /pool account .* = .* \+ .* float & unswept fees/.test(r.brk ?? ""), r);
+  check("index: reconciliation line under the stat", /Pool account .* = .* shielded \+ .* float and unswept fees/.test(r.brk ?? ""), r);
   const b = sample(probe("balances.html", "", `{chk:${text("r-check")},bal:${text("r-balance")}}`), 390, 2500);
   check("balances: the account table reconciles (check row matches)", /matches/.test(b.chk ?? "") && /\d/.test(b.bal ?? ""), b);
 }
@@ -79,22 +79,32 @@ for (const name of ["index.html", "how-it-works.html", "balances.html"]) {
     `{addr:${text("xrpl-addr")},bal:${text("xrpl-balance")},fund:document.getElementById("btn-fund").disabled,msg:${text("wallet-progress")}}`);
   const mid = sample(file, 390, 1600);
   check("create: mid-faucet — XRPL address shown, 'funding…', fund button disabled, message visible",
-    /^r/.test(mid.addr ?? "") && /^funding/.test(mid.bal ?? "") && mid.fund === true && /Funding your XRPL testnet account/.test(mid.msg ?? ""), mid);
+    /^r/.test(mid.addr ?? "") && /^Funding/.test(mid.bal ?? "") && mid.fund === true && /Funding your testnet account/.test(mid.msg ?? ""), mid);
   const done = sample(file, 390, 6000);
   check("create: funded — balance shown, fund button enabled, message cleared", /XRP$/.test(done.bal ?? "") && done.fund === false && (done.msg ?? "") === "", done);
 }
 
-// 4. Shield: the three step ticks follow the phases (demo timings: prove 0.9 s, deposit 1.2 s, anchor 1.4 s).
+// 4. Shield while the faucet is still funding is refused with a plain message (nothing is sent).
 {
   const file = probe("index.html",
     `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("shield-amount").value="25";document.getElementById("btn-shield").click()},900)`,
     `{steps:[...document.getElementById("steps-shield").children].map(e=>(e.classList.contains("on")?"on":"")+(e.classList.contains("done")?"✓":"")).join("|"),msg:${text("msg-shield")}}`);
-  const expect = { 1200: "on||", 2200: "✓|on|", 3400: "✓|✓|on", 5000: "✓|✓|✓" };
+  const r = sample(file, 390, 1400);
+  check("shield during funding: refused, no step started", /still funding/.test(r.msg ?? "") && r.steps === "||", r);
+}
+
+// 5. Shield after funding: the three step ticks follow the phases
+//    (demo timings: faucet 2.5 s, then prove 0.9 s, deposit 1.2 s, anchor 1.4 s; Shield is clicked at 3.2 s).
+{
+  const file = probe("index.html",
+    `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("shield-amount").value="25";document.getElementById("btn-shield").click()},3200)`,
+    `{steps:[...document.getElementById("steps-shield").children].map(e=>(e.classList.contains("on")?"on":"")+(e.classList.contains("done")?"✓":"")).join("|"),msg:${text("msg-shield")}}`);
+  const expect = { 3500: "on||", 4500: "✓|on|", 5700: "✓|✓|on", 7500: "✓|✓|✓" };
   for (const [budget, want] of Object.entries(expect)) {
     const r = sample(file, 390, Number(budget));
     check(`shield ticks at ${budget} ms: ${want}`, r.steps === want, r);
   }
-  const end = sample(file, 390, 5000);
+  const end = sample(file, 390, 7500);
   check("shield: success line", /^Shielded 25 XRP/.test(end.msg ?? ""), end);
 }
 

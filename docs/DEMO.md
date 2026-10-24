@@ -48,7 +48,7 @@ unshield, what makes it safe, this weekend's lending features, the enclave horiz
 judges and lenders; it is phone-friendly.
 
 The header shows **N XRP shielded in the pool · public** as a headline stat left of the status pill, with
-"pool account B = N + E float & unswept fees · how it is counted →" under it; that link opens `/balances.html`, which
+"Pool account B = N shielded + E float and unswept fees" under it and a "How it is counted →" link that opens `/balances.html`, which
 reconciles the two figures live from the ledger and answers the usual questions (memo, stray XRP, fees, float, anchors):
 say "the pool's total is public — every shield and unshield is a Payment on the ledger; what's private
 is who holds what and who paid whom inside."
@@ -80,7 +80,7 @@ permanent; the ledger carries the state, not the bytes.
   through the proof while it runs ("this is Halo 2, no trusted setup, on the Zcash Orchard circuit").
 - **"Create wallet" looks stuck**: the spending key is instant, the testnet faucet takes 10–30 s. The
   card appears at once and says "funding… (10–30 s)" with the fund button disabled — nothing to press.
-  If it ends in an error, press **fund (faucet)**: it funds the same account (generated and stored
+  If it ends in an error, press **Fund from faucet**: it funds the same account (generated and stored
   before the faucet was asked), never a second one.
 - **Faucet down**: use the pre-funded Alice account from the rehearsal (secret in the demo laptop's
   password manager, never in the repo).
