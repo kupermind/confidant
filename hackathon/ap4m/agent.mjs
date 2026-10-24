@@ -7,6 +7,8 @@
 //   5. POST /relay/transfer { record, channelId, claimId }    → 200 { anchorTx, payment }
 //   6. settle() — wait for the RLUSD payout to the merchant and print the receipt
 //   7. print both receipts: EVM explorer (VoucherRedeemed, settlement) and XRPL testnet (the anchor memo)
+//   8. OVER_CAP_DEMO=1: try a second relay against what is left of the channel cap — the policy refuses when the
+//      remaining cap is below the price (the ledger enforces settled ≤ redeemed ≤ cap and would refuse the voucher too)
 //
 //   Operation names are derived from the bundle hash, so a rerun resumes the same purchase instead of paying twice.
 //
@@ -78,4 +80,12 @@ say(`relayed: anchored on XRPL L1 — https://testnet.xrpl.org/transactions/${r.
 // 6. Settlement: RLUSD reaches the merchant payout; the receipt is verifiable by anyone.
 const settled = await settle(AP4M_API_URL, token, channelId);
 say(`settled: payout ${settled.payout_tx ? `${config.network.explorerUrl}/tx/${settled.payout_tx}` : "pending"}; receipt ${settled.receipt_url ? AP4M_API_URL + settled.receipt_url : "pending"}`);
+
+// 8. The funded limit, shown: a second relay only if the cap still covers it.
+if (env.OVER_CAP_DEMO === "1") {
+  const after = await getChannelState(provider, config.contracts.paymentLedger, channelId);
+  const left = BigInt(after.cap ?? 0n) - BigInt(after.redeemed ?? 0n);
+  if (left < price) say(`second relay: policy refuses — ${ethers.formatUnits(left, 18)} RLUSD left on the channel < price ${ethers.formatUnits(price, 18)}; the ledger enforces settled ≤ redeemed ≤ cap and would refuse the voucher too. NOT paying.`);
+  else say(`second relay: ${ethers.formatUnits(left, 18)} RLUSD left ≥ price — the policy would pay (set CHANNEL_CAP=0.15 to show the over-cap refusal)`);
+}
 console.log(`\nOK — two ledgers, two receipts: the metered payment is public on XRPL EVM, the settlement of the transfer is private on XRPL L1.`);

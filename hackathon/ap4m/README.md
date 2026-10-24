@@ -30,18 +30,48 @@ node relay.mjs            # :4308 ticket merchant, :4309 relay → COORDINATOR_U
 node agent.mjs            # one run = one 402 → pay → relay → settle, both receipts printed
 ```
 
-Prerequisites: Node ≥ 22.13; the team onboarded on the portal (Agent wallet, Merchant payout wallet, budget funded, XRP
-for gas from the EVM faucet); `target/release/examples/cli` built; a Confidant wallet file with shielded notes
-(`WALLET_FILE`, created with `cli wallet --file … init` and funded by a shield — the e2e harness shows how).
+Prerequisites: Node ≥ 22.13; the team onboarded (below); `target/release/examples/cli` built; a Confidant wallet file
+with shielded notes (`WALLET_FILE`, created with `cli wallet --file … init` and funded by a shield — the e2e harness
+shows how).
 
-## Demo (3 minutes, live)
+## Onboarding (what the workshop deck and the portal say)
 
-1. Terminal: wallet synced, bundle built. "This agent holds shielded funds on the XRP Ledger and needs to pay a supplier
-   without publishing it. Privacy is a metered service: it pays per relay, in RLUSD, through Mastercard's AP4M."
-2. The `402` and the policy line: "it reads the price, checks its channel, decides to pay — no human."
-3. EVM explorer: `VoucherRedeemed` at the PaymentLedger.
-4. XRPL testnet explorer: the pool account's new anchor Payment — no sender, no receiver, no amount.
-5. Portal / EVM explorer: RLUSD settled to the merchant payout; the verifiable receipt.
+1. **Register = the organizer's form.** Its "XRPL EVM Wallet Address for Funding" is the team's **funding wallet**: an
+   EVM EOA (`0x…`, XRPL EVM Testnet, chain `1449000`) that **signs in** to the team portal ("funding or Agent wallet"),
+   **funds the Agent's budget** and **receives what is left after the event**. The guide allows the Agent wallet to be
+   the funding wallet, so one EOA can do both; the Merchant payout wallet must differ from it.
+2. **Approval auto-provisions and funds 20 RLUSD** (deck: "approve → auto-provision + 20 RLUSD funded"); no booth visit
+   is needed for the budget. Gas: XRP from `https://faucet.testevm.ripple.com`.
+3. **Sign in** with the funding wallet at `hackathon.ap4m.build/participant`; on *My setup* add the **Agent** wallet (if
+   different) and the **Merchant payout** wallet (own EOA — "keep the key, it's how you access your winnings" — or a
+   hackathon pool wallet). Note `TEAM_NAME`, `MERCHANT_ID`, the payout address.
+4. **Open a channel** (the agent does it with `CHANNEL_CAP`, or pick an open one as `CHANNEL_ID`), then pay.
+
+Walk-in sign-up (no form answered) needs a connected browser wallet that signs the sign-up message; staff approve.
+
+## Demo (5 minutes, live — the deck's "what a strong demo proves": control, payment, proof)
+
+1. **Control.** "Two verified parties: the agent is registered in AP4M's registry (KYA), the merchant is our relay; the
+   channel has a funded cap." Terminal: wallet synced, bundle built. "This agent holds shielded funds on the XRP Ledger
+   and needs to pay a supplier without publishing it. Privacy is a metered service: it pays per relay, in RLUSD."
+2. **Payment.** The `402` and the policy line: "it reads the price, checks its channel, decides to pay — no human."
+   Voucher signed; the relay releases the resource at once.
+3. **Proof.** EVM explorer: `VoucherRedeemed` at the PaymentLedger; then XRPL testnet explorer: the pool account's new
+   anchor Payment — no sender, no receiver, no amount. "Two ledgers, two receipts."
+4. **Settlement.** `settle` → RLUSD to the merchant payout (`ClaimPaid` + `SettlementRecorded`), the receipt URL.
+5. **Over-cap attempt rejected.** With `OVER_CAP_DEMO=1` the agent tries a second relay against what is left of the cap
+   (demo channel `CHANNEL_CAP=0.15`, price `0.1`): the policy refuses — "0.05 RLUSD left < 0.1, not paying" — and the
+   ledger would refuse the voucher anyway (`settled ≤ redeemed ≤ cap`). Say: "the limit is funded and enforced by the
+   contract, the agent only decides inside it."
+
+Judging (deck): real-world utility 25 %, trust & control 25 %, technical execution 25 %, path to production 15 %,
+demo & story 10 %.
+
+**Path to production (one paragraph for the judges).** The relay is a metered gateway in front of an API that already
+runs on testnet with a k-of-N quorum; the same x402 exchange works against AP4M's production rails when they exist. The
+pool side keeps its own path (`ROADMAP.md`): RLUSD *inside* the pool (deposit/payout for issued tokens), the signing
+path's subject-consent binding, and on-ledger verification when XRPL offers it. The relay fee would become the
+operators' revenue line, separate from the pool's protocol fee.
 
 Fallbacks: AP4M side down → the pool demo (`docs/DEMO.md`) plus the rehearsal receipts, said plainly; EVM faucet dry →
 the pre-funded rehearsal wallets; channel exhausted → the second channel opened in advance.
