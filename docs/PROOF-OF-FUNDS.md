@@ -244,7 +244,9 @@ properties of this product)
 ## 5. Tier 4 — the accepted design: proof of control without revealing nullifiers
 
 **Status: design of record for proof of funds (project lead, 2026-10-25); sent to the audit as a DESIGN-REQ the
-same day; implementation post-event in audited slices.** This is the only design under which proof of funds is a
+same day; implementation post-event in audited slices.** **The implementation hand-off, with the charter
+(the two prohibitions and the seven soundness invariants) at its top, is `docs/design/TIER4-PROOF-OF-FUNDS-REWRITE.md`,
+authored by the audit session and committed verbatim; where the two texts differ, that document is the target.** This is the only design under which proof of funds is a
 feature of the pool: the proof reveals no nullifier, no commitment and no total, so nothing the holder does
 afterwards is needed, and no later spend is linkable to it. The nullifier-revealing flow built on 2026-10-24 is a
 demo of the plumbing around it and is labelled as such.
