@@ -109,7 +109,8 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
   Эмитента и тип UI берёт отсюда и больше ниоткуда.
 - **Правило.** Shield принимается, только если `Account` депозита держит на леджере XLS-70 Credential с
   `Issuer == credential.issuer`, `CredentialType == credential.type`, установленным флагом **accepted**
-  (`lsfAccepted`) и не истёкшим `Expiration`; каждый узел читает это с леджера сам (`ledger_entry`
+  (`lsfAccepted`) и `Expiration`, если есть, позже **`close_time` валидированного леджера** (часы леджера, а не хоста
+  узла); каждый узел читает это с леджера сам (`ledger_entry`
   `credential` или `account_objects` депозитора) при submit и снова при endorse. Сайдкар не подписывает то,
   чего не принял его собственный узел (правило без изменений).
 - **Отказ.** HTTP **403** с `{ error: "no accepted credential from <issuer> of type <typeText> for <account>" }`
