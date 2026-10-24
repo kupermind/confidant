@@ -121,5 +121,17 @@ for (const name of ["index.html", "how-it-works.html", "balances.html"]) {
   check("shield recovery: resume anchors it and clears the record", done.pending === false && /^Shielded 25 XRP/.test(done.msg ?? ""), done);
 }
 
+// 7. The demo issuer page: layout at phone widths; in demo mode an issuer account is created, a credential
+//    is issued to a pasted address and listed as "issued, not yet accepted".
+{
+  const file = probe("issuer.html", "", "{}");
+  for (const w of [320, 390]) { const r = sample(file, w, 2000); check(`issuer.html @${w}px: no horizontal overflow`, r.over === 0, r); }
+  const flow = probe("issuer.html",
+    `setTimeout(()=>document.getElementById("btn-create-issuer").click(),200);setTimeout(()=>{document.getElementById("subject").value="rJASAbKaKY7LybEdFwkgpv5gCc2YA9VYbF";document.getElementById("btn-issue").click()},1500)`,
+    `{issuer:${text("issuer-addr")},rows:document.querySelectorAll("#cred-table tbody tr").length,status:${text("cred-table")},msg:${text("issue-msg")}}`);
+  const r = sample(flow, 390, 3500);
+  check("issuer: account created, credential issued and listed", /^r/.test(r.issuer ?? "") && r.rows === 1 && /issued, not yet accepted/.test(r.status ?? "") && /Issued to/.test(r.msg ?? ""), r);
+}
+
 console.log(`\n${pass}/${pass + fail} checks ok${fail ? ` — ${fail} FAILED` : ""}`);
 process.exit(fail ? 1 : 0);

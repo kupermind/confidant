@@ -31,7 +31,7 @@ function extract(src, names) {
   return new Function(`${parts.join("\n")}\nreturn { ${names.join(", ")} };`)();
 }
 
-const PAGES = ["index.html", "how-it-works.html", "balances.html"];
+const PAGES = ["index.html", "how-it-works.html", "balances.html", "issuer.html"];
 
 test("every page's inline script parses (node --check)", () => {
   const dir = mkdtempSync(join(tmpdir(), "confidant-pages-"));
