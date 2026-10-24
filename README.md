@@ -61,6 +61,10 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
   demo issuer the pool's nodes trust: a faucet-funded testnet account that writes XLS-70 Credentials; the holder
   accepts one in the app's wallet card (Credential row, "confirm it to shield") and only then can shield when the
   gate is on.
+  `frontend/lender.html` is the lender side of proof of funds (hackathon feature C, read side): the holder's
+  **Prove funds** tab produces a proof package; the lender pastes it and every verifier node checks it read-only
+  against its own state — "someone controlling at least X answered this challenge as of ledger L", a snapshot, not
+  a lock, and not proof that the borrower owns the notes.
   Tests for the pages: `node --test "frontend/test/*.test.mjs"` (pure functions against a public ledger fixture) and
   `node frontend/test/browser-smoke.mjs` (headless Chrome, demo mode: phone-width layout, create-wallet
   states, step ticks, the balances check row) — both run in CI.

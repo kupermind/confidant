@@ -37,6 +37,21 @@ transactions — only for roots it computed itself.
   yourself), `submit-transfer`, `submit-unshield`. Reject = nothing changes.
 - Serve your log (`export-log`) so wallets can sync and other nodes can rebuild.
 
+- Answer `POST /pof/verify` (proof of funds, feature C) **read-only on your own state**, judging the challenge's
+  ledger window against the validated ledger index you read yourself. **Never log or persist the record** — it carries the
+  holder's nullifiers. The node caps the body at 256 KiB and runs at most four verifications at a time (429 beyond);
+  add your own per-client rate limit in front. The lender must reach your node directly (`/node/<i>/pof/verify` in the
+  nginx site), never through the coordinator.
+- Your sidecar signs a `credential-pof` (`CredentialCreate` from the pool to a borrower) **only after your own node
+  re-verified that proof now** and only when every field equals your node's `credential` derivation (subject, type,
+  expiration, URI) — the coordinator's values are never trusted. The pool account pays one owner reserve per credential
+  until the borrower accepts it; delete expired unaccepted ones.
+- **Proof-of-funds Credentials are capped:** your node authorizes one only while the pool account holds fewer than
+  `POF_CREDENTIAL_CAP` = 8 unaccepted `ConfidantPoF` Credentials it issued (each locks an owner reserve on the pool
+  account), only for a borrower that holds none yet and — with the compliance gate on — only for a borrower the gate
+  admits; a further `account_objects` page or a failed ledger read refuses. Delete expired unaccepted Credentials to free
+  reserve and headroom under the cap. The cap is a griefing bound, not a hard ceiling (nodes count independently).
+
 ## Sign (step 3 of v2) — never blind
 
 For each proposal from a coordinator you receive `{submission, proposedMemo}`:
@@ -87,6 +102,11 @@ public mirrors: `docs/DATA-AVAILABILITY.md`.
   a trusted issuer's say-so at the public boundary; it says nothing about the holder's notes. Live check through the
   UI's path: `ISSUER_KEY=<issuer.key.json> WALLET_URL=… COORDINATOR_URL=… npm run credential:check` — a fresh account's
   shield must be refused 403, then issue + accept, then the same shield must pass.
+- The gate judges `Expiration` against the **validated ledger's `close_time`**, which the node reads itself — never the
+  host's clock (a clock running behind would be the one fail-open). If the ledger cannot be read, the deposit is refused
+  with a ledger error, never accepted. The quorum's unit tests (`npm test` in `backend/quorum`) need **Node ≥ 21** for the
+  `test/**/*.test.mjs` glob; `credential-check.mjs` defaults to the e2e harness's ports (7200/7250) — pass
+  `COORDINATOR_URL` / `WALLET_URL` on a server.
 - **Boundary screening** (optional): add `--screening-list <file>` (one XRPL address per line, `#` comments, or a JSON array) and `--screening-standby-ledgers <n>` to a node. It then refuses — at `/submit/*` and `/endorse`, HTTP 403, fail-closed — shields from listed depositors, shields whose deposit is younger than `n` validated ledgers, and unshields to listed destinations. List entries and destinations are canonicalized to the classic `r…` address (X-addresses decoded, tags dropped), so any spelling of a listed account is caught; a node refuses to start on an unreadable list file and warns at startup about entries that are not XRPL addresses (they block nobody). Build a list from OFAC: `cd backend/quorum && npm run screening:fetch-ofac -- --out ../../data/screening/ofac-xrp.txt [--extra my-list.txt]`. Re-audit any pool from its public log: `npm run screening:audit -- --list <file> --log http://<node>/log`. A refused deposit stays in the pool account; refund it with a quorum-signed Payment to the depositor (manual procedure today). Production standby: ~900 ledgers (1 h); the demo uses 2.
 - **Signer sidecar** (Node, `backend/quorum/signer.mjs`): `PORT NODE_URL POOL SINK KEY_FILE XRPL_RPC [MAX_FEE_DROPS]` — holds your XRPL key, signs only what *your* node endorsed and only transactions whose shape matches that endorsement, with Fee ≤ the ceiling, Sequence equal to the pool's next sequence as the sidecar itself reads it (anchor, then payout) and a LastLedgerSequence present and within the window. A `fee-sweep` is signed only against *your* node's `GET /fees` (treasury and available amount), never against the coordinator's numbers.
 - **Coordinator** (Node, `backend/quorum/coordinator.mjs`): `PORT NODE_URL NODES SIGNERS QUORUM POOL SINK XRPL_WS` — the public entry point; holds no keys.

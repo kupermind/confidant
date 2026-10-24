@@ -15,7 +15,8 @@
 //   landed (note spent, user unpaid), anyone may resubmit it until its LastLedgerSequence.
 //
 // Env: PORT, NODE_URL (own node), NODES (all nodes, comma-separated), SIGNERS (sidecar URLs),
-//      QUORUM, POOL, SINK, XRPL_WS.
+//      QUORUM, POOL, SINK, XRPL_WS, PUBLIC_NODES (URLs a browser reaches the nodes at, for the
+//      proof-of-funds check that never goes through here; default /node/<i> on the UI origin).
 
 import { Client, multisign } from "xrpl";
 import { DEFAULT_PAYOUT_LLS_WINDOW, DEFAULT_ANCHOR_LLS_WINDOW } from "./lib.mjs";
@@ -29,6 +30,7 @@ for (const k of ["PORT", "NODE_URL", "NODES", "SIGNERS", "QUORUM", "POOL", "SINK
 const XRPL_WS = env.XRPL_WS ?? "wss://s.altnet.rippletest.net:51233";
 const SIGNERS = env.SIGNERS.split(",");
 const NODES = env.NODES.split(",");
+const PUBLIC_NODES = env.PUBLIC_NODES ? env.PUBLIC_NODES.split(",") : NODES.map((_, i) => `/node/${i}`);
 const QUORUM = Number(env.QUORUM);
 const client = resilientClient(new Client(XRPL_WS));
 await client.connect();
@@ -82,7 +84,7 @@ async function anchorThroughQuorum(accepted, submission) {
 await serve(Number(env.PORT), {
   // READ-ONLY and PUBLIC FACTS ONLY (pool, sink, k-of-N, ws, explorer): nothing node-internal or secret may ever be added here.
   // The credential gate (XLS-70) is what the coordinator's own node enforces, read from it — never a separate setting.
-  "GET /config": async () => { const f = await http("GET", `${env.NODE_URL}/fees`); const pol = await http("GET", `${env.NODE_URL}/policy`).catch(() => ({ credential: null })); return { network: env.NETWORK ?? "testnet", explorer: env.EXPLORER ?? "https://testnet.xrpl.org", xrplWs: XRPL_WS, pool: env.POOL, sink: env.SINK, quorum: QUORUM, signers: SIGNERS.length, fees: { shieldBps: f.shieldBps, unshieldBps: f.unshieldBps, treasury: f.treasury }, credential: pol.credential ?? null }; },
+  "GET /config": async () => { const f = await http("GET", `${env.NODE_URL}/fees`); const pol = await http("GET", `${env.NODE_URL}/policy`).catch((e) => { console.error(`coordinator: /policy of my node failed (${e.message}) — /config reports no credential gate while the nodes may still enforce one`); return { credential: null }; }); return { network: env.NETWORK ?? "testnet", explorer: env.EXPLORER ?? "https://testnet.xrpl.org", xrplWs: XRPL_WS, pool: env.POOL, sink: env.SINK, quorum: QUORUM, signers: SIGNERS.length, fees: { shieldBps: f.shieldBps, unshieldBps: f.unshieldBps, treasury: f.treasury }, credential: pol.credential ?? null, nodes: PUBLIC_NODES }; },
   "GET /fees": async () => http("GET", `${env.NODE_URL}/fees`),
   // Moves accrued protocol fees from the pool account to the treasury: a multisigned Payment every
   // signer checks against its OWN node's fee ledger, then each node records the sweep it verified.
@@ -101,6 +103,25 @@ await serve(Number(env.PORT), {
     const hash = await submitMultisigned(signed.slice(0, QUORUM).map((s) => s.blobs[0].tx_blob), "fee sweep");
     const recorded = await Promise.allSettled(NODES.map((n) => http("POST", `${n}/fees/swept`, { txHash: hash })));
     return { amount, tx: hash, treasury: fees.treasury, recorded: recorded.filter((r) => r.status === "fulfilled").length, refusals };
+  },
+  // Proof of funds → an expiring XLS-70 Credential from the pool account to the borrower (feature C,
+  // Tier 1 signing path). The coordinator's node verifies first (a cheap early refusal); every sidecar
+  // then re-verifies on ITS node at signing time and signs only a CredentialCreate equal to that
+  // node's own credential fields. The record is forwarded for verification only — never kept or logged.
+  "POST /pof/credential": async (body) => {
+    const { record, amount, challenge } = body ?? {};
+    if (!record || !challenge || !Number.isInteger(amount)) throw refuse(400, "need { record, amount, challenge }");
+    const verdict = await http("POST", `${env.NODE_URL}/pof/verify`, { record, amount, challenge, credential: true });
+    const c = verdict.credential;
+    if (!c?.subject) throw refuse(409, `no credential for this borrower: ${verdict.credentialRefused ?? "my node's verdict carries no credential fields"}`);
+    const tx = await client.autofill({ TransactionType: "CredentialCreate", Account: env.POOL, Subject: c.subject, CredentialType: c.credentialType, Expiration: c.expiration, URI: c.uri }, SIGNERS.length);
+    tx.LastLedgerSequence = (await client.getLedgerIndex()) + ANCHOR_LLS_OFFSET;
+    const results = await Promise.allSettled(SIGNERS.map((s) => http("POST", `${s}/sign`, { txs: [{ kind: "credential-pof", tx }], pof: { record, amount, challenge } })));
+    const signed = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+    const refusals = results.filter((r) => r.status === "rejected").map((r) => r.reason?.message ?? String(r.reason));
+    if (signed.length < QUORUM) throw refuse(409, `only ${signed.length}/${SIGNERS.length} signers verified the proof on their own nodes (quorum ${QUORUM})`, { refusals });
+    const hash = await submitMultisigned(signed.slice(0, QUORUM).map((s) => s.blobs[0].tx_blob), "proof-of-funds credential");
+    return { tx: hash, issuer: env.POOL, subject: c.subject, credentialType: c.credentialType, credentialTypeText: c.credentialTypeText, expiration: c.expiration, uri: c.uri, amount, challenge, validatedLedger: verdict.validatedLedger, signers: signed.slice(0, QUORUM).map((s) => s.signer), refusals };
   },
   "GET /state": async () => http("GET", `${env.NODE_URL}/state`),
   "GET /log": async (_b, url) => http("GET", `${env.NODE_URL}/log?from=${url.searchParams.get("from") ?? 0}`),

@@ -66,6 +66,28 @@ on the ledger — transfers inside are free."
    credential from the ledger at submit and at endorse), and the app links to the issuer page. The gate is on when the
    nodes run with `CREDENTIAL_ARGS` (then `/config.credential` is set); off, the row hides and shields are open.
 
+## Proof of funds (feature C, read side) — the lender on stage
+
+1. Tab C, `/lender.html` (the lender): step 1 shows the request — lender id, "at least 50 XRP", 1 hour. Read it out.
+2. Tab A, the holder's wallet (a pre-populated holder with ≥ 50 XRP shielded): **Prove funds** → amount 50, borrower = my
+   account (prefilled), the lender id, 1 hour → **Prove funds**. ≈ 20 s of proving in the browser, then every node
+   answers: the verdict table (4 ✓, the ledger each judged at, its root) and the one line to read: *"someone controlling
+   at least 50 XRP in this pool answered this challenge as of ledger L — a snapshot, not a lock"*. **Copy the proof
+   package.**
+3. Tab C: paste, **Verify with every node** → "4 of 4 nodes verified it", the same meaning, the borrower's account with
+   an explorer link, the lender id flagged ✓ as yours. Say: nothing moved, nothing was logged, the nodes kept no copy —
+   the lender holds the only record; between the proof and the loan the holder can still spend.
+4. **On the ledger** (only if the signing path got its IMPL-PASS in-window; otherwise the slide): tab A, press
+   **record it on the ledger as a Credential** — every signer's node re-verifies the proof now and signs
+   `CredentialCreate` from the pool account to the borrower (≈ 10 s). Read the line: issued, expires at …, URI
+   `confidant/pof/v1|50000000|L|E|…`. Press **Confirm with my signature** (the borrower's `CredentialAccept`). Tab C,
+   step 3 **Check the ledger** → "accepted ✓ … matches the package you verified ✓". Say: a loan broker reads one
+   credential, no file; it says "controlled ≥ X as of ledger L", not "controls it now" — the tripwire on spend is the
+   next slide.
+5. Optional, if time: back in tab A press **rotate your notes** (a self-transfer): the nodes can no longer link the
+   holder's next spend to the proof. Then paste the old package again on tab C → every node answers **409** (the notes
+   moved): the snapshot is honest about being a snapshot.
+
 ## Mastercard track — "pay for privacy", 5 minutes (only if the AP4M onboarding and two rehearsals happened)
 
 Terminal, `hackathon/ap4m`: `node agent.mjs` — the wallet syncs, a private transfer is built, the relay answers **402**,

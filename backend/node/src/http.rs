@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Query, State};
+use axum::extract::{DefaultBodyLimit, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -51,6 +51,8 @@ impl IntoResponse for ApiError {
             NodeError::Ledger(_) => StatusCode::BAD_GATEWAY,
             NodeError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
             NodeError::Screened(_) | NodeError::Credential(_) => StatusCode::FORBIDDEN,
+            NodeError::Pof(_) => StatusCode::BAD_REQUEST,
+            NodeError::Busy => StatusCode::TOO_MANY_REQUESTS,
         };
         (
             status,
@@ -137,12 +139,43 @@ pub fn router<L: Ledger + 'static>(node: Arc<Node<L>>) -> Router {
         .route("/audit/reveal", post(reveal::<L>))
         .route("/fees", get(fees::<L>))
         .route("/policy", get(policy::<L>))
+        // Proof of funds: read-only, never logged here or by the node; the body is capped so the
+        // unauthenticated ingress cannot be fed arbitrarily large records.
+        .route(
+            "/pof/verify",
+            post(pof_verify::<L>).layer(DefaultBodyLimit::max(POF_BODY_LIMIT)),
+        )
         .route("/fees/swept", post(fee_swept::<L>))
         .with_state(node)
 }
 
 async fn state<L: Ledger>(State(n): State<Arc<Node<L>>>) -> Json<confidant_core::PoolState> {
     Json(n.state())
+}
+
+/// Largest `POST /pof/verify` body accepted (a two-action record is ≈ 19 KB).
+pub const POF_BODY_LIMIT: usize = 256 * 1024;
+
+/// `POST /pof/verify` body: the holder's proof record, the threshold and the lender's challenge.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PofVerify {
+    pub record: BundleRecord,
+    pub amount: u64,
+    pub challenge: crate::pof::PofChallenge,
+    /// Also derive the Credential a sidecar may sign (more ledger reads; the signing path asks).
+    #[serde(default)]
+    pub credential: bool,
+}
+
+async fn pof_verify<L: Ledger>(
+    State(n): State<Arc<Node<L>>>,
+    Json(b): Json<PofVerify>,
+) -> Result<crate::pof::PofVerdict> {
+    Ok(Json(
+        n.verify_proof_of_funds(&b.record, b.amount, &b.challenge, b.credential)
+            .await?,
+    ))
 }
 
 /// `GET /policy`: the deposit gates this node enforces, for the coordinator's `/config` and the UI.

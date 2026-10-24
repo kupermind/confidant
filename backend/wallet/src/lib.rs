@@ -16,6 +16,8 @@
 //! - `GET /wallets/{id}` / `POST /wallets/{id}/sync` → the same summary after syncing.
 //! - `POST /wallets/{id}/shield {amount}`, `/transfer {recipient, amount}`,
 //!   `/unshield {amount, destination}` → `{record, bundleHash}` (synced first).
+//! - `POST /wallets/{id}/pof {amount, challenge}` → the same shape: a proof of funds for the lender's
+//!   canonical challenge string, never submitted (a node checks it read-only at `POST /pof/verify`).
 
 pub mod http;
 pub mod rpc;

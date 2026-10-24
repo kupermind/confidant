@@ -112,7 +112,7 @@ constructions, not a ladder (lead's objection, audit's agreement, 2026-10-14).
 | Tier | What | On the ledger | Gives | Does not give | Plan |
 |---|---|---|---|---|---|
 | core slice | `Wallet::build_proof_of_funds`, `Verifier::verify_proof_of_funds`, own record type, audit conditions 2–4 | nothing | a proof a node can check read-only | anything a lender can read | ✅ built on-site 2026-10-24 (core: op tag refused by every apply path before signatures, read-only verify, domain registered, break tests both ways, 100 % coverage, mutations) |
-| 1 | nodes verify via `POST /pof/verify` (not logged, never via the coordinator); the quorum multisigns an expiring `CredentialCreate` (`ConfidantPoF`, `URI = H(X ‖ L ‖ E)`) through a new sidecar kind `credential-pof`; the borrower signs `CredentialAccept` | borrower account, type, expiry, hash — no notes, no nullifiers, no proof | a verdict the lender reads on XRPL; account binding; visible freshness | a lock; liveness beyond the quorum | event, **if A lands by Saturday evening**; otherwise the diagram |
+| 1 | nodes verify via `POST /pof/verify` (not logged, never via the coordinator); the quorum multisigns an expiring `CredentialCreate` (`ConfidantPoF`, `URI = H(X ‖ L ‖ E)`) through a new sidecar kind `credential-pof`; the borrower signs `CredentialAccept` | borrower account, type, expiry, hash — no notes, no nullifiers, no proof | a verdict the lender reads on XRPL; account binding; visible freshness | a lock; liveness beyond the quorum | read side ✅ built on-site 2026-10-24 (`POST /pof/verify` on every node: challenge recomputed from `{ borrower, lender, ledgerIndex, expiry }`, freshness against the node's own validated ledger, bounded, never logged; wasm `buildProofOfFunds`; `/config.nodes`); signing path ✅ built on-site 2026-10-24 (sidecar kind `credential-pof` signs only its own node's Credential fields after re-verifying; coordinator `POST /pof/credential`; app record + confirm; lender ledger check) — **ships only with its own IMPL-PASS in-window**, otherwise the diagram |
 | 2 | nodes keep the verified nullifiers in a private watch list; on spend the quorum multisigns `CredentialDelete` (sidecar kind `credential-revoke`) | the revocation | a tripwire the lender can watch | a lock; revocation timing leaks that the holder transacted (label it) | stretch, otherwise slides |
 | — (escrow, not a tier) | **shielded collateral escrow**: collateral moves into a note whose spend key is a 2-of-3 FROST RedPallas group {holder, lender, arbiter = quorum}; the arbiter releases or liquidates only after reading the loan's state on the ledger | ordinary anchors only | prevention by key control, circuit unchanged — a different product (funds move, holder gives up sole custody) | proof of funds; time locks; the arbiter widens what the quorum can do (state it next to the drain line) | slides; post-event |
 | 4 | a new circuit: proof of funds without revealing nullifiers; notes with spending conditions | — | the full answer | — | one line on a slide; post-event |
@@ -122,7 +122,10 @@ event = A + C's core slice + C Tier 1 if A lands by Saturday evening (A and Tier
 Credential module in node and sidecar); Tier 2 a stretch; escrow and Tier 4 on slides only, as two
 separate constructions; B dropped.
 UI surfaces are the FE team's: credential issue/accept, "prove funds" in the wallet, a lender page
-that reads the Credential.
+that reads the Credential. **Built on-site 2026-10-24:** the Compliance row + provider page (A); the **Prove funds**
+tab and `frontend/lender.html`, which verifies the holder's proof package with every node and shows the verdicts
+(C, read side — the lender reads verdicts; the Credential on the borrower's account is the signing path, under the
+ship rule).
 
 **Mastercard track (AP4M), decided 2026-10-24 by the API lead — go.** A scripted agent pays RLUSD on XRPL EVM testnet
 through Mastercard's AP4M for the *relay* of a shielded transfer that the quorum then anchors on XRPL L1

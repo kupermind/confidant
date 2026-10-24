@@ -10,6 +10,7 @@ export const MEMO_ANCHOR = "confidant/anchor";
 export const MEMO_SHIELD = "confidant/shield";
 
 // ---- HTTP -----------------------------------------------------------------------------------
+export const MAX_BODY_BYTES = 1 << 20;
 export function serve(port, routes) {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
@@ -23,8 +24,10 @@ export function serve(port, routes) {
     try {
       let body = null;
       if (req.method === "POST") {
-        const chunks = [];
-        for await (const c of req) chunks.push(c);
+        // Bodies are small (a two-action record is ≈ 19 KB); cap the buffer so an open ingress cannot
+        // make the service hold arbitrary bytes (the nodes cap their own at 256 KiB).
+        const chunks = []; let size = 0;
+        for await (const c of req) { size += c.length; if (size > MAX_BODY_BYTES) throw refuse(413, `body over ${MAX_BODY_BYTES} bytes`); chunks.push(c); }
         body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
       }
       const out = await handler(body, url);
@@ -160,10 +163,11 @@ export const DEFAULT_PAYOUT_LLS_WINDOW = 600;
  * flight per state) and LastLedgerSequence (present and within a window — no blob that lives forever).
  */
 export function checkTxShape(kind, tx, {
-  pool, sink, memoHex, endorse, expectedSequence, ledgerIndex, treasury, feesAvailable,
+  pool, sink, memoHex, endorse, expectedSequence, ledgerIndex, treasury, feesAvailable, pofCredential,
   maxFeeDrops = DEFAULT_MAX_FEE_DROPS, anchorLlsWindow = DEFAULT_ANCHOR_LLS_WINDOW, payoutLlsWindow = DEFAULT_PAYOUT_LLS_WINDOW,
 }) {
-  if (tx?.TransactionType !== "Payment") throw refuse(409, `${kind}: not a Payment`);
+  const wantType = kind === "credential-pof" ? "CredentialCreate" : "Payment";
+  if (tx?.TransactionType !== wantType) throw refuse(409, `${kind}: not a ${wantType}`);
   if (tx.Account !== pool) throw refuse(409, `${kind}: Account is not the pool`);
   if (!/^[0-9]{1,15}$/.test(String(tx.Fee)) || Number(tx.Fee) > maxFeeDrops) throw refuse(409, `${kind}: fee missing or above ${maxFeeDrops} drops`);
   if (!Number.isInteger(expectedSequence) || tx.Sequence !== expectedSequence) throw refuse(409, `${kind}: Sequence ${tx.Sequence} is not the pool account's next sequence ${expectedSequence}`);
@@ -187,6 +191,19 @@ export function checkTxShape(kind, tx, {
     if (!/^[0-9]{1,15}$/.test(String(tx.Amount)) || Number(tx.Amount) <= 0) throw refuse(409, "fee-sweep: amount must be a positive drops amount");
     if (Number(tx.Amount) > Number(feesAvailable ?? 0)) throw refuse(409, `fee-sweep: amount ${tx.Amount} exceeds the ${feesAvailable ?? 0} drops of fees available on this signer's node`);
     if (tx.Memos && tx.Memos.length) throw refuse(409, "fee-sweep: unexpected memos");
+    return;
+  }
+  if (kind === "credential-pof") {
+    // Records a proof-of-funds verdict as an expiring XLS-70 Credential from the pool to the borrower:
+    // every field is THIS signer's own node's recomputation (subject, type, expiration, URI) — never
+    // the coordinator's values echoed back. No memos, no other fields the node did not authorize.
+    const c = pofCredential;
+    if (!c?.subject || !c?.credentialType || !Number.isInteger(c?.expiration) || !c?.uri) throw refuse(409, "credential-pof: this signer's node gave no credential verdict");
+    if (tx.Subject !== c.subject) throw refuse(409, "credential-pof: Subject is not the borrower my node verified");
+    if (String(tx.CredentialType).toUpperCase() !== String(c.credentialType).toUpperCase()) throw refuse(409, "credential-pof: CredentialType differs from my node's");
+    if (tx.Expiration !== c.expiration) throw refuse(409, `credential-pof: Expiration ${tx.Expiration} differs from my node's ${c.expiration}`);
+    if (String(tx.URI).toUpperCase() !== String(c.uri).toUpperCase()) throw refuse(409, "credential-pof: URI differs from my node's recomputation");
+    if (tx.Memos && tx.Memos.length) throw refuse(409, "credential-pof: unexpected memos");
     return;
   }
   if (kind === "payout") {
