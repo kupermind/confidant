@@ -31,3 +31,27 @@ Honest label — correct and keep it exactly: "gatekeeping on a trusted issuer's
 
 So: IMPL-PASS, merge and deploy for the devnet event. Before production (or the first time this faces untrusted operators / real value): close_time (Q-CG-1). Follow-ups: the M8 second-depositor test, and the Q-CG-3 stranded-deposit refund pin. Send me the live credential-check.mjs result (fresh-account shield → 403 naming the credential; issue + accept; same record+deposit → anchored) when it exists — that's the last firsthand leg, the gate refusing and then passing on a real ledger. Commit this RESP to docs/audit verbatim as usual.
 ```
+
+## 2. Hotfix PR #62 — `entryNotFound` classification (2026-10-24, verbatim)
+
+The live check after deploying #59 refused an uncredentialed depositor with **502** ("ledger rpc:
+Entry not found.") instead of the 403: rippled reports a missing `ledger_entry` as code `entryNotFound`
+with message "Entry not found.", the node's RPC layer surfaces the message, and the lookup matched only
+on the code. Fail-closed in both classes; PR #62 (`credential::is_entry_not_found`) moves the case to
+"none → 403". The audit session's confirmation at head `04c4449`:
+
+```text
+PR #62 confirmed — verified at head 04c4449, and it stays inside my Feature-A fail-closed lattice. Two things I checked firsthand:
+
+1. `credential::is_entry_not_found` matches EITHER the code (`entryNotFound`) OR the lowercased message (`entry not found`), so it now catches what `call()` actually surfaces (the error_message "Entry not found."), which the old `m.contains("entryNotFound")` never could.
+2. Never-accept preserved: in `rpc.rs::credential()` the only `Ok(Some(..))` arm is `Ok(v) => Ok(v.get("node").cloned())` — an acceptance still requires the RPC to have returned a real `node`. The fix only moves the entryNotFound case from the `Err(e)=>Err(e)` bucket (502) into `Ok(None)` (403). Both buckets refuse. No acceptance path moved. And the over-match direction is safe too: if `is_entry_not_found` ever matched some other failure, that's `None → refuse` — still fail-closed, just a wrong class. Your negative rows (txnNotFound / actNotFound / connection-refused / "") pin that they stay in the 502 bucket. So: classification fix only, security posture unchanged. Agreed.
+
+Now I owe you the miss, because this bug lived inside the lattice I IMPL-PASS'd. When I passed A I read the match arm `m.contains("entryNotFound") => Ok(None)` and declared "entryNotFound → None → 403." I verified the arm's INTENT but never confirmed what the runtime `m` actually is — `call()` surfaces the error_message, not the error_code, so the guard never fired and the case fell to 502. The security property I was gating on (fail-closed, no acceptance) held in BOTH buckets — 502 refuses exactly as 403 does — so it was not a fail-open and the gate always refused an uncredentialed deposit. But I over-stated the specific class (403) without confirming the wire string. That's on me: a string-match guard against an external RPC error has to be checked against the ACTUAL wire string (message vs code), not the code's apparent intent. Same family as "a completeness guard that scans a subset certifies the subset" — I confirmed the arm exists, not that it fires. The live run catching it (502 fail-closed, wrong class) is the live leg doing exactly its job.
+
+And I endorse your sturdiness follow-up as the RIGHT fix, not just a nicety: carry the error CODE in `LedgerError::Rpc` and have callers match on the code (`entryNotFound` / 98), not prose. Matching on the message string is the fragility that caused this — the wording can drift, the code can't — and the current match-both is a correct stopgap. This is squarely the "match a structured refusal code, not prose" discipline; worth doing before production as its own small PR.
+
+Holding for the live credential-check.mjs rerun once #62 is deployed (403 naming the credential → issue+accept → anchored). Relay it when it lands and I'll note it as A's last firsthand leg. Nothing else needed on #62.
+```
+
+Follow-up before production (endorsed by the audit): `LedgerError::Rpc` should carry rippled's error **code**
+and callers should match on the code, not the message.
