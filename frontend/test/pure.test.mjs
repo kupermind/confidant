@@ -37,15 +37,18 @@ test("every page's inline script parses (node --check)", () => {
   const dir = mkdtempSync(join(tmpdir(), "confidant-pages-"));
   for (const name of PAGES) {
     const src = inline(page(name));
-    if (!src.trim()) continue; // how-it-works.html carries no script, by design
+    if (!src.trim()) continue;
     const f = join(dir, name.replace(".html", ".mjs"));
     writeFileSync(f, src);
     execFileSync(process.execPath, ["--check", f], { stdio: "pipe" });
   }
 });
 
-test("how-it-works.html stays static: no <script> at all", () => {
-  assert.equal((page("how-it-works.html").match(/<script/g) ?? []).length, 0);
+test("how-it-works.html stays static: no external script, nothing that talks to the network", () => {
+  const src = page("how-it-works.html");
+  assert.equal((src.match(/<script[^>]*\bsrc=/g) ?? []).length, 0, "no external scripts");
+  const js = inline(src);
+  assert.doesNotMatch(js, /\b(fetch|XMLHttpRequest|WebSocket|navigator\.sendBeacon)\b/, "inline scripts must not talk to the network");
 });
 
 test("feeOf floors to the drop, as the nodes do", () => {
