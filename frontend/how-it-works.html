@@ -395,21 +395,20 @@
   <!-- HACKATHON: LENDING ON SHIELDED CAPITAL -->
   <section>
     <p class="kicker">This weekend · XRPL hackathon, Lending &amp; Borrowing track</p>
-    <h2>Compliant lending on shielded capital</h2>
+    <h2>Lending on shielded capital</h2>
     <p class="flead">Two features, built on-site on Oct 24–25 on top of the running pool (designs written in advance,
-      code written at the event), using the ledger's own compliance primitives — <b>XLS-70 Credentials</b> and the
+      code written at the event), using the ledger's own primitives — <b>XLS-70 Credentials</b> and the
       <b>XRPL Lending Protocol</b>.</p>
 
     <div class="flow">
       <div class="step">
-        <span class="n">01 · Compliance-gated entry</span>
-        <h3>Only verified accounts shield</h3>
-        <p>A deposit is accepted only from an address that an authorized compliance provider (a KYC/AML firm, an
-          accreditation body, a permissioned domain) has verified off-ledger and recorded as an XLS-70 Credential on the
-          ledger, confirmed by the holder's own signature. Every verifier node checks it before it signs — native XRPL
-          compliance, not a promise, and nothing about anyone's notes. The check covers one fact — that the depositing
-          address was verified — applied to every depositor alike; it is the operator's policy for regulated use, not a
-          suspicion about anyone, and an operator who does not need it runs the pool open.</p>
+        <span class="n">01 · Credential-gated entry</span>
+        <h3>Only credentialed accounts shield</h3>
+        <p>A deposit is accepted only from an XRPL account holding an accepted XLS-70 Credential from the issuer the pool
+          trusts (an issuer account, or a permissioned domain's issuer set), confirmed by the holder's own signature.
+          Every verifier node reads it from the ledger before it signs — a native XRPL object, not a promise, and nothing
+          about anyone's notes. One fact is checked — that the depositing account holds the credential — for every
+          depositor alike; it is a per-pool switch, and an operator who does not need it runs the pool open.</p>
       </div>
       <div class="step">
         <span class="n">02 · Proof of shielded funds</span>
