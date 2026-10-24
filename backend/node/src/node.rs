@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::credential::{ripple_now, CredentialGate, CredentialPolicy};
 use crate::fees::{FeeLedger, FeePolicy, FeeReport};
-use crate::pof::{PofChallenge, PofVerdict, MEANING};
+use crate::pof::{
+    outstanding_pof_credentials, PofChallenge, PofVerdict, MEANING, POF_MAX_OUTSTANDING,
+};
 use crate::screening::Screening;
 use crate::xrpl::{
     account_balance, anchor_fact, anchor_memos, check_custody_info, deposit_facts, deposit_source,
@@ -72,6 +74,9 @@ pub struct Node<L: Ledger> {
     /// Bounds concurrent proof-of-funds verifications: an unauthenticated ingress that costs a
     /// SNARK verification per request.
     pof_permits: tokio::sync::Semaphore,
+    /// The signing-path bound: how many unaccepted proof-of-funds Credentials the pool account may
+    /// hold before this node stops authorizing new ones.
+    pof_max_outstanding: u64,
 }
 
 /// How many proof-of-funds verifications a node runs at once; beyond that, 429.
@@ -94,6 +99,7 @@ impl<L: Ledger> Node<L> {
             fees: FeePolicy::off(),
             fee_ledger: Mutex::new(FeeLedger::default()),
             pof_permits: tokio::sync::Semaphore::new(POF_PERMITS),
+            pof_max_outstanding: POF_MAX_OUTSTANDING,
         }
     }
 
@@ -254,6 +260,71 @@ impl<L: Ledger> Node<L> {
         self.credential.policy()
     }
 
+    /// Sets the cap on the pool account's unaccepted proof-of-funds Credentials (default
+    /// [`POF_MAX_OUTSTANDING`]); 0 turns the signing path off on this node.
+    pub fn with_pof_cap(mut self, max_outstanding: u64) -> Self {
+        self.pof_max_outstanding = max_outstanding;
+        self
+    }
+
+    pub fn pof_max_outstanding(&self) -> u64 {
+        self.pof_max_outstanding
+    }
+
+    /// Why this node will NOT authorize recording a verdict as a Credential for `borrower` — the
+    /// bound on the signing path (audit ruling on the credential-pof slice): (A) with the compliance
+    /// gate on, the borrower must hold the pool's accepted, unexpired compliance credential (the
+    /// same ledger read and judgement as a deposit); (B) the pool account must hold fewer than the
+    /// cap of unaccepted proof-of-funds Credentials (each locks an owner reserve on the pool account
+    /// and the borrower is a field the holder chooses). A ledger read that fails refuses too: the
+    /// bound fails closed, as the deposit gate does. `None` = authorized. Not a hard ceiling: nodes
+    /// count independently, so concurrent requests can overshoot by the in-flight count.
+    async fn pof_issuance_refusal(&self, borrower: &str) -> Option<String> {
+        if self.pof_max_outstanding == 0 {
+            return Some("this node does not authorize proof-of-funds credentials (cap 0)".into());
+        }
+        if let Some(p) = self.credential.policy() {
+            let entry = match self
+                .ledger
+                .credential(borrower, &p.issuer, &p.credential_type)
+                .await
+            {
+                Ok(e) => e,
+                Err(e) => {
+                    return Some(format!(
+                        "cannot read the borrower's compliance credential: {e}"
+                    ))
+                }
+            };
+            if let Err(e) = self
+                .credential
+                .check(borrower, entry.as_ref(), ripple_now())
+            {
+                return Some(format!(
+                    "the borrower is not admitted by the pool's compliance gate: {e}"
+                ));
+            }
+        }
+        let (objects, more) = match self.ledger.account_objects(&self.pool, "credential").await {
+            Ok(page) => page,
+            Err(e) => return Some(format!("cannot read the pool account's credentials: {e}")),
+        };
+        // A further page is "at least a page" — more than the cap, which stays below the page size.
+        let outstanding = if more {
+            self.pof_max_outstanding
+                .max(outstanding_pof_credentials(&objects, &self.pool))
+        } else {
+            outstanding_pof_credentials(&objects, &self.pool)
+        };
+        if outstanding >= self.pof_max_outstanding {
+            return Some(format!(
+                "the pool account already holds {outstanding} unaccepted proof-of-funds credentials (cap {})",
+                self.pof_max_outstanding
+            ));
+        }
+        None
+    }
+
     /// The concurrency bound on proof-of-funds verifications (tests hold its permits).
     pub fn pof_permits(&self) -> &tokio::sync::Semaphore {
         &self.pof_permits
@@ -291,6 +362,12 @@ impl<L: Ledger> Node<L> {
             v.verify_proof_of_funds(record, amount, &bytes)?;
             (v.state().root, hex::encode(bundle_hash(record)?))
         };
+        // The signing-path bound, judged only for a proof that verified; a refusal here leaves the
+        // read-side verdict intact and withholds the Credential fields a sidecar would sign.
+        let credential_refused = self.pof_issuance_refusal(&challenge.borrower).await;
+        let credential = credential_refused
+            .is_none()
+            .then(|| challenge.credential(amount, close_time));
         Ok(PofVerdict {
             ok: true,
             amount,
@@ -299,7 +376,8 @@ impl<L: Ledger> Node<L> {
             root,
             bundle_hash: hash,
             meaning: MEANING.to_owned(),
-            credential: challenge.credential(amount, close_time),
+            credential,
+            credential_refused,
         })
     }
 

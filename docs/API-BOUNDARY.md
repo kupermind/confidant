@@ -42,7 +42,7 @@ Everything is JSON. Errors are `{ "error": "<message>", "details"?: {…} }` wit
 | `GET /fees` | — | `FeeReport` of the coordinator's node |
 | `GET /policy` (node) | — | `{ credential: { issuer, type, typeText } \| null, screening: { active, standbyLedgers } }` — the deposit gates the node enforces; the coordinator copies `credential` into `GET /config` |
 | `POST /fees/sweep` | `{ amount? }` (drops; default: everything available) | `{ amount, tx, treasury, recorded, refusals }` — operator call, k-of-N Payment pool → treasury |
-| `POST /pof/verify` (node, reached as `/node/<i>/pof/verify` — never through the coordinator) | `{ record, amount, challenge: { borrower, lender, ledgerIndex, expiry } }` | `{ ok, amount, challenge, validatedLedger, root, bundleHash, meaning, credential: { subject, credentialType, credentialTypeText, expiration, uri, uriText } }` — proof of funds checked read-only on that node's own state; never logged or persisted; `credential` is the XLS-70 Credential this node would let a sidecar sign. 400 challenge refused · 409 the proof does not verify · 413 body > 256 KiB · 429 node busy · 502 no validated ledger / ledger L unreadable |
+| `POST /pof/verify` (node, reached as `/node/<i>/pof/verify` — never through the coordinator) | `{ record, amount, challenge: { borrower, lender, ledgerIndex, expiry } }` | `{ ok, amount, challenge, validatedLedger, root, bundleHash, meaning, credential: { subject, credentialType, credentialTypeText, expiration, uri, uriText } \\| null, credentialRefused }` — proof of funds checked read-only on that node's own state; never logged or persisted; `credential` is the XLS-70 Credential this node would let a sidecar sign. 400 challenge refused · 409 the proof does not verify · 413 body > 256 KiB · 429 node busy · 502 no validated ledger / ledger L unreadable |
 | `POST /pof/credential` | `{ record, amount, challenge }` | `{ tx, issuer, subject, credentialType, credentialTypeText, expiration, uri, amount, challenge, validatedLedger, signers, refusals }` — the quorum records a verified proof as an expiring `CredentialCreate` from the pool account to the borrower; every sidecar re-verifies on its own node at signing time. 409 fewer than k signers verified · 502 ledger |
 
 Shapes (camelCase on the wire):
@@ -183,6 +183,8 @@ Credential on the borrower's account) is a separate slice under the ship rule in
   pool, type `ConfidantPoF`), reports accepted / issued / expired with the expiry time, decodes the URI and says whether it
   matches the package it verified (the nodes' `credential.uri` from the verdicts). Honest label on both surfaces: the
   credential says "controlled ≥ X as of ledger L", not "controls it now".
+
+- **Bound on the signing path.** A node fills `verdict.credential` only while the pool account holds fewer than its cap of unaccepted `ConfidantPoF` Credentials and (gate on) only for a borrower the compliance gate admits; otherwise `credential` is `null` and `credentialRefused` says why. `POST /pof/credential` then answers **409** with that reason (`details.credentialRefused`); the read-side verdict (`ok`, …) is unchanged. The UI shows the reason instead of offering the recording.
 
 ## 3. What the UI must produce — the `record`
 

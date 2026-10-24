@@ -35,6 +35,11 @@ struct FakeLedger {
     credential_fail: Arc<Mutex<bool>>,
     /// `close_time` by ledger index (missing = the ledger cannot be read).
     close_times: Arc<Mutex<BTreeMap<u64, u64>>>,
+    /// The pool account's ledger objects for `account_objects`, a "further page" switch and a
+    /// failure switch (the lookup fails like an unreachable RPC).
+    objects: Arc<Mutex<Vec<Value>>>,
+    objects_more: Arc<Mutex<bool>>,
+    objects_fail: Arc<Mutex<bool>>,
 }
 
 impl FakeLedger {
@@ -91,6 +96,23 @@ impl FakeLedger {
     fn set_validated(&self, n: u64) {
         *self.validated.lock().unwrap() = n;
     }
+    /// A proof-of-funds Credential issued by the pool to `subject`, accepted or not.
+    fn put_pool_pof_credential(&self, subject: &str, accepted: bool) {
+        self.put_pool_object(json!({ "LedgerEntryType": "Credential", "Issuer": POOL, "Subject": subject,
+            "CredentialType": confidant_node::POF_CREDENTIAL_TYPE, "Flags": if accepted { LSF_ACCEPTED } else { 0 } }));
+    }
+    fn put_pool_object(&self, v: Value) {
+        self.objects.lock().unwrap().push(v);
+    }
+    fn clear_pool_credentials(&self) {
+        self.objects.lock().unwrap().clear();
+    }
+    fn set_objects_more(&self, on: bool) {
+        *self.objects_more.lock().unwrap() = on;
+    }
+    fn fail_objects(&self, on: bool) {
+        *self.objects_fail.lock().unwrap() = on;
+    }
     fn set_close_time(&self, index: u64, close_time: u64) {
         self.close_times.lock().unwrap().insert(index, close_time);
     }
@@ -128,6 +150,19 @@ impl Ledger for FakeLedger {
             return Err(LedgerError::Rpc("ledger: unavailable".into()));
         }
         Ok(n)
+    }
+    async fn account_objects(
+        &self,
+        _account: &str,
+        _object_type: &str,
+    ) -> Result<(Vec<Value>, bool), LedgerError> {
+        if *self.objects_fail.lock().unwrap() {
+            return Err(LedgerError::Rpc("account_objects: unavailable".into()));
+        }
+        Ok((
+            self.objects.lock().unwrap().clone(),
+            *self.objects_more.lock().unwrap(),
+        ))
     }
     async fn ledger_close_time(&self, index: u64) -> Result<u64, LedgerError> {
         self.close_times
@@ -1817,7 +1852,7 @@ async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge()
     assert_eq!(snap(&n), before, "verification mutates nothing");
     assert_eq!(n.log(0).len(), 2, "nothing is logged");
     // The Credential a sidecar may sign: this node's own derivation, pinned field by field.
-    let c = &v.credential;
+    let c = v.credential.as_ref().unwrap();
     assert_eq!(c.subject, BORROWER);
     assert_eq!(c.credential_type, POF_CREDENTIAL_TYPE);
     assert_eq!(c.credential_type, hex::encode_upper(b"ConfidantPoF"));
@@ -1877,6 +1912,174 @@ async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge()
         CLOSE_990 + 510 * SECONDS_PER_LEDGER
     );
     assert_eq!(v["credential"]["uri"], c.uri);
+
+    // The signing-path bound (audit ruling on the credential-pof slice): the Credential fields a
+    // sidecar would sign are withheld, with the reason, when the pool account already holds the cap
+    // of unaccepted proof-of-funds Credentials (B) or, with the compliance gate on, when the borrower
+    // is not admitted (A); a ledger read that fails refuses too. The read-side verdict is unchanged.
+    use confidant_node::POF_MAX_OUTSTANDING;
+    const KYC_ISSUER: &str = "rfSGoJ5hjSppbmWy79MH1kqHu27JRwrcam";
+    const KYC_TYPE: &str = "436F6E666964616E744B5943";
+    let vd = n
+        .verify_proof_of_funds(&pof.record, 120, &ch)
+        .await
+        .unwrap();
+    assert!(
+        vd.credential.is_some() && vd.credential_refused.is_none(),
+        "below the cap: authorized"
+    );
+    for i in 0..POF_MAX_OUTSTANDING {
+        ledger.put_pool_pof_credential(&format!("rSubject{i}"), false);
+    }
+    let vd = n
+        .verify_proof_of_funds(&pof.record, 120, &ch)
+        .await
+        .unwrap();
+    assert!(
+        vd.ok && vd.root == n.state().root && vd.meaning == MEANING,
+        "the read side is unaffected"
+    );
+    assert!(vd.credential.is_none());
+    let why = vd.credential_refused.clone().unwrap();
+    assert!(
+        why.contains(&format!(
+            "{POF_MAX_OUTSTANDING} unaccepted proof-of-funds credentials"
+        )) && why.contains(&format!("cap {POF_MAX_OUTSTANDING}")),
+        "{why}"
+    );
+    ledger.clear_pool_credentials();
+    for i in 0..POF_MAX_OUTSTANDING {
+        ledger.put_pool_pof_credential(&format!("rSubject{i}"), true);
+    }
+    assert!(
+        n.verify_proof_of_funds(&pof.record, 120, &ch)
+            .await
+            .unwrap()
+            .credential
+            .is_some(),
+        "accepted ones moved their reserve to the subject and do not count"
+    );
+    ledger.clear_pool_credentials();
+    for i in 0..POF_MAX_OUTSTANDING - 1 {
+        ledger.put_pool_pof_credential(&format!("rSubject{i}"), false);
+    }
+    assert!(
+        n.verify_proof_of_funds(&pof.record, 120, &ch)
+            .await
+            .unwrap()
+            .credential
+            .is_some(),
+        "one below the cap"
+    );
+    // The compliance credential type and other issuers never count.
+    ledger.put_pool_object(json!({ "LedgerEntryType": "Credential", "Issuer": POOL, "Subject": "rX", "CredentialType": KYC_TYPE, "Flags": 0 }));
+    ledger.put_pool_object(json!({ "LedgerEntryType": "Credential", "Issuer": "rOtherIssuer", "Subject": "rY", "CredentialType": POF_CREDENTIAL_TYPE, "Flags": 0 }));
+    assert!(n
+        .verify_proof_of_funds(&pof.record, 120, &ch)
+        .await
+        .unwrap()
+        .credential
+        .is_some());
+    // A further page of objects counts as at least the cap.
+    ledger.set_objects_more(true);
+    assert!(n
+        .verify_proof_of_funds(&pof.record, 120, &ch)
+        .await
+        .unwrap()
+        .credential
+        .is_none());
+    ledger.set_objects_more(false);
+    // The count unreadable: refused (fail closed); the verdict still answers.
+    ledger.fail_objects(true);
+    let vd = n
+        .verify_proof_of_funds(&pof.record, 120, &ch)
+        .await
+        .unwrap();
+    assert!(vd.ok && vd.credential.is_none());
+    assert!(vd
+        .credential_refused
+        .as_deref()
+        .unwrap()
+        .contains("cannot read the pool account's credentials"));
+    ledger.fail_objects(false);
+    ledger.clear_pool_credentials();
+    // Cap 0: the signing path is off on this node.
+    let off = Arc::new(node(&ledger).with_pof_cap(0));
+    for (i, r) in n.log(0).iter().enumerate() {
+        off.submit_shield(r, &format!("D{i}")).await.unwrap();
+    }
+    assert_eq!(off.pof_max_outstanding(), 0);
+    let vd = off
+        .verify_proof_of_funds(&pof.record, 120, &ch)
+        .await
+        .unwrap();
+    assert!(
+        vd.ok
+            && vd.credential.is_none()
+            && vd.credential_refused.as_deref().unwrap().contains("cap 0")
+    );
+    // (A) With the compliance gate on, the borrower must be admitted as a depositor would be.
+    ledger.put_credential("rAlice", KYC_ISSUER, KYC_TYPE, true, None); // the depositor passes the gate
+    let gated =
+        Arc::new(node(&ledger).with_credential(
+            CredentialGate::new(KYC_ISSUER, KYC_TYPE, Some("ConfidantKYC")).unwrap(),
+        ));
+    for (i, r) in n.log(0).iter().enumerate() {
+        gated.submit_shield(r, &format!("D{i}")).await.unwrap();
+    }
+    assert_eq!(gated.state().root, n.state().root);
+    let vd = gated
+        .verify_proof_of_funds(&pof.record, 120, &ch)
+        .await
+        .unwrap();
+    assert!(vd.ok && vd.credential.is_none());
+    let why = vd.credential_refused.clone().unwrap();
+    assert!(
+        why.contains("compliance gate") && why.contains(BORROWER),
+        "{why}"
+    );
+    ledger.put_credential(BORROWER, KYC_ISSUER, KYC_TYPE, false, None); // issued, not accepted
+    assert!(gated
+        .verify_proof_of_funds(&pof.record, 120, &ch)
+        .await
+        .unwrap()
+        .credential
+        .is_none());
+    ledger.put_credential(BORROWER, KYC_ISSUER, KYC_TYPE, true, None);
+    assert!(
+        gated
+            .verify_proof_of_funds(&pof.record, 120, &ch)
+            .await
+            .unwrap()
+            .credential
+            .is_some(),
+        "an admitted borrower"
+    );
+    ledger.fail_credentials(true);
+    let vd = gated
+        .verify_proof_of_funds(&pof.record, 120, &ch)
+        .await
+        .unwrap();
+    assert!(vd.ok && vd.credential.is_none());
+    assert!(vd
+        .credential_refused
+        .as_deref()
+        .unwrap()
+        .contains("cannot read the borrower's compliance credential"));
+    ledger.fail_credentials(false);
+    // Over HTTP the shape is explicit: `credential: null` next to the reason.
+    for i in 0..POF_MAX_OUTSTANDING {
+        ledger.put_pool_pof_credential(&format!("rSubject{i}"), false);
+    }
+    let (s, v) = call(&app, "POST", "/pof/verify", Some(body(120, &ch))).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["ok"], true);
+    assert!(v["credential"].is_null(), "{v}");
+    assert!(
+        v["credentialRefused"].as_str().unwrap().contains("cap"),
+        "{v}"
+    );
+    ledger.clear_pool_credentials();
 
     // The proof is bound: another amount or a challenge with one field changed is a core refusal.
     let (s, v) = call(&app, "POST", "/pof/verify", Some(body(100, &ch))).await;

@@ -96,3 +96,22 @@ IMPL-PASS for the signing path under requirements 1–6 — or the ruling that i
   (e) the sidecar's re-verification is the only "unspent at signing" guarantee (requirement 5); there is no verdict
       cache anywhere. Confirm that is the intended shape.
 ```
+
+## Supplement — the dev session's finding and the bound it landed (2026-10-24)
+
+Sent to the audit session with the REQ, verbatim excerpt:
+
+```text
+== FINDING — reserve and fee drain through an attacker-chosen Subject ==
+Nothing in the node, the sidecar or the coordinator binds challenge.borrower to the requester. The borrower is a free-text classic address the holder types. So anyone holding ONE valid proof — of any amount ≥ 1 drop, in a pool they entered once — can call POST /pof/credential repeatedly with a different `borrower` each time (any existing classic address: foreign accounts, random funded accounts), and for each one the quorum (k sidecars, all passing their pins) multisigns and submits a CredentialCreate FROM THE POOL ACCOUNT. Each one: (1) costs the pool account a multisig transaction fee; (2) locks one owner reserve (0.2 XRP today) in the pool account until the subject accepts (never, for a foreign subject) or until expiry + a manual CredentialDelete. tecDUPLICATE only limits one credential per (subject, type), so the bound is the number of classic addresses the attacker can name — unbounded. Consequence: the pool account's SPENDABLE balance shrinks by 0.2 XRP per credential while the fee ledger's poolExcess does not account for reserve, so with enough credentials unshield payouts start failing (tecUNFUNDED_PAYMENT) — a griefing attack on withdrawals from an unauthenticated endpoint, plus a fee-drain. The amplification is also k + 1 SNARK verifications per request.
+```
+
+The audit confirmed the finding at the ref and withheld the IMPL-PASS for the signing path until a bound
+landed (floor: the outstanding-credentials cap, node-side; preferred: plus the compliance-gate check on the
+borrower; the borrower's own signature over the challenge and the owner-reserve belt on `poolExcess` recorded
+as must-land before real value). The bound landed on the branch the same night: `Node::pof_issuance_refusal`
+— (A) borrower admitted by the compliance gate when it is on, (B) fewer than `--pof-max-outstanding` (default
+25, ≤ 200) unaccepted `ConfidantPoF` Credentials issued by the pool account, both failing closed on a ledger
+read error; `verdict.credential` becomes `null` with `credentialRefused`; the sidecar and the coordinator refuse
+with 409. Mutation rows: cap removed, gate check removed, accepted ones counted, further page ignored, read
+failure treated as zero — each must be killed by the new test rows (table in the RESP).

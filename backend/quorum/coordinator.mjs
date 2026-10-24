@@ -113,7 +113,7 @@ await serve(Number(env.PORT), {
     if (!record || !challenge || !Number.isInteger(amount)) throw refuse(400, "need { record, amount, challenge }");
     const verdict = await http("POST", `${env.NODE_URL}/pof/verify`, { record, amount, challenge });
     const c = verdict.credential;
-    if (!c?.subject) throw refuse(502, "my node's verdict carries no credential fields");
+    if (!c?.subject) throw refuse(409, `my node refused to authorize the credential: ${verdict.credentialRefused ?? "no credential fields"}`, { credentialRefused: verdict.credentialRefused ?? null });
     const tx = await client.autofill({ TransactionType: "CredentialCreate", Account: env.POOL, Subject: c.subject, CredentialType: c.credentialType, Expiration: c.expiration, URI: c.uri }, SIGNERS.length);
     tx.LastLedgerSequence = (await client.getLedgerIndex()) + ANCHOR_LLS_OFFSET;
     const results = await Promise.allSettled(SIGNERS.map((s) => http("POST", `${s}/sign`, { txs: [{ kind: "credential-pof", tx }], pof: { record, amount, challenge } })));

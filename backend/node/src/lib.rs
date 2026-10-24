@@ -47,8 +47,9 @@ pub use credential::{
 pub use fees::{FeeLedger, FeePolicy, FeeReport, MAX_BPS};
 pub use node::{AcceptedWithMemo, Node, NodeError, POF_PERMITS};
 pub use pof::{
-    PofChallenge, PofCredential, PofError, PofVerdict, CHALLENGE_PREFIX, MAX_EXPIRY_WINDOW,
-    MAX_LENDER_LEN, MEANING, POF_CREDENTIAL_TYPE, POF_CREDENTIAL_TYPE_TEXT, RECENT_WINDOW,
+    outstanding_pof_credentials, PofChallenge, PofCredential, PofError, PofVerdict,
+    CHALLENGE_PREFIX, MAX_EXPIRY_WINDOW, MAX_LENDER_LEN, MEANING, POF_CREDENTIAL_TYPE,
+    POF_CREDENTIAL_TYPE_TEXT, POF_MAX_OUTSTANDING, POF_MAX_OUTSTANDING_LIMIT, RECENT_WINDOW,
     SECONDS_PER_LEDGER,
 };
 pub use rpc::JsonRpc;

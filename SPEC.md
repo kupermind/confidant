@@ -222,6 +222,8 @@ was judged against. The record is never applied, persisted or logged. The verdic
 not a lock, not proof that the borrower owns the notes; nothing reaches the ledger in this slice (the `credential-pof`
 signing path is separate, under the ship rule).
 
+**Bound on the signing path (2026-10-24, audit ruling).** A node fills the Credential fields of a verdict only while the pool account holds fewer than its cap of unaccepted proof-of-funds Credentials it issued (each locks an owner reserve on the pool account; the borrower is a field the holder chooses) and, with the compliance gate on, only for a borrower the gate admits; a failed ledger read refuses. Otherwise `credential` is null with the reason, a sidecar signs nothing and the coordinator answers 409. The read-side verdict is unaffected. Not a hard ceiling (nodes count independently); the cap stays well below one `account_objects` page. Before real value: the borrower's own signature over the challenge in the request, and the pool-excess bound subtracting the owner reserve.
+
 **Proof of funds on the ledger (feature C, Tier 1 signing path; built on-site 2026-10-24, ships only with its own IMPL-PASS
 in-window).** A verdict may be recorded by the quorum as an expiring XLS-70 Credential from the pool account to the
 borrower: `CredentialType` "ConfidantPoF", `Expiration` = the close time of ledger `L` plus 4 s per ledger to `E`, `URI` =
@@ -526,9 +528,13 @@ graph is hidden but not the endpoints, ZK first, TEE a footnote.
   submissions, `replay`, `restore`, `rebuild`, `rebuild_checked` — and a genuine bundle with a swapped
   binding signature with `InvalidBindingSignature` likewise, the verifier byte-identical afterwards;
   the honest counterparts are then accepted. A second test reads `core/src` and pins the set of
-  BLAKE2b personalizations (`ConfidantBundle`, `ConfidantSigHash`) and sighash context shapes
-  (`external_ctx`, `unshield_ctx`): a new hash domain must be added to that allow-list on purpose,
-  two call sites can never share one, and no BLAKE2b in the core is unpersonalized.
+  BLAKE2b personalizations (`ConfidantBundle`, `ConfidantPoF_v1_`, `ConfidantSigHash`) and sighash
+  context shapes (`external_ctx`, `pof_ctx`, `unshield_ctx`): a new hash domain must be added to that
+  allow-list on purpose, two call sites can never share one, and no BLAKE2b in the core is
+  unpersonalized. That scan covers `core/src` only; the complete inventory of hash domains in this
+  repository is the three above plus the backend's `ConfidantPoFURI_` (`backend/node/src/pof.rs`,
+  the 8-byte challenge digest inside a proof-of-funds Credential's URI — a display binding, not a
+  signature domain).
 - **Coverage:** lines 100%, functions 100% (`cargo llvm-cov`), gated in CI; regions ≈ 97%.
 - **CI**: fmt, clippy `-D warnings`, tests in release, coverage, hygiene (key-shaped files, honest
   label markers in three documents, over-claim words), manual e2e job on testnet.

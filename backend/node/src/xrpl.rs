@@ -61,6 +61,14 @@ pub trait Ledger: Send + Sync {
         issuer: &str,
         credential_type: &str,
     ) -> impl Future<Output = Result<Option<Value>, LedgerError>> + Send;
+    /// The `account_objects` of `account` of one `object_type` on the validated ledger: the first
+    /// page (rippled's maximum, 400) and whether a further page exists. Used for the pool account's
+    /// outstanding proof-of-funds Credentials; a further page means "at least a page", never a count.
+    fn account_objects(
+        &self,
+        account: &str,
+        object_type: &str,
+    ) -> impl Future<Output = Result<(Vec<Value>, bool), LedgerError>> + Send;
 }
 
 fn tx_json(tx: &Value) -> &Value {

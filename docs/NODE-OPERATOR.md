@@ -47,6 +47,8 @@ transactions — only for roots it computed itself.
   expiration, URI) — the coordinator's values are never trusted. The pool account pays one owner reserve per credential
   until the borrower accepts it; delete expired unaccepted ones.
 
+- **Cap on proof-of-funds Credentials:** `--pof-max-outstanding <N>` (default 25, 0 = the signing path off on this node). Your node authorizes a Credential only while the pool account holds fewer than N unaccepted `ConfidantPoF` Credentials it issued (each locks an owner reserve on the pool account), and — with the compliance gate on — only for a borrower the gate would admit; a failed ledger read refuses. Keep N small: the node counts one `account_objects` page (it refuses to start above 200). Delete expired unaccepted Credentials to free reserve and headroom under the cap.
+
 ## Sign (step 3 of v2) — never blind
 
 For each proposal from a coordinator you receive `{submission, proposedMemo}`:

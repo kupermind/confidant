@@ -101,6 +101,8 @@ test("credential-pof: every field is the signer's own node's recomputation", () 
   checkTxShape("credential-pof", cc(), cctx);
   checkTxShape("credential-pof", { ...cc(), CredentialType: "436f6e666964616e74506f46", URI: "636F6E66" }, cctx); // hex case-insensitive
   refused("credential-pof", cc(), /no credential verdict/, ctx);
+  // The node withheld the Credential (the signing-path bound): `credential: null` signs nothing.
+  refused("credential-pof", cc(), /no credential verdict/, { ...ctx, pofCredential: null });
   refused("credential-pof", cc(), /no credential verdict/, { ...ctx, pofCredential: { ...cred, expiration: "soon" } });
   refused("credential-pof", { ...cc(), TransactionType: "Payment" }, /not a CredentialCreate/, cctx);
   refused("credential-pof", { ...cc(), Subject: "rEVE" }, /Subject is not the borrower/, cctx);

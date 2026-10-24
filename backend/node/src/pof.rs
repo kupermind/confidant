@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::address::canonical;
+use crate::credential::LSF_ACCEPTED;
 
 /// Domain prefix of the challenge bytes; the wallet builds the same string.
 pub const CHALLENGE_PREFIX: &str = "confidant/pof/v1";
@@ -24,6 +25,40 @@ pub const POF_CREDENTIAL_TYPE: &str = "436F6E666964616E74506F46";
 pub const SECONDS_PER_LEDGER: u64 = 4;
 /// BLAKE2b personalization of the challenge digest inside the Credential's URI.
 pub const URI_PERSONALIZATION: &[u8; 16] = b"ConfidantPoFURI_";
+/// Default cap on proof-of-funds Credentials the pool account holds *unaccepted* at once (the
+/// signing-path bound: each one locks an owner reserve on the pool account and cost a fee, and the
+/// borrower is a field the holder chooses). The node refuses to authorize another above it.
+pub const POF_MAX_OUTSTANDING: u64 = 25;
+/// The cap must stay well below rippled's `account_objects` page (400): the node counts one page
+/// and treats a further page as "at least a page", which only reaches the cap while the cap is
+/// smaller than the page. Raising it near or above the page size needs true pagination first.
+pub const POF_MAX_OUTSTANDING_LIMIT: u64 = 200;
+
+/// How many of the pool account's Credential objects are proof-of-funds Credentials it issued that
+/// their subject has not accepted — expired-but-undeleted ones included, since each still holds one
+/// owner reserve on the pool account. Accepted ones moved their reserve to the subject and are not
+/// counted; the compliance credential type is never counted.
+pub fn outstanding_pof_credentials(objects: &[serde_json::Value], pool: &str) -> u64 {
+    let field = |o: &serde_json::Value, k: &str| {
+        o.get(k)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_owned()
+    };
+    objects
+        .iter()
+        .filter(|o| field(o, "LedgerEntryType") == "Credential")
+        .filter(|o| field(o, "Issuer") == pool)
+        .filter(|o| field(o, "CredentialType").eq_ignore_ascii_case(POF_CREDENTIAL_TYPE))
+        .filter(|o| {
+            o.get("Flags")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0)
+                & LSF_ACCEPTED
+                == 0
+        })
+        .count() as u64
+}
 
 /// The verdict's meaning, verbatim for the lender's surface.
 pub const MEANING: &str = "someone controlling at least `amount` in this pool answered this \
@@ -166,6 +201,10 @@ pub struct PofVerdict {
     pub root: String,
     pub bundle_hash: String,
     pub meaning: String,
-    /// The Credential this verdict authorizes a sidecar to sign (Tier 1 signing path).
-    pub credential: PofCredential,
+    /// The Credential this verdict authorizes a sidecar to sign (Tier 1 signing path) — `None`
+    /// when this node refuses to authorize one (the cap, the compliance gate, or a ledger read it
+    /// could not complete: the bound fails closed); the read-side verdict above is unaffected.
+    pub credential: Option<PofCredential>,
+    /// Why `credential` is `None`, for the coordinator and the holder's screen.
+    pub credential_refused: Option<String>,
 }

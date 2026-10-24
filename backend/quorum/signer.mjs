@@ -47,6 +47,7 @@ await serve(Number(PORT), {
       let verdict;
       try { verdict = await http("POST", `${NODE_URL}/pof/verify`, { record: pof.record, amount: pof.amount, challenge: pof.challenge }); }
       catch (e) { throw refuse(409, `my node did not verify the proof of funds: ${e.message}`, e.details); }
+      if (!verdict.credential) throw refuse(409, `my node refused to authorize the credential: ${verdict.credentialRefused ?? "no credential fields"}`);
       pofCredential = verdict.credential;
     } else {
       if (!submission || !memoHex) throw refuse(400, "need submission and memoHex");

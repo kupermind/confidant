@@ -86,6 +86,19 @@ async fn main() {
         ),
         None => eprintln!("credential gate: OFF (no --credential-issuer / --credential-type)"),
     }
+    let pof_cap: u64 = match arg(&args, "--pof-max-outstanding") {
+        Some(v) => v
+            .parse()
+            .unwrap_or_else(|_| die("--pof-max-outstanding must be a number")),
+        None => confidant_node::POF_MAX_OUTSTANDING,
+    };
+    if pof_cap > confidant_node::POF_MAX_OUTSTANDING_LIMIT {
+        die(format!(
+            "--pof-max-outstanding {pof_cap} is above {}: the node counts one account_objects page, so the cap must stay well below the page size",
+            confidant_node::POF_MAX_OUTSTANDING_LIMIT
+        ));
+    }
+    eprintln!("proof-of-funds credentials: the pool account may hold at most {pof_cap} unaccepted ones before this node stops authorizing new ones (0 = signing path off)");
     if screening.is_active() {
         eprintln!(
             "screening: {} listed addresses ({} canonical, {} undecodable and inert), standby {} ledgers (shields from listed or too-fresh deposits and unshields to listed addresses are refused with 403)",
@@ -184,6 +197,7 @@ async fn main() {
         Node::new(verifier, ledger, pool, state)
             .with_screening(screening)
             .with_credential(credential)
+            .with_pof_cap(pof_cap)
             .with_fees(fees, fee_ledger),
     );
     let listener = tokio::net::TcpListener::bind(&listen)

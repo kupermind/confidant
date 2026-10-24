@@ -1114,7 +1114,7 @@
   const nodeUrls = () => (Array.isArray(cfg.nodes) ? cfg.nodes : []);
   async function validatedLedger() { if (DEMO) return 12_345_678; const c = await xrpl_(); return c.getLedgerIndex(); }
   async function verifyAt(url, body) {
-    if (DEMO) { await sleep(500 + Math.random() * 400); return { ok: true, amount: body.amount, validatedLedger: 12_345_679, root: fakeHex(64), meaning: "someone controlling at least `amount` in this pool answered this challenge as of the validated ledger: an underwriting signal, a snapshot, not a lock, and not proof that the borrower owns the notes" }; }
+    if (DEMO) { await sleep(500 + Math.random() * 400); return { ok: true, amount: body.amount, validatedLedger: 12_345_679, root: fakeHex(64), meaning: "someone controlling at least `amount` in this pool answered this challenge as of the validated ledger: an underwriting signal, a snapshot, not a lock, and not proof that the borrower owns the notes", credential: { subject: body.challenge.borrower, credentialType: "436F6E666964616E74506F46", credentialTypeText: "ConfidantPoF", expiration: 800002040, uri: "636F6E666964616E742F706F662F7631", uriText: "confidant/pof/v1" }, credentialRefused: null }; }
     return http("POST", `${url}/pof/verify`, body);
   }
   async function doProve() {
@@ -1142,7 +1142,13 @@
       if (!okCount) throw new Error(`No node verified the proof: ${verdicts[0]?.e?.message ?? "unknown"}`);
       setSteps("steps-prove", 2, true);
       const pkg = JSON.stringify({ amount, challenge, record: built.record, bundleHash: built.bundleHash });
+      // The signing-path bound: a node that verified the proof may still withhold the Credential fields a
+      // sidecar would sign (cap on unaccepted proof-of-funds credentials, or the compliance gate); then the
+      // ledger recording is not offered and the node's reason is shown instead of a 409 later.
+      const recordable = verdicts.some((r) => r.ok && r.v.credential);
+      const withheld = verdicts.filter((r) => r.ok && !r.v.credential).map((r) => r.v.credentialRefused).find(Boolean);
       setMsg("msg-prove", `<b>${okCount} of ${nodes.length} nodes</b> verified it: someone controlling at least <b>${fmt(drops)} XRP</b> in this pool answered the challenge of "${esc(lender)}" for ${esc(borrower)} as of ledger ${L}, valid until ledger ${challenge.expiry} (≈ ${hours} h). An underwriting signal, a snapshot — not a lock, and not proof that the borrower owns the notes. <button class="link" type="button" id="btn-pof-copy">Copy the proof package</button> · <button class="link" type="button" id="btn-pof-download">Download it</button> · the lender checks it on <a href="lender.html">the lender page</a>. Then <button class="link" type="button" id="btn-pof-rotate">rotate your notes</button> so the nodes cannot link your next spend to this proof.${okCount >= Number(cfg.quorum) && cfg.pool ? ` Or have the quorum <button class="link" type="button" id="btn-pof-record">record it on the ledger as a Credential</button> on ${esc(borrower)} — the lender then reads XRPL, not a file.` : ""}${proved(built)}`, "ok");
+      if (!recordable) { const rb = $("btn-pof-record"); if (rb) rb.hidden = true; setMsg("msg-prove-ledger", `Recording it on the ledger is not available right now: ${esc(withheld ?? "the nodes withheld the credential fields")}. The verdicts above and the package stand on their own.`, "warn"); }
       $("btn-pof-record")?.addEventListener("click", () => recordCredential(body, lender));
       $("btn-pof-copy").addEventListener("click", async () => { $("btn-pof-copy").textContent = (await copyText(pkg)) ? "Copied" : "Copy failed — use Download"; });
       $("btn-pof-download").addEventListener("click", () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([pkg], { type: "application/json" })); a.download = `confidant-proof-${L}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); });

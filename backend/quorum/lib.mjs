@@ -10,6 +10,9 @@ export const MEMO_ANCHOR = "confidant/anchor";
 export const MEMO_SHIELD = "confidant/shield";
 
 // ---- HTTP -----------------------------------------------------------------------------------
+/// Largest request body a service parses (the ingress-cost lesson: parse nothing unbounded).
+export const MAX_BODY_BYTES = 512 * 1024;
+
 export function serve(port, routes) {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
@@ -23,8 +26,8 @@ export function serve(port, routes) {
     try {
       let body = null;
       if (req.method === "POST") {
-        const chunks = [];
-        for await (const c of req) chunks.push(c);
+        const chunks = []; let size = 0;
+        for await (const c of req) { size += c.length; if (size > MAX_BODY_BYTES) throw refuse(413, `body over ${MAX_BODY_BYTES} bytes`); chunks.push(c); }
         body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
       }
       const out = await handler(body, url);

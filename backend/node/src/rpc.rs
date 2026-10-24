@@ -94,6 +94,27 @@ impl Ledger for JsonRpc {
             .ok_or_else(|| LedgerError::Rpc(format!("ledger {index}: no close_time in the answer")))
     }
 
+    async fn account_objects(
+        &self,
+        account: &str,
+        object_type: &str,
+    ) -> Result<(Vec<Value>, bool), LedgerError> {
+        let r = self
+            .call(
+                "account_objects",
+                json!({ "account": account, "type": object_type, "ledger_index": "validated", "limit": 400 }),
+            )
+            .await?;
+        let objects = r
+            .get("account_objects")
+            .and_then(Value::as_array)
+            .cloned()
+            .ok_or_else(|| {
+                LedgerError::Rpc("account_objects: no account_objects in the answer".into())
+            })?;
+        Ok((objects, r.get("marker").is_some()))
+    }
+
     async fn validated_ledger_index(&self) -> Result<u64, LedgerError> {
         let r = self
             .call("ledger", json!({ "ledger_index": "validated" }))
