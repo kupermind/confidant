@@ -3,6 +3,9 @@
 //
 //   WALLET_URL=http://host:8787/wallet-or-:7950 COORDINATOR_URL=http://host:8787/api node smoke-ui.mjs
 //   (local: WALLET_URL=http://127.0.0.1:7250 COORDINATOR_URL=http://127.0.0.1:7200)
+//   When the pool's credential gate is on (/config.credential), ISSUER_KEY=<issuer.key.json> issues the funder's
+//   credential first (and the funder accepts it) — what the issuer page and the app's Confirm do on stage.
+import { readFileSync } from "node:fs";
 import { Client, Wallet, xrpToDrops } from "xrpl";
 import { http, memoOf, MEMO_SHIELD, resilientClient } from "./lib.mjs";
 
@@ -24,6 +27,18 @@ try {
   must(alice.id && alice.address.length === 86, "wallet created");
   const { wallet: funder } = await client.fundWallet();
   log(`wallets ${alice.id.slice(0, 6)}… ${bob.id.slice(0, 6)}…, XRPL funder ${funder.address}`);
+  if (cfg.credential?.issuer) {
+    must(process.env.ISSUER_KEY, `the gate is on (issuer ${cfg.credential.issuer}): set ISSUER_KEY to issue the funder's credential`);
+    const issuerKey = JSON.parse(readFileSync(process.env.ISSUER_KEY, "utf8"));
+    must(issuerKey.address === cfg.credential.issuer, `ISSUER_KEY is ${issuerKey.address}, the nodes trust ${cfg.credential.issuer}`);
+    const issuer = Wallet.fromSeed(issuerKey.seed);
+    const exp = Math.floor(Date.now() / 1000) - 946684800 + 86400;
+    let r = await client.submitAndWait(issuer.sign(await client.autofill({ TransactionType: "CredentialCreate", Account: issuer.address, Subject: funder.address, CredentialType: cfg.credential.type, Expiration: exp })).tx_blob);
+    must(r.result.meta?.TransactionResult === "tesSUCCESS", "CredentialCreate");
+    r = await client.submitAndWait(funder.sign(await client.autofill({ TransactionType: "CredentialAccept", Account: funder.address, Issuer: issuer.address, CredentialType: cfg.credential.type })).tx_blob);
+    must(r.result.meta?.TransactionResult === "tesSUCCESS", "CredentialAccept");
+    log(`gate is on: credential issued and accepted for ${funder.address}`);
+  }
 
   const built = await http("POST", `${W}/wallets/${alice.id}/shield`, { amount: NET });
   const tx = await client.autofill({ TransactionType: "Payment", Account: funder.address, Destination: cfg.pool, Amount: DROPS, Memos: [memoOf(MEMO_SHIELD, built.bundleHash)] });
