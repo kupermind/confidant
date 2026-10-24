@@ -100,7 +100,8 @@ try {
   await expect(409, /not a proof of funds/i, { record: built.record, amount: NET, challenge: ch }, "a pool record");
   await expect(413, null, { record: "x".repeat(300 * 1024), amount: X, challenge: ch }, "oversized body");
   // 5. The quorum records the verdict as a Credential; the borrower confirms it; the ledger shows it.
-  const v0 = await http("POST", `${nodes[0]}/pof/verify`, { record: pof.record, amount: X, challenge: ch });
+  const v0 = await http("POST", `${nodes[0]}/pof/verify`, { record: pof.record, amount: X, challenge: ch, credential: true });
+  must(v0.credential?.uri, `node 0 withholds the credential: ${v0.credentialRefused ?? "?"}`);
   let recorded = false;
   try {
     const cr = await http("POST", `${C}/pof/credential`, { record: pof.record, amount: X, challenge: ch });

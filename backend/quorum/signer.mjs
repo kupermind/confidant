@@ -45,8 +45,9 @@ await serve(Number(PORT), {
     } else if (kinds === "credential-pof") {
       if (!pof?.record || !pof?.challenge || !Number.isInteger(pof?.amount)) throw refuse(400, "need pof { record, amount, challenge }");
       let verdict;
-      try { verdict = await http("POST", `${NODE_URL}/pof/verify`, { record: pof.record, amount: pof.amount, challenge: pof.challenge }); }
+      try { verdict = await http("POST", `${NODE_URL}/pof/verify`, { record: pof.record, amount: pof.amount, challenge: pof.challenge, credential: true }); }
       catch (e) { throw refuse(409, `my node did not verify the proof of funds: ${e.message}`, e.details); }
+      if (!verdict.credential) throw refuse(409, `my node withholds the credential: ${verdict.credentialRefused ?? "no reason given"}`);
       pofCredential = verdict.credential;
     } else {
       if (!submission || !memoHex) throw refuse(400, "need submission and memoHex");

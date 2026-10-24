@@ -528,7 +528,9 @@ graph is hidden but not the endpoints, ZK first, TEE a footnote.
   the honest counterparts are then accepted. A second test reads `core/src` and pins the set of
   BLAKE2b personalizations (`ConfidantBundle`, `ConfidantSigHash`) and sighash context shapes
   (`external_ctx`, `unshield_ctx`): a new hash domain must be added to that allow-list on purpose,
-  two call sites can never share one, and no BLAKE2b in the core is unpersonalized.
+  two call sites can never share one, and no BLAKE2b in the core is unpersonalized. One personalization lives outside
+  `core/`: `ConfidantPoFURI_` in `backend/node/src/pof.rs` (the digest of a proof-of-funds challenge inside a Credential's
+  URI) — a labelling hash, never a signature domain, so it is outside the allow-list's scope on purpose.
 - **Coverage:** lines 100%, functions 100% (`cargo llvm-cov`), gated in CI; regions ≈ 97%.
 - **CI**: fmt, clippy `-D warnings`, tests in release, coverage, hygiene (key-shaped files, honest
   label markers in three documents, over-claim words), manual e2e job on testnet.

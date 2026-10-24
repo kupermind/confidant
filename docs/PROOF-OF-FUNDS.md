@@ -90,9 +90,21 @@ every sidecar; each sidecar **re-verifies the proof on its own node now** (`POST
 at signing time — requirement 5) and signs only a `CredentialCreate` whose five fields equal **its node's** credential
 fields, with Fee / Sequence / LastLedgerSequence pinned as for payouts and no memos (requirements 1–4); k blobs are
 multisigned and submitted. The borrower then signs `CredentialAccept` in the app; a lender reads the accepted credential
-from the ledger and matches its URI against the package (lender page, step 3). Reserve: the pool account carries one owner
-reserve per credential until the subject accepts it; expired ones may be deleted by anyone (ops note). Nothing about the
-proof is persisted or logged on any node (requirement 6).
+from the ledger and matches its URI against the package (lender page, step 3). Nothing about the proof is persisted or
+logged on any node (requirement 6).
+
+**Bounds on the signing path (the review's finding: an attacker-chosen `Subject` could make the quorum spend fees and
+lock reserves without limit).** The Credential fields are derived only when the request asks (`credential: true`), and
+only when **the node's own ledger reads** allow it — a coordinator cannot bypass them, because a sidecar signs only its
+node's fields: (A) when the pool's credential gate is on, the borrower must hold the gate's accepted credential (a
+proof-of-funds Credential goes to eligible accounts only); (B) the borrower must not already hold a proof-of-funds
+Credential from this pool, accepted or pending (one per account; `tecDUPLICATE` would refuse anyway, the node refuses
+first); (C) the pool account's outstanding (unaccepted) proof-of-funds Credentials must be under `POF_CREDENTIAL_CAP`
+= 8 — reserve exposure ≤ 8 × one owner reserve, fee spend ≤ 8 per expiry window. Otherwise the verdict carries
+`credential: null` and the reason in `credentialRefused`; the sidecar and the coordinator refuse with it (409). Reserve:
+the pool account carries one owner reserve per credential until the subject accepts it; expired ones may be deleted by
+anyone (not automated). The production shape is the borrower's own XRPL signature over the challenge in the request
+(consent before issuance) — not for the event.
 
 - **What reaches the ledger:** the borrower's account, the type, the expiry and a hash of
   (X, L, E). No notes, no nullifiers, no proof. **Decided (d): X is in the URI in clear** for the

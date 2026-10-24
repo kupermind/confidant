@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::address::canonical;
+use crate::credential::LSF_ACCEPTED;
 
 /// Domain prefix of the challenge bytes; the wallet builds the same string.
 pub const CHALLENGE_PREFIX: &str = "confidant/pof/v1";
@@ -166,6 +167,38 @@ pub struct PofVerdict {
     pub root: String,
     pub bundle_hash: String,
     pub meaning: String,
-    /// The Credential this verdict authorizes a sidecar to sign (Tier 1 signing path).
-    pub credential: PofCredential,
+    /// The Credential this verdict authorizes a sidecar to sign (Tier 1 signing path) — only when
+    /// the request asked for it (`credential: true`) and the node's bounds allow it: the borrower
+    /// is eligible under the pool's credential gate (when on), holds no proof-of-funds credential
+    /// from this pool yet, and the pool's outstanding (unaccepted) proof-of-funds credentials are
+    /// under the cap. Otherwise `None`, with the reason in `credential_refused`.
+    pub credential: Option<PofCredential>,
+    pub credential_refused: Option<String>,
+}
+
+/// Most proof-of-funds credentials the pool account may have outstanding (issued, not yet accepted
+/// by their subjects) before the node stops deriving new ones. Each one locks an owner reserve on
+/// the pool account and cost a multisig fee; the cap bounds what an unauthenticated caller can make
+/// the quorum spend and lock (the review's finding on an attacker-chosen `Subject`).
+pub const POF_CREDENTIAL_CAP: usize = 8;
+/// Counts the pool's unaccepted proof-of-funds credentials among `objects` (the pool account's
+/// `account_objects` of type `credential`): issued by the pool, of the PoF type, accepted flag clear.
+pub fn outstanding_pof_credentials(pool: &str, objects: &[serde_json::Value]) -> usize {
+    objects
+        .iter()
+        .filter(|o| is_pof_credential_from(pool, o))
+        .filter(|o| {
+            o.get("Flags")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0)
+                & LSF_ACCEPTED
+                == 0
+        })
+        .count()
+}
+
+/// Whether `o` is a proof-of-funds credential issued by `pool` (accepted or not).
+pub fn is_pof_credential_from(pool: &str, o: &serde_json::Value) -> bool {
+    let s = |k: &str| o.get(k).and_then(serde_json::Value::as_str).unwrap_or("");
+    s("Issuer") == pool && s("CredentialType").eq_ignore_ascii_case(POF_CREDENTIAL_TYPE)
 }

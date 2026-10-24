@@ -96,3 +96,56 @@ IMPL-PASS for the signing path under requirements 1–6 — or the ruling that i
   (e) the sidecar's re-verification is the only "unspent at signing" guarantee (requirement 5); there is no verdict
       cache anywhere. Confirm that is the intended shape.
 ```
+
+## Addendum (same day) — bounds after the review's finding on an attacker-chosen `Subject`
+
+```text
+Finding (crypto/ZK lane, review of 02691ce): nothing bound challenge.borrower to the requester, so one valid proof let
+anyone make the quorum multisign a CredentialCreate from the pool account per arbitrary address — a multisig fee and
+one owner reserve locked per call until the subject accepts (never, for a foreign subject) or expiry: fee and reserve
+drain from an unauthenticated endpoint, k + 1 SNARK verifications per request on top.
+
+== Bounds, in the node (a coordinator cannot bypass them: sidecars sign only their node's credential fields) ==
+POST /pof/verify gains `credential: bool` (default false). The plain verdict is unchanged and costs one ledger read; the
+Credential fields are derived only when asked AND Node::credential_bounds() allows, each bound read from the ledger by
+the node itself (unreadable ⇒ 502, never a derivation):
+  (A) when the pool's credential gate is on, the borrower must hold the gate's accepted credential — the same
+      ledger_entry read and check() as the deposit gate, `now` = the validated ledger's close_time;
+  (B) the borrower must not already hold a proof-of-funds credential from this pool (accepted or pending):
+      account_objects(type credential) of the borrower, issuer == pool, type == ConfidantPoF;
+  (C) the pool account's outstanding (unaccepted) proof-of-funds credentials must be under POF_CREDENTIAL_CAP = 8:
+      account_objects of the pool, issuer == pool, type == ConfidantPoF, lsfAccepted clear. Reserve exposure ≤ 8 × one
+      owner reserve; fee spend ≤ 8 per expiry window.
+Otherwise the verdict carries credential: null and credentialRefused: "<reason>"; the sidecar refuses 409 ("my node
+withholds the credential: …") and the coordinator 409 ("no credential for this borrower: …"). The coordinator and the
+sidecar ask with credential: true; the holder app never asks; the lender page asks (its step 3 matches the URI).
+Also from the review: a 1 MiB body cap in the quorum services' HTTP layer (lib.mjs serve); SPEC §11 names the
+ConfidantPoFURI_ personalization as a labelling hash outside the core allow-list; the lender page says what the node
+operators see (lender id, borrower, amount, window) and that Expiration can outlive ledger E by minutes; the holder's
+Prove tab tooltip says the same about the operators.
+Not done (production shape): the borrower's own XRPL signature over the challenge in the request.
+
+== Tests (node) ==
+credential: false → no credential, no reason, no account_objects read; borrower already holding a PoF credential →
+withheld "already holds"; 8 unaccepted PoF credentials on the pool → withheld "cap 8"; 7 unaccepted + 1 accepted + one
+of another type + one from another issuer → derived (none of the three count); gate on: a gated node rebuilt to the
+same root, borrower without the gate's credential → withheld "not eligible", with an accepted one valid by the
+ledger's clock → derived (same URI as the open node's), expired by the ledger's clock → withheld; ledger L unreadable
+→ 502 only when a credential is asked, a plain verdict needs no close time. Sidecar shape tests unchanged (the
+"no credential verdict" row covers a withheld credential). Smoke 33/33, quorum tests 15/15, clippy/fmt clean.
+
+== Mutation table (addendum) ==
+MB1 gate eligibility (A) not checked                      → killed
+MB2 already-holds (B) not checked                         → killed
+MB3 outstanding cap (C) not enforced                      → killed
+MB4 accepted credentials counted as outstanding           → killed
+MB5 issuer ignored when recognising a PoF credential      → killed
+MB6 type ignored when recognising a PoF credential        → killed
+MB7 credential derived without the flag (bounds skipped)  → killed
+MB8 a withheld credential still derived (reason ignored)  → killed
+
+== Asked (addendum) ==
+Whether (A)+(B)+(C) close the finding for the event, and whether the ship rule now lets the path deploy; the cap
+value (8) and the one-per-borrower rule are defaults without flags, as the windows are.
+```
+

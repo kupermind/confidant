@@ -237,6 +237,11 @@
       borrower's signature on an XRPL Credential (the next step of this design) would tighten it.</p>
     <p><b>Not a lock.</b> The holder can spend right after proving. Treat an older verdict as older. For a lock you need
       collateral that moves (an escrow), which is a different construction.</p>
+    <p><b>Seen by the node operators.</b> Your lender id, the borrower's account, the amount and the ledger window travel
+      to every node a proof is posted to — the operators of those nodes see them; they are not hidden from them. On the
+      ledger only the credential's URI carries the amount and the window; the lender is a digest there. A credential's
+      <code>Expiration</code> is derived from ledger <code>L</code>'s close time at 4 s per ledger and can outlive ledger
+      <code>E</code> by minutes — "as of ledger L" is the statement, not the expiry.</p>
   </div>
 </div>
 <script src="https://unpkg.com/xrpl@5.3.0/build/xrpl-latest-min.js"></script>
@@ -304,7 +309,7 @@
       const now = await validatedLedger();
       summarize(p, now);
       msg("verdict-msg", `Asking ${nodes.length} node${nodes.length === 1 ? "" : "s"}…`, "warn");
-      const body = { record: p.record, amount: p.amount, challenge: p.challenge };
+      const body = { record: p.record, amount: p.amount, challenge: p.challenge, credential: true };
       const rs = await Promise.all(nodes.map((u) => verifyAt(u, body).then((v) => ({ ok: true, v })).catch((e) => ({ ok: false, e }))));
       const tb = $("verdict-table").querySelector("tbody");
       tb.innerHTML = rs.map((r, i) => r.ok
