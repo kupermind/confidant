@@ -43,7 +43,7 @@ const handlers = {
   async sync({ records }) { if (!wallet) throw new Error("no wallet"); const applied = wallet.sync(JSON.stringify(records)); return { applied, ...summary() }; },
   async shield({ amount }) { if (!wallet) throw new Error("no wallet"); return timed(() => wallet.buildShield(BigInt(amount))); },
   async transfer({ recipient, amount }) { if (!wallet) throw new Error("no wallet"); return timed(() => wallet.buildTransfer(recipient, BigInt(amount))); },
-  async proofOfFunds({ amount, challenge }) { if (!wallet) throw new Error("no wallet"); return timed(() => wallet.buildProofOfFunds(BigInt(amount), challenge)); },
+  async pof({ amount, challenge }) { if (!wallet) throw new Error("no wallet"); return timed(() => wallet.buildProofOfFunds(BigInt(amount), challenge)); },
   async unshield({ amount, destination }) { if (!wallet) throw new Error("no wallet"); return timed(() => wallet.buildUnshield(BigInt(amount), destination)); },
   async forget() { wallet = null; return { ok: true }; },
 };

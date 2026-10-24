@@ -66,6 +66,22 @@ on the ledger — transfers inside are free."
    credential from the ledger at submit and at endorse), and the app links to the issuer page. The gate is on when the
    nodes run with `CREDENTIAL_ARGS` (then `/config.credential` is set); off, the row hides and shields are open.
 
+## Proof of funds (feature C, read side) — the lender on stage
+
+1. Tab C, `/lender.html` (the lender): step 1 shows the request — lender id, "at least 50 XRP", 1 hour. Read it out.
+2. Tab A, the holder's wallet (a pre-populated holder with ≥ 50 XRP shielded): **Prove funds** → amount 50, borrower = my
+   account (prefilled), the lender id, 1 hour → **Prove funds**. ≈ 20 s of proving in the browser, then every node
+   answers: the verdict table (4 ✓, the ledger each judged at, its root) and the one line to read: *"someone controlling
+   at least 50 XRP in this pool answered this challenge as of ledger L — a snapshot, not a lock"*. **Copy the proof
+   package.**
+3. Tab C: paste, **Verify with every node** → "4 of 4 nodes verified it", the same meaning, the borrower's account with
+   an explorer link, the lender id flagged ✓ as yours. Say: nothing moved, nothing was logged, the nodes kept no copy —
+   the lender holds the only record; between the proof and the loan the holder can still spend, which is why the next
+   step of the design is an expiring Credential on the borrower's account and a tripwire on spend (slides).
+4. Optional, if time: back in tab A press **rotate your notes** (a self-transfer): the nodes can no longer link the
+   holder's next spend to the proof. Then paste the old package again on tab C → every node answers **409** (the notes
+   moved): the snapshot is honest about being a snapshot.
+
 ## The "what if your server dies" question
 
 Answer with the snapshot: the ledger names every bundle by hash; the public log is pinned on IPFS under

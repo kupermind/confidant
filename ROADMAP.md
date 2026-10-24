@@ -122,7 +122,10 @@ event = A + C's core slice + C Tier 1 if A lands by Saturday evening (A and Tier
 Credential module in node and sidecar); Tier 2 a stretch; escrow and Tier 4 on slides only, as two
 separate constructions; B dropped.
 UI surfaces are the FE team's: credential issue/accept, "prove funds" in the wallet, a lender page
-that reads the Credential.
+that reads the Credential. **Built on-site 2026-10-24:** the Compliance row + provider page (A); the **Prove funds**
+tab and `frontend/lender.html`, which verifies the holder's proof package with every node and shows the verdicts
+(C, read side — the lender reads verdicts; the Credential on the borrower's account is the signing path, under the
+ship rule).
 
 **Decisions — all taken by the owner on 2026-10-16 ((f) on 2026-10-14).** Nothing below is built yet;
 the build happens on-site under the ship rule.

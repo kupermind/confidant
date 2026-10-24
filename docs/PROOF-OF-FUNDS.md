@@ -231,7 +231,7 @@ Both are outside the "Orchard reused unchanged" line (ROADMAP §4.5) and stay ro
 | C Tier 2: revoke on spend | stretch | ✅ | |
 | Shielded collateral escrow (§4; not a PoF tier) | | ✅ — one slide, as a separate construction | ✅ |
 | Tier 4: circuit-level | | one line | ✅ |
-| UI surfaces (FE team): credential issue/accept (A), "prove funds" in the wallet, lender page reading the Credential | ✅ minimal | | |
+| UI surfaces (FE team): credential issue/accept (A), "prove funds" in the wallet, lender page reading the Credential | ✅ built 2026-10-24: Compliance row + provider page (A); **Prove funds** tab + `lender.html` verifying the package with every node (C, read side — the lender reads verdicts, not yet a Credential) | | |
 
 The shared Credential module is what makes A and C Tier 1 one piece of work rather than two.
 
