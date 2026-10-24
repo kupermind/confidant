@@ -212,6 +212,16 @@ read-only: known anchor, nullifiers unspent and distinct, proof, both signatures
 balance = X. Honest reading: "someone controlling ≥ X answered this challenge" as of this state — an underwriting signal,
 a snapshot, not a lock, and not proof that the named account owns the notes.
 
+**Proof of funds, the node's read side (feature C, Tier 1; built on-site 2026-10-24).** Every verifier node answers
+`POST /pof/verify` itself — the coordinator is not in the path and never sees the record. The lender's challenge is
+`{ borrower, lender, ledgerIndex, expiry }`; the node recomputes its canonical bytes
+`confidant/pof/v1|borrower|X|L|E|lender`, judges `L` and `E` against the validated ledger index it reads itself (`L` within
+200 ledgers, `E` after it and at most 21 600 ledgers after `L`), caps the request (256 KiB body, four verifications at a
+time, 429 beyond) and runs the read-only check on its own state; the verdict carries the root and the validated ledger it
+was judged against. The record is never applied, persisted or logged. The verdict's label is the one above — a snapshot,
+not a lock, not proof that the borrower owns the notes; nothing reaches the ledger in this slice (the `credential-pof`
+signing path is separate, under the ship rule).
+
 ### 5.6 Deposit binding (backing)
 
 A verifier accepts a shield only if: (a) the XRPL side found the deposit as a validated Payment to

@@ -1,6 +1,6 @@
 # Proof of shielded funds, and collateral escrow as a separate construction — proposal
 
-**Status: design of record for the event (proposed 2026-10-14, decided 2026-10-16 in ROADMAP §0). Core slice built on-site 2026-10-24:** a fourth op tag `ProofOfFunds` that every apply path (submit, endorse, replay, memo) refuses before any signature check; `Wallet::build_proof_of_funds` / read-only `Verifier::verify_proof_of_funds` under the separate domain `ConfidantPoF_v1_`, registered in the hash-domain allow-list on purpose; break tests both directions, 100 % coverage, mutation table (audit REQ). Tier 1 (`POST /pof/verify`, the Credential) is the next slice. Input: the pre-event spike
+**Status: design of record for the event (proposed 2026-10-14, decided 2026-10-16 in ROADMAP §0). Core slice built on-site 2026-10-24:** a fourth op tag `ProofOfFunds` that every apply path (submit, endorse, replay, memo) refuses before any signature check; `Wallet::build_proof_of_funds` / read-only `Verifier::verify_proof_of_funds` under the separate domain `ConfidantPoF_v1_`, registered in the hash-domain allow-list on purpose; break tests both directions, 100 % coverage, mutation table (audit REQ). **Tier 1's read side built on-site the same day:** `POST /pof/verify` on every node (challenge `{ borrower, lender, ledgerIndex, expiry }` recomputed to canonical bytes, freshness judged against the node's own validated ledger, 256 KiB / 4-at-a-time bounds, never logged or persisted; node coverage gate, mutation table, audit REQ), wasm `buildProofOfFunds`, `/config.nodes`. The `credential-pof` signing path stays under the ship rule (§6): its own IMPL-PASS in-window, or the diagram. Input: the pre-event spike
 (draft PR #29), the audit's conditional DESIGN-PASS (`docs/audit/RESP-pof-design-2026-10-14.md`)
 and the apply-path guards it required first (PR #31, PASS). This document fills what the spike
 leaves out — the part that lives **on the XRP Ledger** — and sets proof of funds apart from
@@ -69,6 +69,15 @@ holder (browser wallet)            each verifier node (k of N)          pool acc
 7.                                                                                                  lender / loan broker reads the
                                                                                                     accepted Credential from the ledger
 ```
+
+**Built 2026-10-24 — steps 1–3 (the read side).** The challenge is the struct `{ borrower, lender, ledgerIndex, expiry }`
+with canonical bytes `confidant/pof/v1|<borrower>|<X>|<L>|<E>|<lender>` (UTF-8, `|`-separated; the borrower a classic
+address, the lender id 1–64 printable characters without `|`). Each node checks the fields, then `L ≤ validated`,
+`validated − L ≤ 200`, `E > validated`, `E − L ≤ 21 600` against the validated ledger index **it reads itself**, then
+`verify_proof_of_funds` on its own state. Verdict `{ ok, amount, challenge, validatedLedger, root, bundleHash, meaning }`;
+400 for a refused challenge, 409 when the proof does not verify, 413 over 256 KiB, 429 beyond four concurrent
+verifications. The node keeps no copy and logs nothing (requirement 6); the browser reaches the nodes at `/config.nodes`
+(`/node/<i>/pof/verify`), never the coordinator. Steps 4–6 (`credential-pof`) are not built: ship rule in §6.
 
 - **What reaches the ledger:** the borrower's account, the type, the expiry and a hash of
   (X, L, E). No notes, no nullifiers, no proof. **Decided (d): X is in the URI in clear** for the
@@ -218,7 +227,7 @@ Both are outside the "Orchard reused unchanged" line (ROADMAP §4.5) and stay ro
 |---|---|---|---|
 | A: Credential-gated shielding (node + sidecar Credential module) | ✅ | | |
 | C core slice (audit conditions 2–4: own record type, break tests both directions, coverage 100 %) | ✅ | | |
-| C Tier 1: `POST /pof/verify` on nodes, sidecar kind `credential-pof`, quorum-issued expiring Credential | ✅ if A lands by Saturday evening | otherwise the flow diagram (§2) | |
+| C Tier 1: `POST /pof/verify` on nodes, sidecar kind `credential-pof`, quorum-issued expiring Credential | read side ✅ built 2026-10-24 (endpoint on every node, wasm `buildProofOfFunds`, `/config.nodes`); the signing path only with its own IMPL-PASS in-window | otherwise the flow diagram (§2) for steps 4–6 | |
 | C Tier 2: revoke on spend | stretch | ✅ | |
 | Shielded collateral escrow (§4; not a PoF tier) | | ✅ — one slide, as a separate construction | ✅ |
 | Tier 4: circuit-level | | one line | ✅ |

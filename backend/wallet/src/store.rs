@@ -161,6 +161,21 @@ impl<L: LogSource> Store<L> {
         let p = wallet.build_unshield(amount, destination)?;
         Ok(built(p))
     }
+
+    /// A proof of funds for a lender's challenge (the canonical challenge string): never submitted,
+    /// checked read-only by a node at `POST /pof/verify`.
+    pub async fn build_proof_of_funds(
+        &self,
+        id: &str,
+        amount: u64,
+        challenge: &str,
+    ) -> Result<Built, StoreError> {
+        self.sync(id).await?;
+        let wallets = self.lock();
+        let wallet = wallets.get(id).ok_or(StoreError::NotFound)?;
+        let p = wallet.build_proof_of_funds(amount, challenge.as_bytes())?;
+        Ok(built(p))
+    }
 }
 
 fn built(p: confidant_core::Prepared) -> Built {

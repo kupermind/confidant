@@ -15,7 +15,8 @@
 //   landed (note spent, user unpaid), anyone may resubmit it until its LastLedgerSequence.
 //
 // Env: PORT, NODE_URL (own node), NODES (all nodes, comma-separated), SIGNERS (sidecar URLs),
-//      QUORUM, POOL, SINK, XRPL_WS.
+//      QUORUM, POOL, SINK, XRPL_WS, PUBLIC_NODES (URLs a browser reaches the nodes at, for the
+//      proof-of-funds check that never goes through here; default /node/<i> on the UI origin).
 
 import { Client, multisign } from "xrpl";
 import { DEFAULT_PAYOUT_LLS_WINDOW, DEFAULT_ANCHOR_LLS_WINDOW } from "./lib.mjs";
@@ -29,6 +30,7 @@ for (const k of ["PORT", "NODE_URL", "NODES", "SIGNERS", "QUORUM", "POOL", "SINK
 const XRPL_WS = env.XRPL_WS ?? "wss://s.altnet.rippletest.net:51233";
 const SIGNERS = env.SIGNERS.split(",");
 const NODES = env.NODES.split(",");
+const PUBLIC_NODES = env.PUBLIC_NODES ? env.PUBLIC_NODES.split(",") : NODES.map((_, i) => `/node/${i}`);
 const QUORUM = Number(env.QUORUM);
 const client = resilientClient(new Client(XRPL_WS));
 await client.connect();
@@ -82,7 +84,7 @@ async function anchorThroughQuorum(accepted, submission) {
 await serve(Number(env.PORT), {
   // READ-ONLY and PUBLIC FACTS ONLY (pool, sink, k-of-N, ws, explorer): nothing node-internal or secret may ever be added here.
   // The credential gate (XLS-70) is what the coordinator's own node enforces, read from it — never a separate setting.
-  "GET /config": async () => { const f = await http("GET", `${env.NODE_URL}/fees`); const pol = await http("GET", `${env.NODE_URL}/policy`).catch(() => ({ credential: null })); return { network: env.NETWORK ?? "testnet", explorer: env.EXPLORER ?? "https://testnet.xrpl.org", xrplWs: XRPL_WS, pool: env.POOL, sink: env.SINK, quorum: QUORUM, signers: SIGNERS.length, fees: { shieldBps: f.shieldBps, unshieldBps: f.unshieldBps, treasury: f.treasury }, credential: pol.credential ?? null }; },
+  "GET /config": async () => { const f = await http("GET", `${env.NODE_URL}/fees`); const pol = await http("GET", `${env.NODE_URL}/policy`).catch(() => ({ credential: null })); return { network: env.NETWORK ?? "testnet", explorer: env.EXPLORER ?? "https://testnet.xrpl.org", xrplWs: XRPL_WS, pool: env.POOL, sink: env.SINK, quorum: QUORUM, signers: SIGNERS.length, fees: { shieldBps: f.shieldBps, unshieldBps: f.unshieldBps, treasury: f.treasury }, credential: pol.credential ?? null, nodes: PUBLIC_NODES }; },
   "GET /fees": async () => http("GET", `${env.NODE_URL}/fees`),
   // Moves accrued protocol fees from the pool account to the treasury: a multisigned Payment every
   // signer checks against its OWN node's fee ledger, then each node records the sweep it verified.

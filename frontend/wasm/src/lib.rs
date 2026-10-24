@@ -97,6 +97,18 @@ impl BrowserWallet {
         let p = self.inner.build_unshield(amount, destination).map_err(js)?;
         built(p)
     }
+
+    /// A proof that this wallet controls unspent notes worth at least `amount`, answering the
+    /// lender's `challenge` (the node's canonical challenge string). Never submitted as an
+    /// operation: a node checks it read-only at `POST /pof/verify`.
+    #[wasm_bindgen(js_name = buildProofOfFunds)]
+    pub fn build_proof_of_funds(&self, amount: u64, challenge: &str) -> Result<String, JsValue> {
+        let p = self
+            .inner
+            .build_proof_of_funds(amount, challenge.as_bytes())
+            .map_err(js)?;
+        built(p)
+    }
 }
 
 impl Default for BrowserWallet {

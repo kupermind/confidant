@@ -1715,3 +1715,183 @@ async fn credential_gate_refuses_deposits_without_an_accepted_credential_at_subm
     assert_eq!(s, StatusCode::OK);
     assert!(v["credential"].is_null());
 }
+
+#[tokio::test]
+async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge() {
+    use confidant_node::{
+        PofChallenge, CHALLENGE_PREFIX, MAX_EXPIRY_WINDOW, MAX_LENDER_LEN, MEANING, POF_PERMITS,
+        RECENT_WINDOW,
+    };
+    let ledger = FakeLedger::default();
+    let n = Arc::new(node(&ledger));
+    let app = http::router(n.clone());
+    let mut alice = Wallet::new();
+    for (i, amount) in [100u64, 50].iter().enumerate() {
+        let p = alice.build_shield(*amount).unwrap();
+        let tx = format!("D{i}");
+        ledger.put_tx(&tx, deposit_tx(POOL, &amount.to_string(), &p.hash_hex()));
+        n.submit_shield(&p.record, &tx).await.unwrap();
+    }
+    alice.sync(&n.log(0)).unwrap();
+    let snap = |n: &Node<FakeLedger>| {
+        let s = n.state();
+        (
+            s.root,
+            s.bundle_count,
+            s.nullifier_count,
+            s.leaf_count,
+            s.consumed_deposits,
+        )
+    };
+    let before = snap(&n);
+
+    const BORROWER: &str = "rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf";
+    let ch = PofChallenge {
+        borrower: BORROWER.into(),
+        lender: "lender-1".into(),
+        ledger_index: 990,
+        expiry: 1500,
+    };
+    // The canonical bytes are pinned: the wallet builds exactly this string.
+    assert_eq!(
+        ch.bytes(120),
+        format!("{CHALLENGE_PREFIX}|{BORROWER}|120|990|1500|lender-1").into_bytes()
+    );
+    let pof = alice.build_proof_of_funds(120, &ch.bytes(120)).unwrap();
+    ledger.set_validated(1_000);
+
+    // Happy path, node level: the verdict names what it was judged against; nothing changed.
+    let v = n
+        .verify_proof_of_funds(&pof.record, 120, &ch)
+        .await
+        .unwrap();
+    assert!(v.ok);
+    assert_eq!(v.amount, 120);
+    assert_eq!(v.challenge, ch);
+    assert_eq!(v.validated_ledger, 1_000);
+    assert_eq!(v.root, n.state().root);
+    assert_eq!(
+        v.bundle_hash,
+        hex::encode(bundle_hash(&pof.record).unwrap())
+    );
+    assert_eq!(v.meaning, MEANING);
+    assert!(v.meaning.contains("not a lock"));
+    assert_eq!(snap(&n), before, "verification mutates nothing");
+    assert_eq!(n.log(0).len(), 2, "nothing is logged");
+
+    // Through HTTP.
+    let body = |amount: u64, ch: &PofChallenge| json!({ "record": pof.record, "amount": amount, "challenge": ch });
+    let (s, v) = call(&app, "POST", "/pof/verify", Some(body(120, &ch))).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["ok"], true);
+    assert_eq!(v["validatedLedger"], 1_000);
+    assert_eq!(v["challenge"]["ledgerIndex"], 990);
+    assert_eq!(v["root"], n.state().root);
+    assert!(v["meaning"].as_str().unwrap().contains("snapshot"));
+
+    // The proof is bound: another amount or a challenge with one field changed is a core refusal.
+    let (s, v) = call(&app, "POST", "/pof/verify", Some(body(100, &ch))).await;
+    assert_eq!(s, StatusCode::CONFLICT, "{v}");
+    let mut other = ch.clone();
+    other.lender = "lender-2".into();
+    let (s, v) = call(&app, "POST", "/pof/verify", Some(body(120, &other))).await;
+    assert_eq!(s, StatusCode::CONFLICT, "{v}");
+    assert!(matches!(
+        n.verify_proof_of_funds(&pof.record, 120, &other).await,
+        Err(NodeError::Core(CoreError::InvalidSpendAuth))
+    ));
+    // A pool record is not a proof of funds, and a proof of funds is not a pool operation.
+    let shield = n.log(0)[0].clone();
+    assert!(matches!(
+        n.verify_proof_of_funds(&shield, 100, &ch).await,
+        Err(NodeError::Core(CoreError::NotAProofOfFunds))
+    ));
+    assert!(matches!(
+        n.submit_transfer(&pof.record),
+        Err(NodeError::Core(CoreError::NotAPoolOperation))
+    ));
+
+    // Challenge fields this node will not judge (400, before any ledger read or verification).
+    let refused = |why: &'static str, f: &dyn Fn(&mut PofChallenge)| {
+        let mut c = ch.clone();
+        f(&mut c);
+        let app = app.clone();
+        let body = body(120, &c);
+        async move {
+            let (s, v) = call(&app, "POST", "/pof/verify", Some(body)).await;
+            assert_eq!(s, StatusCode::BAD_REQUEST, "{why}: {v}");
+            let e = v["error"].as_str().unwrap();
+            assert!(e.contains(why), "{why}: {e}");
+        }
+    };
+    refused("not an XRPL address", &|c| c.borrower = "nobody".into()).await;
+    refused("classic address", &|c| {
+        c.borrower = "XVLhHMPHU98es4dbozjVtdWzVrDjtV5fdx1mHp98tDMoQXb".into()
+    })
+    .await;
+    refused("lender id", &|c| c.lender = String::new()).await;
+    refused("lender id", &|c| c.lender = "x".repeat(MAX_LENDER_LEN + 1)).await;
+    refused("lender id", &|c| c.lender = "a|b".into()).await;
+    refused("lender id", &|c| c.lender = "a\nb".into()).await;
+    refused("after the ledger index", &|c| c.expiry = c.ledger_index).await;
+    refused("window too long", &|c| {
+        c.expiry = c.ledger_index + MAX_EXPIRY_WINDOW + 1
+    })
+    .await;
+    // Freshness against the validated ledger this node read itself.
+    refused("ahead of the validated ledger", &|c| c.ledger_index = 1_001).await;
+    refused("not recent", &|c| {
+        c.ledger_index = 1_000 - RECENT_WINDOW - 1
+    })
+    .await;
+    refused("expired", &|c| {
+        c.ledger_index = 999;
+        c.expiry = 1_000
+    })
+    .await;
+    // Exactly at the edges the challenge is still judged.
+    let mut edge = ch.clone();
+    edge.ledger_index = 1_000 - RECENT_WINDOW;
+    edge.expiry = 1_001;
+    let edge_pof = alice.build_proof_of_funds(120, &edge.bytes(120)).unwrap();
+    n.verify_proof_of_funds(&edge_pof.record, 120, &edge)
+        .await
+        .unwrap();
+    let mut edge = ch.clone();
+    edge.expiry = edge.ledger_index + MAX_EXPIRY_WINDOW;
+    assert!(edge.validate().is_ok());
+
+    // Lender id length is counted in characters, not bytes.
+    let mut wide = ch.clone();
+    wide.lender = "ё".repeat(MAX_LENDER_LEN);
+    assert!(wide.validate().is_ok());
+
+    // No validated ledger ⇒ 502, nothing judged.
+    ledger.set_validated(0);
+    let (s, v) = call(&app, "POST", "/pof/verify", Some(body(120, &ch))).await;
+    assert_eq!(s, StatusCode::BAD_GATEWAY, "{v}");
+    ledger.set_validated(1_000);
+
+    // Bounded: with every permit held the node answers 429 and verifies nothing.
+    let held = n
+        .pof_permits()
+        .try_acquire_many(POF_PERMITS as u32)
+        .unwrap();
+    let (s, v) = call(&app, "POST", "/pof/verify", Some(body(120, &ch))).await;
+    assert_eq!(s, StatusCode::TOO_MANY_REQUESTS, "{v}");
+    assert!(v["error"].as_str().unwrap().contains("busy"));
+    drop(held);
+    let (s, v) = call(&app, "POST", "/pof/verify", Some(body(120, &ch))).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(n.pof_permits().available_permits(), POF_PERMITS);
+
+    // The body is capped: an oversized request is refused before it is parsed.
+    let huge = json!({ "record": "x".repeat(http::POF_BODY_LIMIT), "amount": 1, "challenge": ch });
+    let (s, _) = call(&app, "POST", "/pof/verify", Some(huge)).await;
+    assert_eq!(s, StatusCode::PAYLOAD_TOO_LARGE);
+    // ...while the other routes keep axum's default limit (a verdict request is ≈ 19 KB).
+    assert!(serde_json::to_vec(&pof.record).unwrap().len() < http::POF_BODY_LIMIT);
+
+    assert_eq!(snap(&n), before, "the whole exercise mutated nothing");
+    assert_eq!(n.log(0).len(), 2);
+}
