@@ -1,6 +1,6 @@
 # Proof of shielded funds, and collateral escrow as a separate construction — proposal
 
-**Status: design of record for the event (proposed 2026-10-14, decided 2026-10-16 in ROADMAP §0), not built.** Input: the pre-event spike
+**Status: design of record for the event (proposed 2026-10-14, decided 2026-10-16 in ROADMAP §0). Core slice built on-site 2026-10-24:** a fourth op tag `ProofOfFunds` that every apply path (submit, endorse, replay, memo) refuses before any signature check; `Wallet::build_proof_of_funds` / read-only `Verifier::verify_proof_of_funds` under the separate domain `ConfidantPoF_v1_`, registered in the hash-domain allow-list on purpose; break tests both directions, 100 % coverage, mutation table (audit REQ). Tier 1 (`POST /pof/verify`, the Credential) is the next slice. Input: the pre-event spike
 (draft PR #29), the audit's conditional DESIGN-PASS (`docs/audit/RESP-pof-design-2026-10-14.md`)
 and the apply-path guards it required first (PR #31, PASS). This document fills what the spike
 leaves out — the part that lives **on the XRP Ledger** — and sets proof of funds apart from

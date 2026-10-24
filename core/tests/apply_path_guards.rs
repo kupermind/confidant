@@ -191,6 +191,7 @@ fn refused_everywhere(
         }
     }
     match shape {
+        OpTag::ProofOfFunds => unreachable!("not an apply-path shape"),
         OpTag::Shield => {
             refusal("submit_shield", v.submit_shield(record, &dep), expect);
             refusal(
@@ -407,8 +408,10 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 /// BLAKE2b without a personalization fails this test.
 #[test]
 fn every_blake2b_personalization_and_sighash_context_in_core_is_enumerated_and_unique() {
-    const PERSONALIZATIONS: &[&str] = &["ConfidantBundle", "ConfidantSigHash"];
-    const SIGHASH_CONTEXTS: &[&str] = &["external_ctx", "unshield_ctx"];
+    // The proof-of-funds domain was added on purpose (hackathon feature C, 2026-10-24): a bundle
+    // signed under it verifies under no pool sighash, and every apply path refuses its op first.
+    const PERSONALIZATIONS: &[&str] = &["ConfidantBundle", "ConfidantPoF_v1_", "ConfidantSigHash"];
+    const SIGHASH_CONTEXTS: &[&str] = &["external_ctx", "pof_ctx", "unshield_ctx"];
 
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut files = Vec::new();

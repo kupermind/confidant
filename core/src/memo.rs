@@ -41,6 +41,10 @@ fn arr32(s: &str) -> Result<[u8; 32], Error> {
 impl AnchorMemo {
     /// Builds the memo for an accepted record and the root it produced.
     pub fn from_record(record: &BundleRecord, root_after: [u8; 32]) -> Result<Self, Error> {
+        // A proof of funds is never anchored; refusing here stops endorse before any signature.
+        if record.op == OpTag::ProofOfFunds {
+            return Err(Error::MemoMalformed("not a pool operation"));
+        }
         let mut actions = Vec::with_capacity(record.actions.len());
         for a in &record.actions {
             actions.push((arr32(&a.nullifier)?, arr32(&a.cmx)?));
@@ -100,6 +104,9 @@ impl AnchorMemo {
             return Err(Error::MemoMalformed("unknown version"));
         }
         let op = OpTag::from_byte(take(1)?[0]).ok_or(Error::MemoMalformed("unknown op"))?;
+        if op == OpTag::ProofOfFunds {
+            return Err(Error::MemoMalformed("not a pool operation"));
+        }
         let root: [u8; 32] = take(32)?.try_into().expect("32 bytes");
         let bundle_hash: [u8; 32] = take(32)?.try_into().expect("32 bytes");
         let ext_len = take(1)?[0] as usize;

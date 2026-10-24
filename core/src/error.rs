@@ -7,6 +7,13 @@ use crate::wallet::MAX_OUTPUTS;
 pub enum Error {
     #[error("amount must be positive")]
     ZeroAmount,
+    /// A proof-of-funds record reached an apply path (submit, endorse, replay, memo): refused
+    /// before any signature check. A proof of funds is checked read-only and never applied.
+    #[error("not a pool operation: a proof of funds is checked read-only, never applied")]
+    NotAPoolOperation,
+    /// A pool record was handed to the proof-of-funds check.
+    #[error("not a proof of funds: the record is a pool operation")]
+    NotAProofOfFunds,
     #[error("insufficient shielded balance: available {available}, requested {requested}")]
     InsufficientFunds { available: u64, requested: u64 },
     #[error("too many outputs: {0} (max {MAX_OUTPUTS})")]
