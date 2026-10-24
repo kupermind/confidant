@@ -181,6 +181,11 @@ pub struct PofVerdict {
 /// the pool account and cost a multisig fee; the cap bounds what an unauthenticated caller can make
 /// the quorum spend and lock (the review's finding on an attacker-chosen `Subject`).
 pub const POF_CREDENTIAL_CAP: usize = 8;
+/// The cap must stay well below rippled's `account_objects` page (400): the node counts one page and
+/// refuses on a further page, which only reaches the cap while the cap is smaller than the page.
+/// Not a hard ceiling either: nodes count independently, so concurrent requests can overshoot by
+/// the in-flight count — a griefing bound, not an exact invariant.
+const _: () = assert!(POF_CREDENTIAL_CAP <= 200);
 /// Counts the pool's unaccepted proof-of-funds credentials among `objects` (the pool account's
 /// `account_objects` of type `credential`): issued by the pool, of the PoF type, accepted flag clear.
 pub fn outstanding_pof_credentials(pool: &str, objects: &[serde_json::Value]) -> usize {

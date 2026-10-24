@@ -106,6 +106,8 @@ the pool account carries one owner reserve per credential until the subject acce
 anyone (not automated). The production shape is the borrower's own XRPL signature over the challenge in the request
 (consent before issuance) — not for the event.
 
+**Two conditions on the cap (audit, 2026-10-24).** The node counts one `account_objects` page (400 objects) and treats a further page as "more than the cap": the borrower's and the pool's credential lists are never judged from a partial page (withheld with a reason). That is sound only while the cap stays well below the page size — `POF_CREDENTIAL_CAP` is 8 and a compile-time assertion keeps it ≤ 200; raising it near or above the page size needs true pagination first. And the cap is not a hard ceiling: nodes count independently, so concurrent requests can overshoot by the in-flight count (bounded by the four verification permits per node) — a griefing bound, not an exact invariant. A ledger read that fails while a Credential is asked for is a ledger error (502), never a derivation; the plain verdict needs no such read.
+
 - **What reaches the ledger:** the borrower's account, the type, the expiry and a hash of
   (X, L, E). No notes, no nullifiers, no proof. **Decided (d): X is in the URI in clear** for the
   event — a loan broker reads one field. Hash-only, with X given off-ledger, keeps the threshold off
