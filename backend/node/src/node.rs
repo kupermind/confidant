@@ -14,7 +14,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::credential::{ripple_now, CredentialGate, CredentialPolicy};
 use crate::fees::{FeeLedger, FeePolicy, FeeReport};
-use crate::pof::{PofChallenge, PofVerdict, MEANING};
+use crate::pof::{
+    is_pof_credential_from, outstanding_pof_credentials, PofChallenge, PofVerdict, MEANING,
+    POF_CREDENTIAL_CAP,
+};
 use crate::screening::Screening;
 use crate::xrpl::{
     account_balance, anchor_fact, anchor_memos, check_custody_info, deposit_facts, deposit_source,
@@ -262,12 +265,16 @@ impl<L: Ledger> Node<L> {
     /// `POST /pof/verify` (feature C, Tier 1, read side): verifies a holder's proof of funds
     /// against this node's own state and the lender's challenge. Read-only — never applied,
     /// persisted or logged; the challenge window is judged against the validated ledger this node
-    /// reads itself; at most `POF_PERMITS` verifications run at a time.
+    /// reads itself; at most `POF_PERMITS` verifications run at a time. With `want_credential` the
+    /// verdict also carries the Credential a sidecar may sign — after this node's own bounds
+    /// (`credential_bounds`), which no coordinator can bypass since sidecars sign only their node's
+    /// fields.
     pub async fn verify_proof_of_funds(
         &self,
         record: &BundleRecord,
         amount: u64,
         challenge: &PofChallenge,
+        want_credential: bool,
     ) -> Result<PofVerdict, NodeError> {
         let _permit = self
             .pof_permits
@@ -280,6 +287,20 @@ impl<L: Ledger> Node<L> {
         challenge
             .check_window(validated)
             .map_err(|e| NodeError::Pof(e.to_string()))?;
+        // Immutable once validated: every node derives the same Credential expiration from it.
+        // Read only when a credential is wanted: the plain verdict costs one ledger read.
+        let (close_time, refused) = if want_credential {
+            let close_time = self
+                .ledger
+                .ledger_close_time(challenge.ledger_index)
+                .await?;
+            (
+                Some(close_time),
+                self.credential_bounds(challenge, validated).await?,
+            )
+        } else {
+            (None, None)
+        };
         let bytes = challenge.bytes(amount);
         let (root, hash) = {
             let v = self.lock();
@@ -294,7 +315,68 @@ impl<L: Ledger> Node<L> {
             root,
             bundle_hash: hash,
             meaning: MEANING.to_owned(),
+            credential: match (close_time, &refused) {
+                (Some(t), None) => Some(challenge.credential(amount, t)),
+                _ => None,
+            },
+            credential_refused: refused,
         })
+    }
+
+    /// Why this node will NOT let the quorum write a proof-of-funds Credential for `challenge`
+    /// (`None` = it may). Every bound is read from the ledger by the node itself: (A) when the
+    /// pool's credential gate is on, the borrower must hold the gate's accepted credential — a
+    /// proof-of-funds Credential goes to eligible accounts only; (B) the borrower must not already
+    /// hold a proof-of-funds Credential from this pool (accepted or pending); (C) the pool's
+    /// outstanding (unaccepted) proof-of-funds Credentials must be under `POF_CREDENTIAL_CAP`. An
+    /// unreadable ledger is a ledger error, never a derivation.
+    async fn credential_bounds(
+        &self,
+        challenge: &PofChallenge,
+        validated: u64,
+    ) -> Result<Option<String>, NodeError> {
+        let borrower = &challenge.borrower;
+        if let Some(p) = self.credential.policy() {
+            let entry = self
+                .ledger
+                .credential(borrower, &p.issuer, &p.credential_type)
+                .await?;
+            let now = self.ledger.ledger_close_time(validated).await?;
+            if let Err(e) = self.credential.check(borrower, entry.as_ref(), now) {
+                return Ok(Some(format!(
+                    "borrower is not eligible under the pool's credential gate: {e}"
+                )));
+            }
+        }
+        let (held, more) = self.ledger.account_credentials(borrower).await?;
+        if more {
+            return Ok(Some(
+                "the borrower holds more than one page of credential objects; refusing rather than judging a partial list"
+                    .to_owned(),
+            ));
+        }
+        if held.iter().any(|o| is_pof_credential_from(&self.pool, o)) {
+            return Ok(Some(
+                "borrower already holds a proof-of-funds credential from this pool (accept it or let it expire first)"
+                    .to_owned(),
+            ));
+        }
+        let (pool_objects, more) = self.ledger.account_credentials(&self.pool).await?;
+        // The cap is judged from one page only: a further page is "more than the cap", never a
+        // count. This holds while the cap stays well below the page size (400); raising it near or
+        // above needs true pagination first.
+        if more {
+            return Ok(Some(format!(
+                "the pool account holds more than one page of credential objects; the cap {POF_CREDENTIAL_CAP} cannot be judged from a partial list"
+            )));
+        }
+        let outstanding = outstanding_pof_credentials(&self.pool, &pool_objects);
+        if outstanding >= POF_CREDENTIAL_CAP {
+            return Ok(Some(format!(
+                "the pool has {outstanding} proof-of-funds credentials outstanding (cap {POF_CREDENTIAL_CAP}): each locks a reserve on the pool account until its subject accepts it"
+            )));
+        }
+        Ok(None)
     }
 
     pub fn pool(&self) -> &str {

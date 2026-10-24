@@ -42,7 +42,8 @@ Everything is JSON. Errors are `{ "error": "<message>", "details"?: {…} }` wit
 | `GET /fees` | — | `FeeReport` of the coordinator's node |
 | `GET /policy` (node) | — | `{ credential: { issuer, type, typeText } \| null, screening: { active, standbyLedgers } }` — the deposit gates the node enforces; the coordinator copies `credential` into `GET /config` |
 | `POST /fees/sweep` | `{ amount? }` (drops; default: everything available) | `{ amount, tx, treasury, recorded, refusals }` — operator call, k-of-N Payment pool → treasury |
-| `POST /pof/verify` (node, reached as `/node/<i>/pof/verify` — never through the coordinator) | `{ record, amount, challenge: { borrower, lender, ledgerIndex, expiry } }` | `{ ok, amount, challenge, validatedLedger, root, bundleHash, meaning }` — proof of funds checked read-only on that node's own state; never logged or persisted. 400 challenge refused · 409 the proof does not verify · 413 body > 256 KiB · 429 node busy · 502 no validated ledger |
+| `POST /pof/verify` (node, reached as `/node/<i>/pof/verify` — never through the coordinator) | `{ record, amount, challenge: { borrower, lender, ledgerIndex, expiry }, credential?: bool }` | `{ ok, amount, challenge, validatedLedger, root, bundleHash, meaning, credential: { subject, credentialType, credentialTypeText, expiration, uri, uriText } \| null, credentialRefused: string \| null }` — proof of funds checked read-only on that node's own state; never logged or persisted. With `credential: true` the node also derives the XLS-70 Credential it would let a sidecar sign, **after its own bounds** (borrower eligible under the pool's gate when on; no proof-of-funds credential from this pool yet; pool's outstanding ones under the cap of 8) — otherwise `null` with the reason. 400 challenge refused · 409 the proof does not verify · 413 body > 256 KiB · 429 node busy · 502 no validated ledger / ledger unreadable |
+| `POST /pof/credential` | `{ record, amount, challenge }` | `{ tx, issuer, subject, credentialType, credentialTypeText, expiration, uri, amount, challenge, validatedLedger, signers, refusals }` — the quorum records a verified proof as an expiring `CredentialCreate` from the pool account to the borrower; every sidecar re-verifies on its own node at signing time. 409 the node withholds the credential (not eligible / already holds one / cap) or fewer than k signers verified · 413 body > 1 MiB · 502 ledger |
 
 Shapes (camelCase on the wire):
 
@@ -172,6 +173,17 @@ Credential on the borrower's account) is a separate slice under the ship rule in
   verified" and the nodes' `meaning` verbatim; a 400 (stale / expired) and a 409 (does not verify) are explained. A
   "told / not told / not a lock" card closes the page. `?demo=1` fakes four nodes (one busy, 429) and loads a demo
   package.
+- **On the ledger (signing path, built 2026-10-24 — ships only with its own IMPL-PASS).** When k of N nodes verified, the
+  Prove funds tab offers *record it on the ledger as a Credential*: `POST /pof/credential` with the same body. The answer
+  names the `CredentialCreate` transaction and the fields; the app then offers **Confirm with my signature** —
+  `CredentialAccept { Account: borrower, Issuer: pool, CredentialType }` signed in the browser by the holder's XRPL account
+  (the account named in the challenge; the app refuses to confirm for another account). Both land in Activity. The
+  Credential's `Expiration` is `close_time(L) + 4 s × (E − L)`, its `URI` is the text
+  `confidant/pof/v1|X|L|E|<digest16>` — every node derives both, so sidecars sign only what their node computed. The
+  lender page's step 3 reads the borrower's credentials from the ledger (`account_objects type credential`, issuer = the
+  pool, type `ConfidantPoF`), reports accepted / issued / expired with the expiry time, decodes the URI and says whether it
+  matches the package it verified (the nodes' `credential.uri` from the verdicts). Honest label on both surfaces: the
+  credential says "controlled ≥ X as of ledger L", not "controls it now".
 
 ## 3. What the UI must produce — the `record`
 

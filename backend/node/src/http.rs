@@ -163,6 +163,9 @@ pub struct PofVerify {
     pub record: BundleRecord,
     pub amount: u64,
     pub challenge: crate::pof::PofChallenge,
+    /// Also derive the Credential a sidecar may sign (more ledger reads; the signing path asks).
+    #[serde(default)]
+    pub credential: bool,
 }
 
 async fn pof_verify<L: Ledger>(
@@ -170,7 +173,7 @@ async fn pof_verify<L: Ledger>(
     Json(b): Json<PofVerify>,
 ) -> Result<crate::pof::PofVerdict> {
     Ok(Json(
-        n.verify_proof_of_funds(&b.record, b.amount, &b.challenge)
+        n.verify_proof_of_funds(&b.record, b.amount, &b.challenge, b.credential)
             .await?,
     ))
 }

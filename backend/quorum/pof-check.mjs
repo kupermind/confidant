@@ -6,7 +6,10 @@
 //   3. POST /pof/verify on EVERY node → ok, same root as the node's /state, nothing logged or applied
 //      (bundle count unchanged);
 //   4. negative cases on node 0: another amount → 409; a stale ledger index → 400; an expired challenge → 400;
-//      a pool record (the shield) → 409; an oversized body → 413.
+//      a pool record (the shield) → 409; an oversized body → 413;
+//   5. the signing path: POST /pof/credential on the coordinator → a multisigned CredentialCreate from the pool
+//      to the borrower whose fields equal node 0's own derivation; the holder accepts it; the ledger shows it
+//      accepted with that URI. Skipped (with a note) when the coordinator has no such route yet.
 //
 //   WALLET_URL=http://127.0.0.1:7950 COORDINATOR_URL=http://127.0.0.1:7900 NODE_URLS=http://127.0.0.1:7700,http://127.0.0.1:7701,… \
 //     ISSUER_KEY=/srv/confidant/data/quorum/issuer.key.json node pof-check.mjs
@@ -96,5 +99,22 @@ try {
   await expect(400, /expired/, { record: pof.record, amount: X, challenge: { ...ch, ledgerIndex: L - 100, expiry: L - 50 } }, "expired");
   await expect(409, /not a proof of funds/i, { record: built.record, amount: NET, challenge: ch }, "a pool record");
   await expect(413, null, { record: "x".repeat(300 * 1024), amount: X, challenge: ch }, "oversized body");
-  console.log(`\nOK — ${nodes.length}/${nodes.length} nodes verified the proof on their own state; wrong amount, stale, expired, pool record and oversized refused`);
+  // 5. The quorum records the verdict as a Credential; the borrower confirms it; the ledger shows it.
+  const v0 = await http("POST", `${nodes[0]}/pof/verify`, { record: pof.record, amount: X, challenge: ch, credential: true });
+  must(v0.credential?.uri, `node 0 withholds the credential: ${v0.credentialRefused ?? "?"}`);
+  let recorded = false;
+  try {
+    const cr = await http("POST", `${C}/pof/credential`, { record: pof.record, amount: X, challenge: ch });
+    must(cr.tx && cr.subject === holder.address, `credential: ${JSON.stringify(cr).slice(0, 160)}`);
+    must(cr.credentialType === v0.credential.credentialType && cr.uri === v0.credential.uri && cr.expiration === v0.credential.expiration, "credential fields differ from node 0's derivation");
+    log(`CredentialCreate ${cfg.explorer}/transactions/${cr.tx} signed by ${cr.signers.length} of ${cfg.signers}; URI ${Buffer.from(cr.uri, "hex").toString()}`);
+    const acc2 = await client.submitAndWait(holder.sign(await client.autofill({ TransactionType: "CredentialAccept", Account: holder.address, Issuer: cfg.pool, CredentialType: cr.credentialType })).tx_blob);
+    must(acc2.result.meta?.TransactionResult === "tesSUCCESS", "CredentialAccept");
+    const objs = (await client.request({ command: "account_objects", account: holder.address, type: "credential", ledger_index: "validated" })).result.account_objects ?? [];
+    const hit = objs.find((o) => o.Issuer === cfg.pool && String(o.CredentialType).toUpperCase() === cr.credentialType.toUpperCase());
+    must(hit && (hit.Flags & 0x00010000) && String(hit.URI).toUpperCase() === cr.uri.toUpperCase() && hit.Expiration === cr.expiration, `ledger credential ${JSON.stringify(hit)}`);
+    log(`credential accepted on the ledger: expires ${new Date((hit.Expiration + RIPPLE_EPOCH) * 1000).toISOString()}`);
+    recorded = true;
+  } catch (e) { if (e.status === 404) log("coordinator has no /pof/credential route (older build) — signing path skipped"); else throw e; }
+  console.log(`\nOK — ${nodes.length}/${nodes.length} nodes verified the proof on their own state; wrong amount, stale, expired, pool record and oversized refused${recorded ? "; the verdict was recorded as an accepted Credential on the ledger" : ""}`);
 } finally { await client.disconnect(); }

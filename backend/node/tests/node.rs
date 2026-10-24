@@ -1,7 +1,7 @@
 //! Node logic and HTTP surface against a fake ledger: deposit facts, submissions, endorse
 //! (re-lookup + idempotency), rebuild from the ledger, a lagging node, error mapping.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use axum::body::Body;
@@ -33,6 +33,15 @@ struct FakeLedger {
     credentials: Arc<Mutex<BTreeMap<String, Value>>>,
     credential_calls: Arc<Mutex<u64>>,
     credential_fail: Arc<Mutex<bool>>,
+    /// `close_time` by ledger index (missing = the ledger cannot be read).
+    close_times: Arc<Mutex<BTreeMap<u64, u64>>>,
+    /// Credential objects by account (`account_objects type credential`), and how often asked.
+    account_creds: Arc<Mutex<BTreeMap<String, Vec<Value>>>>,
+    account_cred_calls: Arc<Mutex<u64>>,
+    /// Accounts whose credential objects span a further page, and a switch that makes the lookup fail.
+    account_creds_more: Arc<Mutex<BTreeSet<String>>>,
+    /// Accounts whose lookup fails like an unreachable RPC (per account: each read pinned alone).
+    account_cred_fail: Arc<Mutex<BTreeSet<String>>>,
 }
 
 impl FakeLedger {
@@ -89,6 +98,39 @@ impl FakeLedger {
     fn set_validated(&self, n: u64) {
         *self.validated.lock().unwrap() = n;
     }
+    fn set_close_time(&self, index: u64, close_time: u64) {
+        self.close_times.lock().unwrap().insert(index, close_time);
+    }
+    fn put_account_credential(&self, account: &str, v: Value) {
+        self.account_creds
+            .lock()
+            .unwrap()
+            .entry(account.to_owned())
+            .or_default()
+            .push(v);
+    }
+    fn clear_account_credentials(&self, account: &str) {
+        self.account_creds.lock().unwrap().remove(account);
+    }
+    fn account_cred_calls(&self) -> u64 {
+        *self.account_cred_calls.lock().unwrap()
+    }
+    fn set_account_credentials_more(&self, account: &str, on: bool) {
+        let mut m = self.account_creds_more.lock().unwrap();
+        if on {
+            m.insert(account.to_owned());
+        } else {
+            m.remove(account);
+        }
+    }
+    fn fail_account_credentials(&self, account: &str, on: bool) {
+        let mut m = self.account_cred_fail.lock().unwrap();
+        if on {
+            m.insert(account.to_owned());
+        } else {
+            m.remove(account);
+        }
+    }
     fn push_anchor(&self, memo_hex: &str) {
         self.account.lock().unwrap().push(json!({
             "validated": true,
@@ -123,6 +165,31 @@ impl Ledger for FakeLedger {
             return Err(LedgerError::Rpc("ledger: unavailable".into()));
         }
         Ok(n)
+    }
+    async fn ledger_close_time(&self, index: u64) -> Result<u64, LedgerError> {
+        self.close_times
+            .lock()
+            .unwrap()
+            .get(&index)
+            .copied()
+            .ok_or_else(|| LedgerError::Rpc(format!("ledger {index}: unavailable")))
+    }
+    async fn account_credentials(&self, account: &str) -> Result<(Vec<Value>, bool), LedgerError> {
+        *self.account_cred_calls.lock().unwrap() += 1;
+        if self.account_cred_fail.lock().unwrap().contains(account) {
+            return Err(LedgerError::Rpc(format!(
+                "account_objects {account}: unavailable"
+            )));
+        }
+        Ok((
+            self.account_creds
+                .lock()
+                .unwrap()
+                .get(account)
+                .cloned()
+                .unwrap_or_default(),
+            self.account_creds_more.lock().unwrap().contains(account),
+        ))
     }
     async fn credential(
         &self,
@@ -1737,8 +1804,8 @@ async fn credential_gate_refuses_deposits_without_an_accepted_credential_at_subm
 #[tokio::test]
 async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge() {
     use confidant_node::{
-        PofChallenge, CHALLENGE_PREFIX, MAX_EXPIRY_WINDOW, MAX_LENDER_LEN, MEANING, POF_PERMITS,
-        RECENT_WINDOW,
+        PofChallenge, CHALLENGE_PREFIX, MAX_EXPIRY_WINDOW, MAX_LENDER_LEN, MEANING,
+        POF_CREDENTIAL_CAP, POF_CREDENTIAL_TYPE, POF_PERMITS, RECENT_WINDOW, SECONDS_PER_LEDGER,
     };
     let ledger = FakeLedger::default();
     let n = Arc::new(node(&ledger));
@@ -1777,10 +1844,18 @@ async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge()
     );
     let pof = alice.build_proof_of_funds(120, &ch.bytes(120)).unwrap();
     ledger.set_validated(1_000);
+    // Ledger L's close time is what every node turns the expiry ledger into a Credential Expiration with.
+    const CLOSE_990: u64 = 800_000_000;
+    ledger.set_close_time(990, CLOSE_990);
+    ledger.set_close_time(
+        1_000 - RECENT_WINDOW,
+        CLOSE_990 - RECENT_WINDOW * SECONDS_PER_LEDGER,
+    );
+    ledger.set_close_time(1_000, CLOSE_990 + 40); // the validated ledger's clock (the gate's "now")
 
     // Happy path, node level: the verdict names what it was judged against; nothing changed.
     let v = n
-        .verify_proof_of_funds(&pof.record, 120, &ch)
+        .verify_proof_of_funds(&pof.record, 120, &ch, true)
         .await
         .unwrap();
     assert!(v.ok);
@@ -1796,9 +1871,203 @@ async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge()
     assert!(v.meaning.contains("not a lock"));
     assert_eq!(snap(&n), before, "verification mutates nothing");
     assert_eq!(n.log(0).len(), 2, "nothing is logged");
+    // The Credential a sidecar may sign: this node's own derivation, pinned field by field.
+    assert!(v.credential_refused.is_none(), "{:?}", v.credential_refused);
+    let c = v.credential.as_ref().unwrap();
+    assert_eq!(c.subject, BORROWER);
+    assert_eq!(c.credential_type, POF_CREDENTIAL_TYPE);
+    assert_eq!(c.credential_type, hex::encode_upper(b"ConfidantPoF"));
+    assert_eq!(c.credential_type_text, "ConfidantPoF");
+    assert_eq!(c.expiration, CLOSE_990 + (1500 - 990) * SECONDS_PER_LEDGER);
+    assert_eq!(hex::decode(&c.uri).unwrap(), c.uri_text.as_bytes());
+    assert_eq!(
+        c.uri,
+        c.uri.to_uppercase(),
+        "URI hex as the ledger stores it"
+    );
+    let parts: Vec<&str> = c.uri_text.split('|').collect();
+    assert_eq!(&parts[..4], &[CHALLENGE_PREFIX, "120", "990", "1500"]);
+    assert_eq!(parts.len(), 5);
+    assert!(
+        parts[4].len() == 16 && hex::decode(parts[4]).is_ok(),
+        "{}",
+        c.uri_text
+    );
+    assert!(
+        !c.uri_text.contains("lender-1"),
+        "the lender is bound by digest, not named"
+    );
+    // Another lender, another challenge bytes → another digest, same everything else.
+    let mut other_lender = ch.clone();
+    other_lender.lender = "lender-2".into();
+    let c2 = other_lender.credential(120, CLOSE_990);
+    assert_ne!(c2.uri, c.uri);
+    assert_eq!(
+        (c2.subject.as_str(), c2.expiration),
+        (BORROWER, c.expiration)
+    );
+    assert_ne!(
+        ch.credential(121, CLOSE_990).uri,
+        c.uri,
+        "the amount is in the digest and in clear"
+    );
+    assert_ne!(
+        ch.credential(121, CLOSE_990).uri_text.split('|').nth(4),
+        parts.get(4).copied(),
+        "digest covers the amount"
+    );
+
+    // Without the flag no Credential is derived and no account is read: the plain verdict is cheap.
+    let reads = ledger.account_cred_calls();
+    let plain = n
+        .verify_proof_of_funds(&pof.record, 120, &ch, false)
+        .await
+        .unwrap();
+    assert!(plain.ok && plain.credential.is_none() && plain.credential_refused.is_none());
+    assert_eq!(ledger.account_cred_calls(), reads);
+    // Bound (B): the borrower already holds a proof-of-funds credential from this pool → withheld.
+    let pof_cred = |subject: &str, flags: u64| json!({ "LedgerEntryType": "Credential", "Issuer": POOL, "Subject": subject, "CredentialType": POF_CREDENTIAL_TYPE.to_lowercase(), "Flags": flags });
+    ledger.put_account_credential(BORROWER, pof_cred(BORROWER, 0));
+    let held = n
+        .verify_proof_of_funds(&pof.record, 120, &ch, true)
+        .await
+        .unwrap();
+    assert!(held.ok && held.credential.is_none());
+    assert!(
+        held.credential_refused
+            .as_deref()
+            .unwrap()
+            .contains("already holds"),
+        "{held:?}"
+    );
+    ledger.clear_account_credentials(BORROWER);
+    // Bound (C): the pool's outstanding (unaccepted) proof-of-funds credentials reach the cap → withheld;
+    // accepted ones, other types and other issuers do not count.
+    for i in 0..POF_CREDENTIAL_CAP {
+        ledger.put_account_credential(POOL, pof_cred(&format!("rSubject{i}"), 0));
+    }
+    let capped = n
+        .verify_proof_of_funds(&pof.record, 120, &ch, true)
+        .await
+        .unwrap();
+    assert!(capped.credential.is_none());
+    assert!(
+        capped
+            .credential_refused
+            .as_deref()
+            .unwrap()
+            .contains(&format!("cap {POF_CREDENTIAL_CAP}")),
+        "{capped:?}"
+    );
+    ledger.clear_account_credentials(POOL);
+    for i in 0..POF_CREDENTIAL_CAP - 1 {
+        ledger.put_account_credential(POOL, pof_cred(&format!("rSubject{i}"), 0));
+    }
+    ledger.put_account_credential(POOL, pof_cred("rAccepted", LSF_ACCEPTED));
+    ledger.put_account_credential(POOL, json!({ "Issuer": POOL, "Subject": "rOther", "CredentialType": "436F6E666964616E744B5943", "Flags": 0 }));
+    ledger.put_account_credential(POOL, json!({ "Issuer": "rSomeoneElse", "Subject": POOL, "CredentialType": POF_CREDENTIAL_TYPE, "Flags": 0 }));
+    let under = n
+        .verify_proof_of_funds(&pof.record, 120, &ch, true)
+        .await
+        .unwrap();
+    assert!(under.credential.is_some(), "{:?}", under.credential_refused);
+    ledger.clear_account_credentials(POOL);
+    // A further page of credential objects is never judged from the partial list: withheld, for the
+    // pool's count and for the borrower's "already holds" check alike (fail closed).
+    ledger.set_account_credentials_more(POOL, true);
+    let paged = n
+        .verify_proof_of_funds(&pof.record, 120, &ch, true)
+        .await
+        .unwrap();
+    assert!(paged.ok && paged.credential.is_none());
+    assert!(
+        paged
+            .credential_refused
+            .as_deref()
+            .unwrap()
+            .contains("more than one page"),
+        "{paged:?}"
+    );
+    ledger.set_account_credentials_more(POOL, false);
+    ledger.set_account_credentials_more(BORROWER, true);
+    assert!(n
+        .verify_proof_of_funds(&pof.record, 120, &ch, true)
+        .await
+        .unwrap()
+        .credential
+        .is_none());
+    ledger.set_account_credentials_more(BORROWER, false);
+    // The credential objects unreadable: a ledger error when the Credential was asked for — never a
+    // derivation; the plain verdict needs no such read and still answers.
+    for account in [POOL, BORROWER] {
+        ledger.fail_account_credentials(account, true);
+        assert!(
+            matches!(
+                n.verify_proof_of_funds(&pof.record, 120, &ch, true).await,
+                Err(NodeError::Ledger(_))
+            ),
+            "{account}: a read failure is a ledger error, never a derivation"
+        );
+        assert!(
+            n.verify_proof_of_funds(&pof.record, 120, &ch, false)
+                .await
+                .unwrap()
+                .ok
+        );
+        ledger.fail_account_credentials(account, false);
+    }
+    // Bound (A): with the pool's credential gate on, the borrower must hold the gate's accepted credential.
+    const ISSUER_A: &str = "rwbgyYBhFiBExQ7K5yJKyYdvHYwGHdBamt";
+    const TYPE_A: &str = "436F6E666964616E744B5943";
+    let gate = CredentialGate::new(ISSUER_A, TYPE_A, Some("ConfidantKYC")).unwrap();
+    let gated = Node::new(Verifier::new(), ledger.clone(), POOL, None).with_credential(gate);
+    ledger.put_credential("rAlice", ISSUER_A, TYPE_A, true, None); // the depositor of the fake deposits
+    for (i, r) in n.log(0).iter().enumerate() {
+        gated.submit_shield(r, &format!("D{i}")).await.unwrap();
+    }
+    assert_eq!(gated.state().root, n.state().root);
+    let ineligible = gated
+        .verify_proof_of_funds(&pof.record, 120, &ch, true)
+        .await
+        .unwrap();
+    assert!(ineligible.ok && ineligible.credential.is_none());
+    assert!(
+        ineligible
+            .credential_refused
+            .as_deref()
+            .unwrap()
+            .contains("not eligible"),
+        "{ineligible:?}"
+    );
+    ledger.put_credential(BORROWER, ISSUER_A, TYPE_A, true, Some(CLOSE_990 + 41)); // valid by the ledger's clock
+    let eligible = gated
+        .verify_proof_of_funds(&pof.record, 120, &ch, true)
+        .await
+        .unwrap();
+    assert_eq!(
+        eligible.credential.as_ref().map(|c| c.uri.clone()),
+        Some(c.uri.clone())
+    );
+    ledger.put_credential(BORROWER, ISSUER_A, TYPE_A, true, Some(CLOSE_990 + 40)); // expired by the ledger's clock
+    assert!(gated
+        .verify_proof_of_funds(&pof.record, 120, &ch, true)
+        .await
+        .unwrap()
+        .credential
+        .is_none());
+    ledger.put_credential(BORROWER, ISSUER_A, TYPE_A, true, None);
+    // The compliance read failing on the gated node: a ledger error, never a derivation.
+    ledger.fail_credentials(true);
+    assert!(matches!(
+        gated
+            .verify_proof_of_funds(&pof.record, 120, &ch, true)
+            .await,
+        Err(NodeError::Ledger(_))
+    ));
+    ledger.fail_credentials(false);
 
     // Through HTTP.
-    let body = |amount: u64, ch: &PofChallenge| json!({ "record": pof.record, "amount": amount, "challenge": ch });
+    let body = |amount: u64, ch: &PofChallenge| json!({ "record": pof.record, "amount": amount, "challenge": ch, "credential": true });
     let (s, v) = call(&app, "POST", "/pof/verify", Some(body(120, &ch))).await;
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(v["ok"], true);
@@ -1806,6 +2075,13 @@ async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge()
     assert_eq!(v["challenge"]["ledgerIndex"], 990);
     assert_eq!(v["root"], n.state().root);
     assert!(v["meaning"].as_str().unwrap().contains("snapshot"));
+    assert_eq!(v["credential"]["subject"], BORROWER);
+    assert_eq!(v["credential"]["credentialType"], POF_CREDENTIAL_TYPE);
+    assert_eq!(
+        v["credential"]["expiration"],
+        CLOSE_990 + 510 * SECONDS_PER_LEDGER
+    );
+    assert_eq!(v["credential"]["uri"], c.uri);
 
     // The proof is bound: another amount or a challenge with one field changed is a core refusal.
     let (s, v) = call(&app, "POST", "/pof/verify", Some(body(100, &ch))).await;
@@ -1815,13 +2091,14 @@ async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge()
     let (s, v) = call(&app, "POST", "/pof/verify", Some(body(120, &other))).await;
     assert_eq!(s, StatusCode::CONFLICT, "{v}");
     assert!(matches!(
-        n.verify_proof_of_funds(&pof.record, 120, &other).await,
+        n.verify_proof_of_funds(&pof.record, 120, &other, false)
+            .await,
         Err(NodeError::Core(CoreError::InvalidSpendAuth))
     ));
     // A pool record is not a proof of funds, and a proof of funds is not a pool operation.
     let shield = n.log(0)[0].clone();
     assert!(matches!(
-        n.verify_proof_of_funds(&shield, 100, &ch).await,
+        n.verify_proof_of_funds(&shield, 100, &ch, false).await,
         Err(NodeError::Core(CoreError::NotAProofOfFunds))
     ));
     assert!(matches!(
@@ -1872,7 +2149,7 @@ async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge()
     edge.ledger_index = 1_000 - RECENT_WINDOW;
     edge.expiry = 1_001;
     let edge_pof = alice.build_proof_of_funds(120, &edge.bytes(120)).unwrap();
-    n.verify_proof_of_funds(&edge_pof.record, 120, &edge)
+    n.verify_proof_of_funds(&edge_pof.record, 120, &edge, true)
         .await
         .unwrap();
     let mut edge = ch.clone();
@@ -1889,6 +2166,28 @@ async fn proof_of_funds_endpoint_is_read_only_bounded_and_judges_the_challenge()
     let (s, v) = call(&app, "POST", "/pof/verify", Some(body(120, &ch))).await;
     assert_eq!(s, StatusCode::BAD_GATEWAY, "{v}");
     ledger.set_validated(1_000);
+    // Ledger L unreadable ⇒ 502 too: no Credential fields can be derived, so no verdict at all.
+    let mut unread = ch.clone();
+    unread.ledger_index = 995;
+    let unread_pof = alice.build_proof_of_funds(120, &unread.bytes(120)).unwrap();
+    let (s, v) = call(
+        &app,
+        "POST",
+        "/pof/verify",
+        Some(json!({ "record": unread_pof.record, "amount": 120, "challenge": unread, "credential": true })),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_GATEWAY, "{v}");
+    // ...but a plain verdict (no credential asked) does not need ledger L's clock at all.
+    let (s, v) = call(
+        &app,
+        "POST",
+        "/pof/verify",
+        Some(json!({ "record": unread_pof.record, "amount": 120, "challenge": unread })),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert!(v["credential"].is_null() && v["credentialRefused"].is_null());
 
     // Bounded: with every permit held the node answers 429 and verifies nothing.
     let held = n

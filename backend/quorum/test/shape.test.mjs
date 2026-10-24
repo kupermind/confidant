@@ -94,6 +94,28 @@ test("fee-sweep: treasury and amount come from the signer's own node", () => {
   refused("fee-sweep", { ...sweep(), LastLedgerSequence: 1500 }, /missing or outside/, fctx);
 });
 
+test("credential-pof: every field is the signer's own node's recomputation", () => {
+  const cred = { subject: "rBORROWER", credentialType: "436F6E666964616E74506F46", expiration: 800002040, uri: "636f6e66" };
+  const cc = () => ({ TransactionType: "CredentialCreate", Account: pool, Subject: "rBORROWER", CredentialType: "436F6E666964616E74506F46", Expiration: 800002040, URI: "636f6e66", Fee: "40", Sequence: 7, LastLedgerSequence: 1020 });
+  const cctx = { ...ctx, pofCredential: cred };
+  checkTxShape("credential-pof", cc(), cctx);
+  checkTxShape("credential-pof", { ...cc(), CredentialType: "436f6e666964616e74506f46", URI: "636F6E66" }, cctx); // hex case-insensitive
+  refused("credential-pof", cc(), /no credential verdict/, ctx);
+  refused("credential-pof", cc(), /no credential verdict/, { ...ctx, pofCredential: { ...cred, expiration: "soon" } });
+  refused("credential-pof", { ...cc(), TransactionType: "Payment" }, /not a CredentialCreate/, cctx);
+  refused("credential-pof", { ...cc(), Subject: "rEVE" }, /Subject is not the borrower/, cctx);
+  refused("credential-pof", { ...cc(), CredentialType: "436F6E666964616E744B5943" }, /CredentialType differs/, cctx);
+  refused("credential-pof", { ...cc(), Expiration: 800002041 }, /Expiration 800002041 differs/, cctx);
+  refused("credential-pof", { ...cc(), Expiration: undefined }, /Expiration undefined differs/, cctx);
+  refused("credential-pof", { ...cc(), URI: "636f6e67" }, /URI differs/, cctx);
+  refused("credential-pof", { ...cc(), Memos: [memoOf(MEMO_ANCHOR, memoHex)] }, /unexpected memos/, cctx);
+  refused("credential-pof", { ...cc(), Account: "rEVE" }, /Account is not the pool/, cctx);
+  refused("credential-pof", { ...cc(), Sequence: 9 }, /next sequence/, cctx);
+  refused("credential-pof", { ...cc(), LastLedgerSequence: 1500 }, /missing or outside/, cctx);
+  refused("credential-pof", { ...cc(), Fee: "5001" }, /fee missing or above/, cctx);
+  refused("anchor", { ...anchor(), TransactionType: "CredentialCreate" }, /not a Payment/, ctx);
+});
+
 test("unknown kinds are refused", () => {
   refused("refund", { ...payout(), LastLedgerSequence: 1020 }, /unknown tx kind/, pctx);
 });

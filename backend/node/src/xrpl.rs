@@ -47,6 +47,20 @@ pub trait Ledger: Send + Sync {
     ) -> impl Future<Output = Result<Value, LedgerError>> + Send;
     /// Index of the latest validated ledger (for the screening standby).
     fn validated_ledger_index(&self) -> impl Future<Output = Result<u64, LedgerError>> + Send;
+    /// `close_time` (seconds since the Ripple epoch) of the validated ledger `index` (the `ledger`
+    /// command) — immutable once validated, so every node derives the same value from it.
+    fn ledger_close_time(
+        &self,
+        index: u64,
+    ) -> impl Future<Output = Result<u64, LedgerError>> + Send;
+    /// The Credential ledger objects held by `account` on the validated ledger (`account_objects`
+    /// with `type: credential`) — issued to it, or by it: the first page (rippled's maximum, 400)
+    /// and whether a further page exists. A further page is never a count: the caller refuses
+    /// rather than judge a partial list.
+    fn account_credentials(
+        &self,
+        account: &str,
+    ) -> impl Future<Output = Result<(Vec<Value>, bool), LedgerError>> + Send;
     /// The Credential ledger entry for `(subject, issuer, credential_type)` on the validated ledger
     /// (`ledger_entry` with `credential`): `Some(node)`, or `None` when there is no such entry.
     fn credential(

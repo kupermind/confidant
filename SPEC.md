@@ -222,6 +222,15 @@ was judged against. The record is never applied, persisted or logged. The verdic
 not a lock, not proof that the borrower owns the notes; nothing reaches the ledger in this slice (the `credential-pof`
 signing path is separate, under the ship rule).
 
+**Proof of funds on the ledger (feature C, Tier 1 signing path; built on-site 2026-10-24, ships only with its own IMPL-PASS
+in-window).** A verdict may be recorded by the quorum as an expiring XLS-70 Credential from the pool account to the
+borrower: `CredentialType` "ConfidantPoF", `Expiration` = the close time of ledger `L` plus 4 s per ledger to `E`, `URI` =
+`confidant/pof/v1|X|L|E|<digest of the challenge>` — every node derives these from the challenge it verified, and a sidecar
+signs only a `CredentialCreate` equal to **its own node's** fields after that node re-verified the proof at signing time
+(unspent re-checked). The borrower's `CredentialAccept` binds the account. What the Credential says is exactly the verdict:
+"controlled ≥ X as of ledger L", not "controls it now"; it is not a lock, and between the proof and a lender's read the
+holder can spend.
+
 ### 5.6 Deposit binding (backing)
 
 A verifier accepts a shield only if: (a) the XRPL side found the deposit as a validated Payment to
@@ -519,7 +528,9 @@ graph is hidden but not the endpoints, ZK first, TEE a footnote.
   the honest counterparts are then accepted. A second test reads `core/src` and pins the set of
   BLAKE2b personalizations (`ConfidantBundle`, `ConfidantSigHash`) and sighash context shapes
   (`external_ctx`, `unshield_ctx`): a new hash domain must be added to that allow-list on purpose,
-  two call sites can never share one, and no BLAKE2b in the core is unpersonalized.
+  two call sites can never share one, and no BLAKE2b in the core is unpersonalized. One personalization lives outside
+  `core/`: `ConfidantPoFURI_` in `backend/node/src/pof.rs` (the digest of a proof-of-funds challenge inside a Credential's
+  URI) — a labelling hash, never a signature domain, so it is outside the allow-list's scope on purpose.
 - **Coverage:** lines 100%, functions 100% (`cargo llvm-cov`), gated in CI; regions ≈ 97%.
 - **CI**: fmt, clippy `-D warnings`, tests in release, coverage, hygiene (key-shaped files, honest
   label markers in three documents, over-claim words), manual e2e job on testnet.

@@ -42,6 +42,15 @@ transactions — only for roots it computed itself.
   holder's nullifiers. The node caps the body at 256 KiB and runs at most four verifications at a time (429 beyond);
   add your own per-client rate limit in front. The lender must reach your node directly (`/node/<i>/pof/verify` in the
   nginx site), never through the coordinator.
+- Your sidecar signs a `credential-pof` (`CredentialCreate` from the pool to a borrower) **only after your own node
+  re-verified that proof now** and only when every field equals your node's `credential` derivation (subject, type,
+  expiration, URI) — the coordinator's values are never trusted. The pool account pays one owner reserve per credential
+  until the borrower accepts it; delete expired unaccepted ones.
+- **Proof-of-funds Credentials are capped:** your node authorizes one only while the pool account holds fewer than
+  `POF_CREDENTIAL_CAP` = 8 unaccepted `ConfidantPoF` Credentials it issued (each locks an owner reserve on the pool
+  account), only for a borrower that holds none yet and — with the compliance gate on — only for a borrower the gate
+  admits; a further `account_objects` page or a failed ledger read refuses. Delete expired unaccepted Credentials to free
+  reserve and headroom under the cap. The cap is a griefing bound, not a hard ceiling (nodes count independently).
 
 ## Sign (step 3 of v2) — never blind
 

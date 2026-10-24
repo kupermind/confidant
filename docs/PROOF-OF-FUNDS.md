@@ -77,7 +77,36 @@ address, the lender id 1–64 printable characters without `|`). Each node check
 `verify_proof_of_funds` on its own state. Verdict `{ ok, amount, challenge, validatedLedger, root, bundleHash, meaning }`;
 400 for a refused challenge, 409 when the proof does not verify, 413 over 256 KiB, 429 beyond four concurrent
 verifications. The node keeps no copy and logs nothing (requirement 6); the browser reaches the nodes at `/config.nodes`
-(`/node/<i>/pof/verify`), never the coordinator. Steps 4–6 (`credential-pof`) are not built: ship rule in §6.
+(`/node/<i>/pof/verify`), never the coordinator.
+
+**Built 2026-10-24 — steps 4–6 (the signing path, `credential-pof`), under the ship rule: it ships only with its own
+IMPL-PASS in-window.** Every verdict carries the Credential the node itself derives from the challenge it verified:
+`Subject` = the borrower, `CredentialType` = hex("ConfidantPoF"), `Expiration` = `close_time(L)` (read from the ledger,
+immutable once validated) + 4 s per ledger from `L` to `E` — the same value on every node — and `URI` = hex of the UTF-8
+text `confidant/pof/v1|X|L|E|<16 hex of BLAKE2b-64("ConfidantPoFURI_", challenge bytes)>`: the threshold and the window in
+clear (decision (d): a loan broker reads one field), the lender bound by digest, not named. `POST /pof/credential` on the
+coordinator asks its node, autofills `CredentialCreate { Account: pool, Subject, CredentialType, Expiration, URI }` and asks
+every sidecar; each sidecar **re-verifies the proof on its own node now** (`POST /pof/verify`: own state, unspent re-checked
+at signing time — requirement 5) and signs only a `CredentialCreate` whose five fields equal **its node's** credential
+fields, with Fee / Sequence / LastLedgerSequence pinned as for payouts and no memos (requirements 1–4); k blobs are
+multisigned and submitted. The borrower then signs `CredentialAccept` in the app; a lender reads the accepted credential
+from the ledger and matches its URI against the package (lender page, step 3). Nothing about the proof is persisted or
+logged on any node (requirement 6).
+
+**Bounds on the signing path (the review's finding: an attacker-chosen `Subject` could make the quorum spend fees and
+lock reserves without limit).** The Credential fields are derived only when the request asks (`credential: true`), and
+only when **the node's own ledger reads** allow it — a coordinator cannot bypass them, because a sidecar signs only its
+node's fields: (A) when the pool's credential gate is on, the borrower must hold the gate's accepted credential (a
+proof-of-funds Credential goes to eligible accounts only); (B) the borrower must not already hold a proof-of-funds
+Credential from this pool, accepted or pending (one per account; `tecDUPLICATE` would refuse anyway, the node refuses
+first); (C) the pool account's outstanding (unaccepted) proof-of-funds Credentials must be under `POF_CREDENTIAL_CAP`
+= 8 — reserve exposure ≤ 8 × one owner reserve, fee spend ≤ 8 per expiry window. Otherwise the verdict carries
+`credential: null` and the reason in `credentialRefused`; the sidecar and the coordinator refuse with it (409). Reserve:
+the pool account carries one owner reserve per credential until the subject accepts it; expired ones may be deleted by
+anyone (not automated). The production shape is the borrower's own XRPL signature over the challenge in the request
+(consent before issuance) — not for the event.
+
+**Two conditions on the cap (audit, 2026-10-24).** The node counts one `account_objects` page (400 objects) and treats a further page as "more than the cap": the borrower's and the pool's credential lists are never judged from a partial page (withheld with a reason). That is sound only while the cap stays well below the page size — `POF_CREDENTIAL_CAP` is 8 and a compile-time assertion keeps it ≤ 200; raising it near or above the page size needs true pagination first. And the cap is not a hard ceiling: nodes count independently, so concurrent requests can overshoot by the in-flight count (bounded by the four verification permits per node) — a griefing bound, not an exact invariant. A ledger read that fails while a Credential is asked for is a ledger error (502), never a derivation; the plain verdict needs no such read.
 
 - **What reaches the ledger:** the borrower's account, the type, the expiry and a hash of
   (X, L, E). No notes, no nullifiers, no proof. **Decided (d): X is in the URI in clear** for the
@@ -227,7 +256,7 @@ Both are outside the "Orchard reused unchanged" line (ROADMAP §4.5) and stay ro
 |---|---|---|---|
 | A: Credential-gated shielding (node + sidecar Credential module) | ✅ | | |
 | C core slice (audit conditions 2–4: own record type, break tests both directions, coverage 100 %) | ✅ | | |
-| C Tier 1: `POST /pof/verify` on nodes, sidecar kind `credential-pof`, quorum-issued expiring Credential | read side ✅ built 2026-10-24 (endpoint on every node, wasm `buildProofOfFunds`, `/config.nodes`); the signing path only with its own IMPL-PASS in-window | otherwise the flow diagram (§2) for steps 4–6 | |
+| C Tier 1: `POST /pof/verify` on nodes, sidecar kind `credential-pof`, quorum-issued expiring Credential | read side ✅ built 2026-10-24 (endpoint on every node, wasm `buildProofOfFunds`, `/config.nodes`); signing path ✅ built 2026-10-24 (`credential-pof`, `POST /pof/credential`, the app's record + confirm, the lender's ledger check) — **ships only with its own IMPL-PASS in-window** | otherwise the flow diagram (§2) for steps 4–6 | |
 | C Tier 2: revoke on spend | stretch | ✅ | |
 | Shielded collateral escrow (§4; not a PoF tier) | | ✅ — one slide, as a separate construction | ✅ |
 | Tier 4: circuit-level | | one line | ✅ |
