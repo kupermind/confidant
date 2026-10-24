@@ -81,6 +81,10 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
   (B = the two added; `poolExcess` is the node's own read of balance − backing, `null` when the ledger is
   unreadable). The excess is the operator's funding at genesis, protocol fees not yet swept to the treasury,
   and any refused deposit awaiting refund — never note value.
+- **Shield recovery.** Once the deposit Payment is validated the UI keeps the record and the deposit hash locally
+  until the anchor is confirmed; after a lost answer or a reload it offers "Resume anchoring", which resubmits the
+  same record to `/submit/shield`. The node is idempotent for the bundle that is its last record; a 409 (nullifier
+  already spent) on the resubmit means the shield was applied earlier and the UI treats it as done.
 - **The viewing key is the authorization for `/audit/reveal`** and reveals that holder's whole history
   (read-only, nothing else). The UI sends it only to the coordinator the user chose, over the URL the
   user configured, and says so before sending; it never stores or forwards it elsewhere. CORS is `*`
