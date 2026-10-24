@@ -95,6 +95,32 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
 Полный клиент этого контракта со всеми негативными случаями — `e2e/testnet/run-services.mjs`.
 Копировать оттуда.
 
+### Ворота по Credential (фича хакатона A) — контракт между узлом и стороной держателя
+
+*Предложено 2026-10-24 (день события) API/XRPL-лидом для слайса узла крипто/ZK-лида; если узлу нужно иначе —
+правится здесь, в том же PR, что и код.*
+
+- **Конфиг.** `GET /config` получает `credential: { issuer: "r…", type: "<hex>", typeText: "ConfidantKYC",
+  expiresAfter?: <секунды> } | null`. `null` (или отсутствие) — ворота выключены, UI ничего не показывает.
+  Эмитента и тип UI берёт отсюда и больше ниоткуда.
+- **Правило.** Shield принимается, только если `Account` депозита держит на леджере XLS-70 Credential с
+  `Issuer == credential.issuer`, `CredentialType == credential.type`, установленным флагом **accepted**
+  (`lsfAccepted`) и не истёкшим `Expiration`; каждый узел читает это с леджера сам (`ledger_entry`
+  `credential` или `account_objects` депозитора) при submit и снова при endorse. Сайдкар не подписывает то,
+  чего не принял его собственный узел (правило без изменений).
+- **Отказ.** HTTP **403** с `{ error: "no accepted credential from <issuer> of type <typeText> for <account>" }`
+  — то же семейство статусов, что у скрининга; UI различает по слову `credential`. Выпущенный, но не
+  принятый Credential тоже отклоняется (принять его должен субъект: эта подпись и привязывает аккаунт).
+- **Сторона держателя (UI).** В карточке кошелька строка *Eligibility*: `accepted ✓` / `issued — нажмите
+  Accept` / `none — получите у эмитента`; *Accept* подписывает `CredentialAccept { Account: держатель, Issuer,
+  CredentialType }` XRPL-аккаунтом держателя в браузере (xrpl.js); отклонённый shield ссылается на страницу
+  эмитента. Демо-эмитент — статичная страница (`frontend/issuer.html`): пополненный из faucet XRPL-аккаунт в
+  роли KYC-провайдера, подписывает `CredentialCreate { Account: issuer, Subject: holder, CredentialType,
+  Expiration? }` для любого вставленного адреса и печатает свой адрес и тип для конфига операторов узлов.
+  Честная подпись: эмитент — демо-персона; ворота на леджере настоящие.
+- **Библиотека в браузере.** В xrpl.js 4.3.0, который грузило приложение, типов транзакций XLS-70 нет; страница
+  держателя и страница эмитента используют **xrpl.js 5.3.0** (та же версия, что в `backend/quorum`).
+
 ## 3. Что обязан подготовить UI — `record`
 
 `record` — это `BundleRecord` ровно в том виде, в каком его записал кошелёк (поля не трогать):
