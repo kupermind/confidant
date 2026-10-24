@@ -88,6 +88,15 @@ on the ledger — transfers inside are free."
    holder's next spend to the proof. Then paste the old package again on tab C → every node answers **409** (the notes
    moved): the snapshot is honest about being a snapshot.
 
+## Mastercard track — "pay for privacy", 5 minutes (only if the AP4M onboarding and two rehearsals happened)
+
+Terminal, `hackathon/ap4m`: `node agent.mjs` — the wallet syncs, a private transfer is built, the relay answers **402**,
+the agent prints its decision ("price 0.1 RLUSD ≤ max 0.25 — paying"), pays with a Voucher (EVM explorer:
+`VoucherRedeemed` at the PaymentLedger), the relay forwards and the quorum anchors (XRPL testnet explorer: the anchor
+memo — no sender, receiver or amount), `settle` prints the RLUSD payout and the receipt; with `OVER_CAP_DEMO=1` a second
+relay is refused by the funded cap. Say once: "the metered payment is public, the settlement is private, both ledgers show
+a receipt; the limit is enforced by the contract". Fallbacks and the judging weights in `hackathon/ap4m/README.md`.
+
 ## The "what if your server dies" question
 
 Answer with the snapshot: the ledger names every bundle by hash; the public log is pinned on IPFS under

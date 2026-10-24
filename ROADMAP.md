@@ -127,6 +127,15 @@ tab and `frontend/lender.html`, which verifies the holder's proof package with e
 (C, read side — the lender reads verdicts; the Credential on the borrower's account is the signing path, under the
 ship rule).
 
+**Mastercard track (AP4M), decided 2026-10-24 by the API lead — go.** A scripted agent pays RLUSD on XRPL EVM testnet
+through Mastercard's AP4M for the *relay* of a shielded transfer that the quorum then anchors on XRPL L1
+("pay for privacy", two ledgers, two receipts). `hackathon/ap4m/`: the relay is a fail-closed paywall in front of the
+coordinator's existing `POST /submit/transfer` (the kit's x402 merchant unmodified + an on-chain claim check); core,
+nodes, sidecars and the coordinator's trust path are untouched, the relay never signs on L1 — a read gate, no audit
+slice. The relay fee is a metering fee, not a privacy feature. Status: built, **not yet run end to end** — needs the
+team onboarded on the AP4M portal (Agent and payout wallets, funded budget); step 1 is the kit's own example, then the
+relay.
+
 **Decisions — all taken by the owner on 2026-10-16 ((f) on 2026-10-14).** Nothing below is built yet;
 the build happens on-site under the ship rule.
 
