@@ -117,7 +117,7 @@ coordinator copies into `/config.credential`.*
   `credential`. An issued-but-not-accepted Credential is refused too (the subject must accept it: that
   signature is what binds the account).
 - **Holder side (UI).** The wallet card shows a *Credential* row: `accepted ✓` / `issued — confirm it to shield`
-  / `none — get one from the issuer`; *Confirm* signs `CredentialAccept { Account: holder, Issuer,
+  / `not yet — written under the hood when you first shield or prove`; *Confirm* signs `CredentialAccept { Account: holder, Issuer,
   CredentialType }` with the holder's XRPL account in the browser (xrpl.js); a refused shield links to
   the issuer page. Until the node side ships `credential` in `/config`, the issuer page hands the holder over with
   `/?accept=<issuer>:<typeHex>`, which the app keeps in storage and treats as the gate's config (demo path only; the

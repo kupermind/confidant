@@ -148,10 +148,14 @@ for (const name of ["index.html", "how-it-works.html", "balances.html", "lender.
   const report = `{msg:${text("msg-shield")},gate:${text("prove-gate")},cred:${text("cred-status")},steps:[...document.getElementById("steps-shield").children].map(e=>e.classList.contains("on")||e.classList.contains("done")?"x":"").join("|"),acts:[...document.querySelectorAll("#activity .type")].map(e=>e.textContent).join(",")}`;
   const noKey = probe("index.html",
     `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("shield-amount").value="25";document.getElementById("btn-shield").click()},3200)`, report);
+  const pre = sample(noKey, 390, 2600, "?demo=1&nocred");
+  check("gate, no key, service up, before any press: the Credential row says the app writes it under the hood — no link to a key", /^not yet — written under the hood/.test(pre.cred ?? "") && !/get one from|team key/.test(pre.cred ?? ""), pre);
   const svc = sample(noKey, 390, 4000, "?demo=1&nocred");
   check("gate, no key, service up: shield first has the issuer service write the entry credential", /Issuing the entry credential/.test(svc.msg ?? "") && svc.steps === "||" && (svc.gate ?? "") === "", svc);
   const svcEnd = sample(noKey, 390, 9400, "?demo=1&nocred");
   check("gate, no key, service up: credential confirmed, shield completed, Credential row accepted", /^Shielded 25 XRP/.test(svcEnd.msg ?? "") && /^accepted ✓/.test(svcEnd.cred ?? ""), svcEnd);
+  const preDown = sample(noKey, 390, 2600, "?demo=1&nocred&noissuer");
+  check("gate, no key, service down, before any press: the Credential row says the issuer is not answering and offers the team key", /^none — the issuer is not answering/.test(preDown.cred ?? "") && /team key/.test(preDown.cred ?? ""), preDown);
   const n = sample(noKey, 390, 4500, "?demo=1&nocred&noissuer");
   check("gate, no key, service down: shield refused before any payment with the one step first; the Prove tab says it too", /^One step first: .*issuer service.*not answering/.test(n.msg ?? "") && /^One step first/.test(n.gate ?? "") && n.steps === "||", n);
   const wrongKey = probe("index.html",
