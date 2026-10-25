@@ -6,7 +6,8 @@
 //   balances.html  bucket()  — classifies the pool account's ledger history into the reconciliation rows
 //   balances.html  feeOf()   — the protocol-fee rounding the nodes use (floor per operation)
 //   index.html     standbyText() — the screening-standby message shown while a shield waits
-//   index.html, lender.html  challengeString() — the canonical proof-of-funds challenge both pages and every node build
+//   index.html     challengeString() — the canonical proof-of-funds challenge the holder's wallet and every node build
+//   lender.html    parsePofUri() — the credential URI the nodes write, read back the same way
 //
 // Nothing here needs a backend, a browser or the network; the ledger fixture is public data.
 import { test } from "node:test";
@@ -100,14 +101,19 @@ test("standbyText turns the node's refusal into progress wording and keeps the o
   assert.ok(standbyText('a "quoted" message').includes("&quot;quoted&quot;"), "quotes are escaped inside the attribute");
 });
 
-test("challengeString is the node's canonical bytes, identical on the holder and the lender page", () => {
+test("challengeString is the node's canonical bytes (the holder page; the lender never sees a challenge)", () => {
   const ch = { borrower: "rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf", lender: "lender-1", ledgerIndex: 990, expiry: 1500 };
   const want = "confidant/pof/v1|rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf|120|990|1500|lender-1"; // pinned in backend/node/tests/node.rs too
   const holder = extract(inline(page("index.html")), ["POF_PREFIX", "challengeString"]);
   assert.equal(holder.challengeString(ch, 120), want);
-  const lender = extract(inline(page("lender.html")), ["challengeString"]);
-  assert.equal(lender.challengeString(ch, 120), want);
   // The amount is part of the bytes: another threshold is another challenge.
   assert.notEqual(holder.challengeString(ch, 121), want);
+});
+
+test("the lender page reads the credential's URI exactly as the nodes write it", () => {
+  const { parsePofUri } = extract(inline(page("lender.html")), ["parsePofUri"]);
+  assert.deepEqual(parsePofUri("confidant/pof/v1|25000000|12345650|12367250|9f3a1c7e5b2d4a60"), { amount: 25_000_000, ledgerIndex: 12_345_650, expiry: 12_367_250, digest: "9f3a1c7e5b2d4a60" });
+  // Anything else on a credential from the pool is reported as not understood, never read as a verdict.
+  for (const bad of ["", "confidant/pof/v2|1|2|3|9f3a1c7e5b2d4a60", "confidant/pof/v1|1|2|3|short", "confidant/pof/v1|1|2|3|9f3a1c7e5b2d4a60|x", "confidant/pof/v1|-1|2|3|9f3a1c7e5b2d4a60"]) assert.equal(parsePofUri(bad), null, bad);
 });
 

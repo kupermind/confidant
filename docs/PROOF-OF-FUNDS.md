@@ -270,7 +270,7 @@ Both are outside the "Orchard reused unchanged" line (ROADMAP §4.5) and stay ro
 | C Tier 2: revoke on spend | stretch | ✅ | |
 | Shielded collateral escrow (§4; not a PoF tier) | | ✅ — one slide, as a separate construction | ✅ |
 | Tier 4: circuit-level | | one line | ✅ |
-| UI surfaces (FE team): credential issue/accept (A), "prove funds" in the wallet, lender page reading the Credential | ✅ built 2026-10-24: Compliance row + provider page (A); **Prove funds** tab + `lender.html` verifying the package with every node (C, read side — the lender reads verdicts, not yet a Credential) | | |
+| UI surfaces (FE team): credential issue/accept (A), "prove funds" in the wallet, lender page reading the Credential | ✅ built 2026-10-24, rebuilt 2026-10-25 to one button (`docs/UI-RULE.md`): Compliance row + provider page (A); **Prove funds** = one press — whole balance, own account, generated request id, 24 h → quorum Credential → the account's confirmation → notes refreshed by the wallet; `lender.html` reads the Credential from the ledger by address (C; no package, no per-node table on the lender's side) | | |
 
 The shared Credential module is what makes A and C Tier 1 one piece of work rather than two.
 
