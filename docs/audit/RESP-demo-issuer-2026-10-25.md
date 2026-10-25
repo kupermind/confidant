@@ -98,3 +98,19 @@ nothing claims a holder was vetted, and nothing calls the real gate "not KYC". L
 This narrows §4's "keep 'attests the request, not a vetting' verbatim": the overclaim it guarded against (implying a
 vetting happened) is instead prevented by stating the open-registration fact directly, which the CI over-claim check and
 the honest-label rule both accept. §1–§4 above are left as the verbatim record of the audit's position at the time.
+
+## 6. Re-confirm after the owner's label commit `7a4f7ad` (same day, verbatim): IMPL-PASS carries; the label is honest
+
+```text
+Both re-confirms done.
+
+**1. Artifact identity — re-confirmed, IMPL-PASS carries to 7a4f7ad.** I diffed `8ce47ae → 7a4f7ad -- backend/quorum` firsthand: the only changes are issuer.mjs's header comment (lines 6–12) and the `POLICY` const string. `issuer-lib.mjs` is byte-identical (so `makeIssuer`'s one-queue flow, the tecDUPLICATE/tecNO_ENTRY belts, `rippledCode`, `judgeExisting`, `RateLimiter` are all intact), and `xrpl_`/`submit`/`readCredentials` in issuer.mjs are untouched. Non-functional diff ⇒ my F1/F2/F3 pass holds. **New anchor for the merged-head check is 7a4f7ad.** Point your SUBMISSION-length follow-up away from backend/quorum (it shouldn't need to touch it) so the anchor stays 7a4f7ad; if it does touch backend/quorum, send me that head and I re-diff.
+
+**2. Honesty of the new label — honest, I carry it (it's the owner's §5).** It states the open-registration fact directly — "registers any account that asks, rate-limited" — which carries exactly what the dropped "not a vetting" clause guarded: anyone who asks gets the credential, so a demo credential is not a vetting. It makes no false claim about the pool, and NODE-OPERATOR keeps the "neither 'not KYC' nor vetted-anyone" guard. So dropping the explicit caveat is acceptable — the fact is stated, not inferred-only.
+
+**The one over-read you flagged is real — my recommendation, non-blocking, owner's wording call.** "the exchange model where an account is opened first and KYC raises its limits" can be misread as THIS pool having KYC-tiered limits, which it does not (no limit layer exists here; the analogy is about the exchange). Grammatically it's the exchange's model, so it's not a false claim — but "KYC raises ITS limits" invites the bleed. Minimal, non-apologetic pin that keeps the owner's frame and can't read as the pool: say the limits are the exchange's, not the subject's — e.g. "the exchange model, where an account is opened first and KYC governs **the account's** limits" or "(as an exchange does)". That's a precision tweak, not a reframe, and it doesn't reintroduce any "out of scope"/apologetic tone the owner removed. Your call to pass the exact word to the owner; I don't need it changed to pass the code — it's a label-clarity note, and the owner owns the label.
+
+So: code IMPL-PASS'd at 7a4f7ad (non-functional since 8ce47ae), label honest and carried, one optional precision note on the exchange-limits phrase. On merge I do the final check: `git diff <merged> 7a4f7ad -- backend/quorum` non-functional + deployed issuer from the merged head.
+```
+
+The dev session's follow-up `774309a` (SUBMISSION length) does not touch `backend/quorum`; the anchor stays `7a4f7ad`.
