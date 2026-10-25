@@ -37,6 +37,9 @@ First the kit's own Demo 1 (sign → `redeemVoucher` → settle) with our wallet
 
 68 s wall from the 402 to the settlement receipt, of which ≈ 24 s is the channel opening (skip it on stage by setting
 `CHANNEL_ID` to an open channel), ≈ 14 s the voucher redemption, ≈ 14 s the quorum's anchor, ≈ 8 s the settlement.
+A second full run the same morning (fresh bundle, a 0.15-cap channel) anchored `2104CB64…` and settled payout
+`0x326f3830…`; the platform caps the number of open channels per team (`ActivePayoutLimitExceeded`), so close the
+spares with `closeChannel` and reuse one open channel on stage.
 
 What the first attempt taught (all fixed here): the relay's forward to the coordinator can hit a reset connection while
 the quorum anchors — the relay must never die on it (guarded handler, retried forward, the claim kept unused on any
@@ -86,10 +89,11 @@ Walk-in sign-up (no form answered) needs a connected browser wallet that signs t
 3. **Proof.** EVM explorer: `VoucherRedeemed` at the PaymentLedger; then XRPL testnet explorer: the pool account's new
    anchor Payment — no sender, no receiver, no amount. "Two ledgers, two receipts."
 4. **Settlement.** `settle` → RLUSD to the merchant payout (`ClaimPaid` + `SettlementRecorded`), the receipt URL.
-5. **Over-cap attempt rejected.** With `OVER_CAP_DEMO=1` the agent tries a second relay against what is left of the cap
-   (demo channel `CHANNEL_CAP=0.15`, price `0.1`): the policy refuses — "0.05 RLUSD left < 0.1, not paying" — and the
-   ledger would refuse the voucher anyway (`settled ≤ redeemed ≤ cap`). Say: "the limit is funded and enforced by the
-   contract, the agent only decides inside it."
+5. **Over-cap attempt rejected.** Run the agent once more with `CHANNEL_ID` set to the 0.15-cap channel that already
+   paid once: it meets the 402, reads the channel and stops — rehearsed 2026-10-25: *"policy: channel has 0.05 RLUSD
+   left < price — NOT paying"* (exit code 3, nothing signed). The ledger would refuse the voucher anyway
+   (`settled ≤ redeemed ≤ cap`). Say: "the limit is funded and enforced by the contract; the agent only decides inside
+   it." (`OVER_CAP_DEMO=1` does the same check right after a successful relay on a 0.15 channel.)
 
 Judging (deck): real-world utility 25 %, trust & control 25 %, technical execution 25 %, path to production 15 %,
 demo & story 10 %. The web guide's rubric adds: autonomy (the agent reads the 402 and decides), use-case clarity (the
