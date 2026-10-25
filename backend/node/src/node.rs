@@ -47,6 +47,10 @@ pub enum NodeError {
     /// A fee sweep that does not match this node's fee ledger; HTTP 409.
     #[error("fee sweep refused: {0}")]
     Fee(String),
+    /// The nullifier-revealing proof-of-funds path is disabled on this node (rejected at the design
+    /// level pending the Tier-4 circuit; see `docs/design/TIER4-PROOF-OF-FUNDS-REWRITE.md`); HTTP 403.
+    #[error("proof of funds: the nullifier-revealing proof is disabled on this node (rejected pending the Tier-4 circuit)")]
+    PofDisabled,
 }
 
 /// What `submit_*` and `endorse` return: the core's `Accepted` plus the anchor memo the quorum
@@ -75,6 +79,12 @@ pub struct Node<L: Ledger> {
     /// Bounds concurrent proof-of-funds verifications: an unauthenticated ingress that costs a
     /// SNARK verification per request.
     pof_permits: tokio::sync::Semaphore,
+    /// The nullifier-revealing proof-of-funds proof is REJECTED at the design level — it regresses
+    /// the pool's graph-hiding (a verified proof reveals the proven notes' nullifiers, so a later
+    /// spend relinks). See `docs/design/TIER4-PROOF-OF-FUNDS-REWRITE.md`. OFF by default: the whole
+    /// revealing path refuses unless a node is started deliberately with `--pof-revealing-enabled`,
+    /// a demo-only escape hatch until the Tier-4 circuit (which reveals no nullifier) replaces it.
+    pof_revealing_enabled: bool,
 }
 
 /// How many proof-of-funds verifications a node runs at once; beyond that, 429.
@@ -97,6 +107,7 @@ impl<L: Ledger> Node<L> {
             fees: FeePolicy::off(),
             fee_ledger: Mutex::new(FeeLedger::default()),
             pof_permits: tokio::sync::Semaphore::new(POF_PERMITS),
+            pof_revealing_enabled: false,
         }
     }
 
@@ -253,6 +264,14 @@ impl<L: Ledger> Node<L> {
         self
     }
 
+    /// Enable the deprecated nullifier-revealing proof-of-funds path (default OFF). For a
+    /// deliberate, controlled demo only, until the Tier-4 circuit replaces the proof; never a
+    /// production default. See `docs/design/TIER4-PROOF-OF-FUNDS-REWRITE.md`.
+    pub fn with_pof_revealing(mut self, enabled: bool) -> Self {
+        self.pof_revealing_enabled = enabled;
+        self
+    }
+
     pub fn credential_policy(&self) -> Option<&CredentialPolicy> {
         self.credential.policy()
     }
@@ -276,6 +295,12 @@ impl<L: Ledger> Node<L> {
         challenge: &PofChallenge,
         want_credential: bool,
     ) -> Result<PofVerdict, NodeError> {
+        // The revealing proof is rejected at the design level (it regresses graph-hiding). Refuse
+        // before reading the record, so this node never even sees a nullifier — unless a demo node
+        // was started deliberately with `--pof-revealing-enabled`. See the Tier-4 rewrite doc.
+        if !self.pof_revealing_enabled {
+            return Err(NodeError::PofDisabled);
+        }
         let _permit = self
             .pof_permits
             .try_acquire()

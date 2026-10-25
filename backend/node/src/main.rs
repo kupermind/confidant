@@ -1,4 +1,4 @@
-//! `confidant-node --listen 127.0.0.1:7001 --state data/n1.verifier-state.json --xrpl-rpc URL --pool rPOOL --signers r1,r2,r3 --quorum 2 [--fee-shield-bps N --fee-unshield-bps N --fee-treasury rT] [--screening-list FILE] [--screening-standby-ledgers N] [--mirror http://host/log] [--rebuild]`
+//! `confidant-node --listen 127.0.0.1:7001 --state data/n1.verifier-state.json --xrpl-rpc URL --pool rPOOL --signers r1,r2,r3 --quorum 2 [--fee-shield-bps N --fee-unshield-bps N --fee-treasury rT] [--screening-list FILE] [--screening-standby-ledgers N] [--mirror http://host/log] [--rebuild] [--pof-revealing-enabled]`
 //!
 //! Holds no keys. Refuses to start unless the pool account's on-ledger SignerList is exactly
 //! `--signers` with `SignerQuorum == --quorum` and the master key disabled. With `--rebuild` the node ignores its state file and rebuilds from the pool
@@ -41,6 +41,10 @@ async fn main() {
         .unwrap_or_else(|| die("--quorum <k> is required"));
     let mirror = arg(&args, "--mirror");
     let rebuild = args.iter().any(|a| a == "--rebuild");
+    // The nullifier-revealing proof-of-funds path is rejected at the design level (it regresses
+    // graph-hiding; see docs/design/TIER4-PROOF-OF-FUNDS-REWRITE.md). OFF unless a demo is run with
+    // this flag deliberately, until the Tier-4 circuit (no nullifier reveal) replaces the proof.
+    let pof_revealing = args.iter().any(|a| a == "--pof-revealing-enabled");
     let standby: u64 = arg(&args, "--screening-standby-ledgers")
         .map(|n| {
             n.parse()
@@ -184,6 +188,7 @@ async fn main() {
         Node::new(verifier, ledger, pool, state)
             .with_screening(screening)
             .with_credential(credential)
+            .with_pof_revealing(pof_revealing)
             .with_fees(fees, fee_ledger),
     );
     let listener = tokio::net::TcpListener::bind(&listen)
