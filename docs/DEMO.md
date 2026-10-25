@@ -58,17 +58,19 @@ on the ledger — transfers inside are free."
 
 ## Credential gate (feature A) — the holder side on stage
 
-The team's browser holds the demo issuer's key (saved once: `/issuer.html`, the fold at the bottom). Nothing else to
-operate: the app does the gate under the hood.
+No key anywhere: the demo issuer is a service on the host (`backend/quorum/issuer.mjs`), so a judge on a phone can shield
+too. The app does the gate under the hood.
 
-1. Shield as usual. Before any payment leaves the account the app sees the holder has no entry credential, **issues**
-   it from the issuer key in this browser (`CredentialCreate`, type `ConfidantKYC`) and **confirms** it with the holder's
-   own signature (`CredentialAccept`) — two status lines, ≈ 12 s — then shields. The wallet card's **Credential** row
-   turns "accepted ✓". Say: "a demo issuer — on stage the team is both holder and issuer; the credential it writes is a
-   real XLS-70 object on the ledger, and every node reads it from the ledger before it signs."
-2. On a browser without the key the app says what is missing before any payment ("One step first: … the pool's issuer
-   writes it"), and the verifiers would refuse a deposit without it (403 naming the issuer). The gate is on when the
-   nodes run with `CREDENTIAL_ARGS` (then `/config.credential` is set); off, the row hides and shields are open.
+1. Shield as usual. Before any payment leaves the account the app sees the holder has no entry credential, asks the
+   issuer service to **write** it (`CredentialCreate`, type `ConfidantKYC`, rate-limited, idempotent) and **confirms** it
+   with the holder's own signature (`CredentialAccept`) — two status lines, ≈ 12 s — then shields. The wallet card's
+   **Credential** row turns "accepted ✓". Say: "a demo issuer whose policy is 'whoever asks' — the credential it writes
+   is a real XLS-70 object on the ledger, and every node reads it from the ledger before it signs; a real deployment
+   puts a third party with its own policy here."
+2. If the service were down, the app says what is missing before any payment ("One step first: … not answering"), and
+   the team's browser can still issue from the key saved in the under-the-hood fold. The verifiers refuse a deposit
+   without the credential (403 naming the issuer). The gate is on when the nodes run with `CREDENTIAL_ARGS` (then
+   `/config.credential` is set); off, the row hides and shields are open.
 3. `/issuer.html` is the **under-the-hood** page: what the one button does step by step, what the gate is mechanically,
    and the team's issuer-key fold at the bottom. Open it only if a judge asks "what just happened".
 
