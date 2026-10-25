@@ -21,7 +21,9 @@ nullifiers to the signers' nodes, so it is a **demo of the flow, labelled as deg
 product feature**; the accepted design (`docs/design/TIER4-PROOF-OF-FUNDS-REWRITE.md`) is a circuit that proves
 control of unspent notes ≥ X without revealing nullifiers, the committed next step; the demo nodes run the revealing
 path only with an explicit flag. The demo issuer's audit is **closed** (its fixes — one decision queue, rippled codes,
-no stale client — are live, with an nginx rate limit on the endpoint), and every surface carries the label *KYC in demo
+no stale client — are live — the deployed service's policy string matches the merged build; the nginx request limit on the
+endpoint is the operator's remaining hardening step, which the audit marks done once a burst answers 429), and every
+surface carries the label *KYC in demo
 mode*: the gate is the real, working system; the issuer's admission policy in the demo is open registration. The texts
 below say so.
 
@@ -121,3 +123,4 @@ every page.
 - 2026-10-25 (late night) — status refreshed (issuer service, one-button flow, Mastercard receipts, Tier-4 doc, the flag); the description gains the Mastercard sentence; the Mastercard AP4M form's two long answers added.
 - 2026-10-25 (morning) — the audit's label for the demo issuer on every surface: KYC in demo mode — the gate is the real system, the issuer's admission policy allow-by-default for the demo; counts updated.
 - 2026-10-25 (day 2) — demo-issuer label reframed per the project lead: open registration (the exchange model — an account is opened first, KYC raises its limits); the "placeholder / standard-practice / not-a-vetting / outside-scope" phrasing dropped; the gate stays the real system, the honest fact (registers anyone who asks, rate-limited) kept.
+- 2026-10-25 (afternoon) — status: the nginx request limit on `/issuer/` stated as the operator's remaining step, not as live (read-only probes at 16:50Z: ten rapid requests on `/issuer/issue` and on `/issuer/health` each answered without a 429).
