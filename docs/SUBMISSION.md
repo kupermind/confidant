@@ -9,7 +9,7 @@ and the credential gate are checks at the public boundary, not proofs about any 
 Formal name everywhere in this text: **Confidant**. The stylized wordmark `C0nf!d@nt` is for the logo only.
 
 Limits (from the form): short description ≤ 200 characters · description ≤ 5000 · technical description ≤ 1000.
-Markdown is accepted in all three. Counts are of the text between the fences (`wc -m` on each block): 177 / 4997 / 989 on 2026-10-25; the Mastercard form's two answers: 2885 / 2972.
+Markdown is accepted in all three. Counts are of the text between the fences (`wc -m` on each block): 177 / 4999 / 989 on 2026-10-25; the Mastercard form's two answers: 2933 / 2972.
 
 **Status (2026-10-25, day 2, night):** everything below is **live on the XRPL testnet** at `https://confidant.im` — the
 pre-existing pool (baseline tag `pre-hackathon`), plus, built on-site and audited: the credential gate (A) with a demo
@@ -39,7 +39,7 @@ Confidant — a compliant shielded pool on the XRP Ledger: private transfers ins
 
 **Built at the hackathon (track: Lending & Borrowing).** Two features, designed before the event and *built, audited and deployed on-site*:
 
-1. **Credential-gated entrance (XLS-70).** A pool can require that a depositing account holds an accepted Credential from an issuer the pool trusts. Every node reads it from the ledger itself at submit and at endorse; a sidecar signs nothing its own node did not accept; `Expiration` is judged by the ledger's own clock. KYC in demo mode: a demo issuer registers anyone who asks, rate-limited (open registration — the model an exchange uses, where an account is opened first and KYC raises its limits); the holder's account accepts the credential with its own signature, under one press; the gate on the ledger is real. It is an engineering switch per pool — gatekeeping on a trusted issuer's say-so at the public boundary, nothing about anyone's notes.
+1. **Credential-gated entrance (XLS-70).** A pool can require that a depositing account holds an accepted Credential from an issuer it trusts. Every node reads it from the ledger at submit and at endorse; a sidecar signs nothing its own node did not accept; `Expiration` is judged by the ledger's clock. KYC in demo mode: a demo issuer registers anyone who asks, rate-limited (open registration, as an exchange opens an account first and KYC lifts its limits); the holder's account accepts it with its own signature, in one press; the gate on the ledger is real. A per-pool switch — gatekeeping on a trusted issuer's say-so at the public boundary, nothing about anyone's notes.
 
 2. **Proof of funds for a lender — the flow, built end to end, and its honest verdict.** A holder proves "I control at least X XRP in the pool" against a challenge (borrower account, a request id, ledger window) without revealing more than X. The proof is the same Orchard circuit under its own signature domain; it is *refused by every apply path* (it can never move funds) and checked *read-only* by every node — nothing is logged, nothing persisted. The quorum then **records the verdict on the ledger** as an expiring XLS-70 Credential on the borrower's account (every signer re-verifies the proof on its own node at signing time and signs only its node's own fields), the borrower confirms with their signature, and a loan broker reads one credential — no file, no API. The holder presses one button; the lender types one address. The credential says "controlled ≥ X as of ledger L", not "controls it now": an underwriting signal, a snapshot, not a lock. **What we found and say plainly:** on the unchanged circuit the proof reveals the nullifiers of the proven notes to whoever holds it (the signers' node operators), so the holder's *next spend* of those notes becomes linkable to the proof; the wallet therefore refreshes its notes by itself right after proving. A privacy property that depends on a refresh step is not a property of the protocol — so this flow ships as a **demo, labelled as degrading the holder's privacy**, and the committed next step is a circuit that proves control of unspent notes without revealing nullifiers.
 
@@ -49,7 +49,7 @@ Confidant — a compliant shielded pool on the XRP Ledger: private transfers ins
 
 **Honest limits.** The pool account and proof verification are federated (k of N): collusion of k signers can drain the pool account but cannot spend anyone's notes. Shield and unshield amounts and addresses are public by construction; an empty pool has no privacy. The quorum exists because today's XRPL has no on-ledger Halo 2 verifier. Testnet only.
 
-**Links.** Live app `https://confidant.im` · how it works `/how-it-works.html` · lender page `/lender.html` · under the hood `/issuer.html` · repository: design `SPEC.md`, audit record `docs/audit/`, demo script `docs/DEMO.md`.
+**Links.** Live app `https://confidant.im` · how it works `/how-it-works.html` · lender page `/lender.html` · under the hood `/issuer.html` · repository: design `SPEC.md`, audit `docs/audit/`, demo `docs/DEMO.md`.
 
 FYI, our crypto/ZK lead was unable to join the hackathon in person and is attending remotely.
 ```
