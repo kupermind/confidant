@@ -294,7 +294,7 @@
 
   <!-- HERO -->
   <section class="hero fade">
-    <p class="eyebrow">Shielded pool · XRP Ledger</p>
+    <p class="eyebrow">Shielded pool · credential gate · proof of funds · XRP Ledger</p>
     <h1>Public ledgers leak everything. <span class="hl">Confidant hides the graph.</span></h1>
     <p class="lede">Confidant is a shielded pool for the XRP Ledger. Value goes in, moves privately, and comes
       out — without exposing amounts or who paid whom. An auditor can still open it; no single operator can betray it.</p>
@@ -400,8 +400,8 @@
     <p class="kicker">This weekend · XRPL hackathon, Lending &amp; Borrowing track</p>
     <h2>Lending on shielded capital</h2>
     <p class="flead">Two features, built on-site on Oct 24–25 on top of the running pool (designs written in advance,
-      code written at the event), using the ledger's own primitives — <b>XLS-70 Credentials</b> and the
-      <b>XRPL Lending Protocol</b>.</p>
+      code written at the event), using the ledger's own primitive — <b>XLS-70 Credentials</b>. The loan side on the
+      <b>XRPL Lending Protocol</b> is the design they are built for (the protocol is devnet-only; nothing of it is built here).</p>
 
     <div class="flow">
       <div class="step">
@@ -419,22 +419,28 @@
       </div>
       <div class="step">
         <span class="n">02 · Proof of shielded funds</span>
-        <h3>Prove ≥ X without showing anything</h3>
-        <p>A holder proves they control at least X inside the pool — without revealing the notes, the total, or any
-          history. The proof is bound to the lender's challenge, the holder's XRPL account and a ledger index; the
-          quorum verifies it and issues an <em>expiring</em> XLS-70 Credential on that account.</p>
+        <h3>Prove ≥ X — one button, a credential on your account</h3>
+        <p>The holder presses one button: the wallet proves it controls at least its balance inside the pool, bound to
+          the holder's XRPL account, a request id and a ledger window; every signer's node re-verifies it, the quorum
+          writes an <em>expiring</em> XLS-70 Credential on that account, and the holder confirms it. <b>Demo-grade, said
+          plainly:</b> on the unchanged circuit the proof reveals the proven notes' nullifiers to the signers' nodes, so
+          the wallet refreshes its notes right after; the accepted next step is a circuit that proves funds without
+          revealing them.</p>
       </div>
       <div class="step">
         <span class="n">03 · A loan against it</span>
         <h3>The lender reads the ledger, not the proof</h3>
-        <p>A loan broker on the XRPL Lending Protocol requires that Credential before it counter-signs the loan. The
-          lender never sees the proof, the notes or the balance — only a verdict on the ledger, with an expiry.</p>
+        <p>A lender types the borrower's address on the <a href="lender.html" target="_blank" rel="noopener">lender
+          page</a> and reads the credential from the ledger — never the proof, the notes or the balance; only a verdict,
+          with an expiry. A loan broker on the XRPL Lending Protocol would require that Credential by policy before it
+          counter-signs the loan: the design, not built this weekend.</p>
       </div>
     </div>
 
     <p class="hnote">Honest line: the Credential says <b>someone controlling ≥ X answered a challenge bound to this
-      account</b> as of that ledger — an underwriting signal, a snapshot, not a lock. Revoking it when the proven notes
-      move, shielded collateral escrow under joint control, and circuit-level locks are the steps after the weekend.</p>
+      account</b> as of that ledger — an underwriting signal, a snapshot, not a lock. The steps after the weekend: the
+      nullifier-free proof-of-funds circuit (the design the audit accepted on 2026-10-25), revoking the credential when
+      the proven notes move, and shielded collateral escrow under joint control.</p>
   </section>
 
   <!-- MASTERCARD AP4M TRACK -->
@@ -530,13 +536,17 @@
           <li>Threshold quorum of independent verifier nodes holds the pool (XRPL SignerList, master key disabled)</li>
           <li>Every note bound to a real on-ledger deposit — no unbacked notes</li>
           <li>OFAC-style screening gate, auditor viewing keys, protocol fees</li>
+          <li>Built Oct 24–25: the credential-gated entrance (XLS-70) with a demo issuer service — KYC in demo mode; the
+            one-button proof of funds written on the holder's account by the quorum (demo-grade, labelled); the lender page;
+            the Mastercard AP4M relay with receipts anyone can re-check</li>
         </ul>
       </div>
       <div class="col dev">
         <h3><span class="dot"></span><span>In development</span></h3>
         <p class="sub">Designed, grounded, not yet live</p>
         <ul class="items">
-          <li>Credential-gated shielding and proofs of shielded funds for lenders — XRPL hackathon, Oct 24–25</li>
+          <li>The proof-of-funds circuit that reveals no nullifiers (the accepted design) — replacing the demo-grade flow</li>
+          <li>A loan broker's policy on the XRPL Lending Protocol requiring the credential (devnet)</li>
           <li>Running the pool inside the attested TRUST enclave cluster — &ldquo;shielded XRPL on TEE&rdquo;</li>
           <li>Per-note proof-of-innocence and richer selective disclosure</li>
           <li>Mainnet, with in-browser (wasm) client-side proving as the production path</li>
@@ -560,7 +570,7 @@
   <!-- CLOSING -->
   <section class="closing">
     <p class="big">Privacy an auditor can <span class="hl">open</span> — and no single operator can <span class="hl">betray.</span></p>
-    <p class="sig">Confidant — shielded XRPL · zero-knowledge today · lending next · enclave-ready later</p>
+    <p class="sig">Confidant — shielded XRPL · zero-knowledge today · credential gate and proof of funds this weekend · enclave-ready later</p>
   </section>
 </main>
 
