@@ -43,7 +43,7 @@ node" button, then a ledger section nobody understood.
 **As it is (2026-10-25, after the lead's review):**
 - **No field.** The app fills everything itself: the amount is the whole private balance (it always attests the
   maximum), the borrower is the wallet's own XRPL account, the "lender id" is a request id the app generates, the
-  validity is 24 hours. The button says what it will do: **[Prove I hold ≥ 25 XRP]**.
+  validity is 24 hours. The button says what it will do: **[Prove I hold 25 XRP]**.
 - **One press does the whole thing.** Prove → the quorum writes the credential → the account's signature confirms it
   → the wallet refreshes its notes by itself. "Rotate your notes" was never a user decision.
 - **One line after it:** "controlled at least 25 XRP as of ledger L, confirmed by your signature, expires …", with

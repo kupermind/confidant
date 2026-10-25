@@ -147,10 +147,17 @@ for (const name of ["index.html", "how-it-works.html", "balances.html", "lender.
 
 // 10. Proof of funds, holder side (demo): create the wallet, shield 25 XRP (24.9375 after the demo's 25 bps fee), then the
 //     one button — the whole balance is proved, the quorum writes the credential, the account confirms it, the notes are refreshed; the balance stays.
-//     Demo timings: faucet 2.5 s; shield 3.5 s; prove 0.9 s, credential 1.5 s, confirm 0.9 s; refresh 0.9 + 1.4 s.
+//     Demo timings: faucet 2.5 s; entry-credential confirm 0.9 s; shield 3.5 s; prove 0.9 s, credential 1.5 s, confirm 0.9 s;
+//     refresh 0.9 + 1.4 s.
 {
-  const setup = `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("shield-amount").value="25";document.getElementById("btn-shield").click()},3200);setTimeout(()=>{document.getElementById("tabbtn-prove").click();document.getElementById("btn-prove").click()},7600)`;
-  const report = `{steps:[...document.getElementById("steps-prove").children].map(e=>(e.classList.contains("on")?"on":"")+(e.classList.contains("done")?"✓":"")).join("|"),msg:${text("msg-prove")},refresh:${text("msg-prove-refresh")},details:${text("prove-details")},label:${text("btn-prove")},bal:${text("priv-balance")},acts:[...document.querySelectorAll("#activity .type")].map(e=>e.textContent).join(","),hidden:document.getElementById("tab-prove").hidden}`;
+  // The demo holder arrives with the entry credential issued, not confirmed: the Prove tab says so before the press.
+  const gate = probe("index.html",
+    `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("tabbtn-prove").click();document.getElementById("btn-prove").click()},3200)`,
+    `{gate:${text("prove-gate")},msg:${text("msg-prove")},steps:[...document.getElementById("steps-prove").children].map(e=>e.classList.contains("on")||e.classList.contains("done")?"x":"").join("|")}`);
+  const g = sample(gate, 390, 4500);
+  check("prove: entry credential not confirmed — said before the press, press refused, no step started", /^One step first: .*not confirmed it — press Confirm in the Credential row/.test(g.gate ?? "") && (g.msg ?? "") === "" && g.steps === "||", g);
+  const setup = `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("btn-accept-cred").click();document.getElementById("shield-amount").value="25";document.getElementById("btn-shield").click()},3200);setTimeout(()=>{document.getElementById("tabbtn-prove").click();document.getElementById("btn-prove").click()},7600)`;
+  const report = `{steps:[...document.getElementById("steps-prove").children].map(e=>(e.classList.contains("on")?"on":"")+(e.classList.contains("done")?"✓":"")).join("|"),msg:${text("msg-prove")},refresh:${text("msg-prove-refresh")},details:${text("prove-details")},label:${text("btn-prove")},gate:${text("prove-gate")},bal:${text("priv-balance")},acts:[...document.querySelectorAll("#activity .type")].map(e=>e.textContent).join(","),hidden:document.getElementById("tab-prove").hidden}`;
   const file = probe("index.html", setup, report);
   const mid = sample(file, 390, 11500);
   check("prove: one button — every step done, the line names the whole balance and the lender link, refresh under way",
@@ -158,11 +165,11 @@ for (const name of ["index.html", "how-it-works.html", "balances.html", "lender.
   const fin = sample(file, 390, 14500);
   check("prove: notes refreshed, balance unchanged, details fold, one credential + one transfer in Activity, button re-labelled",
     /^Notes refreshed ✓/.test(fin.refresh ?? "") && fin.bal === "24.9375" && /Request req-[0-9a-f]{12}/.test(fin.details ?? "") && /confidant\/pof\/v1\|24937500\|12345678\|12367278\|/.test(fin.details ?? "")
-      && (fin.acts ?? "").split(",").filter((t) => t === "credential").length === 1 && (fin.acts ?? "").split(",").filter((t) => t === "transfer").length === 1 && fin.label === "Prove I hold ≥ 24.9375 XRP", fin);
+      && (fin.acts ?? "").split(",").filter((t) => t === "credential").length === 1 && (fin.acts ?? "").split(",").filter((t) => t === "transfer").length === 1 && fin.label === "Prove I hold 24.9375 XRP" && (fin.gate ?? "") === "", fin);
   const empty = probe("index.html",
-    `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("tabbtn-prove").click();document.getElementById("btn-prove").click()},3200)`,
+    `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>document.getElementById("btn-accept-cred").click(),3200);setTimeout(()=>{document.getElementById("tabbtn-prove").click();document.getElementById("btn-prove").click()},4600)`,
     `{msg:${text("msg-prove")},steps:[...document.getElementById("steps-prove").children].map(e=>e.classList.contains("on")||e.classList.contains("done")?"x":"").join("|")}`);
-  const b = sample(empty, 390, 4500);
+  const b = sample(empty, 390, 5800);
   check("prove: an empty private balance is refused before proving", /Nothing to prove/.test(b.msg ?? "") && b.steps === "||", b);
 }
 

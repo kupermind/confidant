@@ -76,7 +76,7 @@ with the quorum; the lender reads XRPL, never a file):
 1. Tab C, `/lender.html`: one field — "Borrower's XRPL address" — and **Check**. Say: "the lender needs nothing but
    the address; no file, no API."
 2. Tab A, the holder's wallet (a pre-populated holder with XRP shielded): **Prove funds**. The button already reads
-   **Prove I hold ≥ 50 XRP** — the whole private balance; nothing to type. Press it. Prove (in the browser) → Record
+   **Prove I hold 50 XRP** — the whole private balance; nothing to type. Press it. Prove (in the browser) → Record
    (every signer's node re-verifies the proof and signs `CredentialCreate` from the pool account, ≈ 10 s) → Confirm
    (the account's own `CredentialAccept`, ≈ 7 s). One line: "controlled at least 50 XRP as of ledger L, confirmed by
    your signature, expires …", with the lender's link. Under it the app is already refreshing the notes (a transfer to
