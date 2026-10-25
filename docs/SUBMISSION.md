@@ -20,7 +20,10 @@ receipt). **Ruling of 2026-10-25 (lead, audit concurring):** the proof of funds 
 nullifiers to the signers' nodes, so it is a **demo of the flow, labelled as degrading the holder's privacy — not the
 product feature**; the accepted design (`docs/design/TIER4-PROOF-OF-FUNDS-REWRITE.md`) is a circuit that proves
 control of unspent notes ≥ X without revealing nullifiers, the committed next step; the demo nodes run the revealing
-path only with an explicit flag. The texts below say so.
+path only with an explicit flag. The demo issuer's audit is **closed** (its fixes — one decision queue, rippled codes,
+no stale client — are live, with an nginx rate limit on the endpoint), and every surface carries the label *KYC in demo
+mode*: the gate is the real, working system; the issuer's admission policy in the demo is open registration. The texts
+below say so.
 
 ---
 
@@ -114,6 +117,7 @@ every page.
 - 2026-10-25 (later) — the one-button Prove funds / one-field lender page (`docs/UI-RULE.md`) reflected in the description; counts updated.
 - 2026-10-25 (evening) — the entry credential issued under the hood; the issuer page became the under-the-hood page; counts updated.
 - 2026-10-25 (night) — logo: slashed zero, the tagline names the two features, the shield becomes the site icon.
+- 2026-10-25 (morning, day 2) — the issuer's audit closed (fixes and the nginx rate limit live), the Credential row wording before the first press, the Audit tab defaulting to the holder's own key; the label "KYC in demo mode" noted in the status.
 - 2026-10-25 (late night) — status refreshed (issuer service, one-button flow, Mastercard receipts, Tier-4 doc, the flag); the description gains the Mastercard sentence; the Mastercard AP4M form's two long answers added.
 - 2026-10-25 (morning) — the audit's label for the demo issuer on every surface: KYC in demo mode — the gate is the real system, the issuer's admission policy allow-by-default for the demo; counts updated.
 - 2026-10-25 (day 2) — demo-issuer label reframed per the project lead: open registration (the exchange model — an account is opened first, KYC raises its limits); the "placeholder / standard-practice / not-a-vetting / outside-scope" phrasing dropped; the gate stays the real system, the honest fact (registers anyone who asks, rate-limited) kept.
