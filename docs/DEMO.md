@@ -100,7 +100,9 @@ with the quorum; the lender reads XRPL, never a file):
 
 ## Mastercard track — "pay for privacy", 5 minutes (only if the AP4M onboarding and two rehearsals happened)
 
-Terminal, `hackathon/ap4m`: `node agent.mjs` — the wallet syncs, a private transfer is built, the relay answers **402**,
+Terminal, `hackathon/ap4m`: `node agent.mjs` — the wallet syncs and **proves its shielded funds** (the quorum writes a
+`ConfidantPoF` credential on the agent's XRPL account, ≈ 28 s; the relay serves only an account that carries one), a
+private transfer is built, the relay answers **402**,
 the agent prints its decision ("price 0.1 RLUSD ≤ max 0.25 — paying"), pays with a Voucher (EVM explorer:
 `VoucherRedeemed` at the PaymentLedger), the relay forwards and the quorum anchors (XRPL testnet explorer: the anchor
 memo — no sender, receiver or amount), `settle` prints the RLUSD payout and the receipt; with `OVER_CAP_DEMO=1` a second
@@ -171,6 +173,7 @@ loopback to the services; add the browser's proof time from the table above for 
 | C: lender page, **Check** (`account_objects`) | < 1 s |
 | C: the wallet's own note refresh after a proof (a second proof + anchor, in the background) | ≈ 25 s |
 | Mastercard track: 402 → channel open → voucher redeemed → relay → anchor on L1 → settlement receipt (2026-10-25, live) | 68 s wall; ≈ 44 s with an open channel (`CHANNEL_ID`) |
+| Mastercard track, run 3 (2026-10-25 03:57 UTC): proof of funds (≈ 28 s) → 402 → voucher → relay → anchor → signed receipt → settlement | 92 s wall incl. a 12 s pause of the sponsor's service; `verify-receipt.mjs` ≈ 5 s |
 
 So the on-stage lending beat (one press: prove → every signer's node → `CredentialCreate` → `CredentialAccept`; then the
 lender's **Check**) is ≈ 30 s of waiting after the proof, all of it visible as explorer links; the wallet's note refresh
