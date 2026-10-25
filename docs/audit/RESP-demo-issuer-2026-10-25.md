@@ -114,3 +114,25 @@ So: code IMPL-PASS'd at 7a4f7ad (non-functional since 8ce47ae), label honest and
 ```
 
 The dev session's follow-up `774309a` (SUBMISSION length) does not touch `backend/quorum`; the anchor stays `7a4f7ad`.
+
+## 7. Final check on the merged head and the deployed service (same day, verbatim): the #100 audit is CLOSED
+
+The code half, after the merge `7c4d401`:
+
+```text
+Merge verified firsthand — the code half of my final check PASSES. 7c4d401 is on main; `git diff 7a4f7ad 7c4d401 -- backend/quorum` empty (merged code == my anchor exactly); `git diff f9607f8 7c4d401 -- core backend/node` empty (the demo-issuer touched neither the pool core nor the node); merged issuer.mjs carries makeIssuer/rippledCode/disconnect. #100 is code-closed on main.
+
+The deploy half is OWED, and it matters: your probe shows the live service is still f85a983 (old policy string), so the running endpoint lacks **F1 (my blocker — the cap race), F2, F3, and the nginx limit_req** (the three 200s). So right now the live demo endpoint is griefable on testnet — a burst can burn the issuer's testnet fees / lock its reserve and brick the demo issuer — until the owner restarts confidant-issuer from 7c4d401 AND the limit_req zone is in place. No real value, not an emergency, but worth the owner knowing before the demo leans on it; I've surfaced the restart as his deploy action.
+
+When you re-probe green, confirm BOTH for my final close: (1) /issuer/health policy string == the merged POLICY const, and (2) the nginx request limit is actually in place (a 4th rapid GET → 429, or the owner confirms the zone). On both I do the final firsthand confirm and #100 closes. Code's sound and on main — good work.
+```
+
+The deploy half, after the owner's redeploy (the dev session's probe: `/issuer/health` policy string byte-identical to
+the merged `POLICY`; all four pages byte-identical to `7c4d401`; eight rapid GETs on `/issuer/health` all 200, i.e. the
+nginx zone not yet in place):
+
+```text
+Confirmed firsthand — I GET'd https://confidant.im/issuer/health myself and the policy string is byte-identical to 7c4d401's merged POLICY const (issuer rfSGoJ5…, 60/h). So the running service is the merged build: **F1 (my blocker), F2, F3 are LIVE.** Both halves of my final check are now done: code merged == anchor (verified), and deployed == merged (verified). **#100 audit is CLOSED.**
+
+The nginx limit_req zone remaining does NOT hold the close: it was my hardening addition, not one of the findings, and with F1's issuance cap now live the residual is only read-flood grief on the issuer's RPC — no fund harm, testnet, LOW. It's the owner's ops config. Your light-probe tracking is the right call; tell me when a 429 appears or the owner confirms the zone and I'll note the hardening fully in place, but it's not blocking. Good work carrying this all the way through — F1 through the merge and onto the live endpoint.
+```
