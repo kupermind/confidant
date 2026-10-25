@@ -161,6 +161,12 @@
   table.cred th { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
   @media (max-width: 480px) { table.cred thead { display: none; } table.cred tr, table.cred td { display: block; } table.cred tr { border-bottom: 1px solid var(--line); padding: 6px 0; } table.cred td { border: 0; padding: 2px 0; } }
 </style>
+<style>
+  /* Under-the-hood page only: long unbreakable identifiers wrap at phone widths whatever the fallback font. */
+  .card .mono, .card code, #trusted, #issue-to, #key-addr { overflow-wrap: anywhere; }
+  .row input { min-width: 0; flex: 1 1 160px; }
+  details p, details .src { overflow-wrap: anywhere; }
+</style>
 </head>
 <body>
 <div class="wrap">
