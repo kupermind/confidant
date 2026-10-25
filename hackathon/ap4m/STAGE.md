@@ -105,7 +105,9 @@ fields so that no seed or key ever reaches the terminal; `node -p` does the same
 
 ## 3. AP4M submission text
 
-Paragraph for the sponsor form (897 characters by `wc -m`, limit 900):
+Paragraph for the sponsor form's short field (897 characters by `wc -m`, limit 900). The two long answers — *Project
+Description* and *How does your solution use Mastercard AP4M / Agentic Payments* (≤ 3000 each) — are in
+`docs/SUBMISSION.md`, section "Mastercard AP4M form":
 
 ```text
 Confidant is a compliant shielded pool on the XRP Ledger. An autonomous agent pays for privacy: it builds a zero-knowledge transfer, meets the relay's 402, applies its policy (price 0.1 ≤ max 0.25 RLUSD, cap left on its channel), pays with an x402 voucher on XRPL EVM; the relay forwards the bundle to a k-of-N quorum that anchors it on XRPL L1. Two ledgers, two receipts: the metered payment is public; sender, receiver and amount are not. Before paying, the agent proves shielded funds: the quorum writes an expiring XLS-70 credential on its XRPL account; the relay underwrites from the ledger. A receipt signed by the merchant and countersigned by the agent is re-checked from public data; an over-cap attempt stops at the policy. Limits: federated quorum (k signers can drain the pool account, never spend a note); proof of funds demo-grade (nullifiers reach the signers' nodes); testnet only.
