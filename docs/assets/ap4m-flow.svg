@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 676" width="1000" height="676" role="img" aria-labelledby="t d" font-family="Inter, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif">
+  <title id="t">Confidant × AP4M — pay for privacy: how the agent, the relay, the quorum and the AP4M service interact</title>
+  <desc id="d">Sequence diagram. Lanes: the agent, the relay (merchant), the Confidant quorum on XRPL L1, and the AP4M service with the PaymentLedger on XRPL EVM. Steps 0 to 6: prove shielded funds, GET /resource → 402, policy decision, voucher redeemed on-chain, POST /relay/transfer checked and anchored, signed receipt, RLUSD settlement.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#B9A6FF"/></marker>
+    <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#7F6FB8"/></marker>
+  </defs>
+  <rect width="1000" height="676" rx="20" fill="#120D2B"/>
+
+  <!-- lane headers -->
+  <g font-size="15" font-weight="700" fill="#F2EEFF" text-anchor="middle">
+    <rect x="35" y="22" width="180" height="46" rx="12" fill="#1C1540" stroke="#3A2F6B"/><text x="125" y="42">Agent</text><text x="125" y="59" font-size="11.5" font-weight="500" fill="#B9A6FF">laptop · native wallet + EVM key</text>
+    <rect x="285" y="22" width="180" height="46" rx="12" fill="#1C1540" stroke="#3A2F6B"/><text x="375" y="42">Relay = x402 merchant</text><text x="375" y="59" font-size="11.5" font-weight="500" fill="#B9A6FF">demo host · holds no pool keys</text>
+    <rect x="535" y="22" width="180" height="46" rx="12" fill="#1C1540" stroke="#3A2F6B"/><text x="625" y="42">Confidant quorum</text><text x="625" y="59" font-size="11.5" font-weight="500" fill="#B9A6FF">verifier nodes + signers · XRPL L1</text>
+    <rect x="785" y="22" width="180" height="46" rx="12" fill="#1C1540" stroke="#3A2F6B"/><text x="875" y="42">AP4M service</text><text x="875" y="59" font-size="11.5" font-weight="500" fill="#B9A6FF">PaymentLedger · XRPL EVM</text>
+  </g>
+  <!-- lifelines -->
+  <g stroke="#3A2F6B" stroke-width="1.5" stroke-dasharray="4 6">
+    <line x1="125" y1="70" x2="125" y2="592"/><line x1="375" y1="70" x2="375" y2="592"/><line x1="625" y1="70" x2="625" y2="592"/><line x1="875" y1="70" x2="875" y2="592"/>
+  </g>
+
+  <!-- steps -->
+  <g font-size="13" fill="#E9E4FF">
+    <!-- 0 -->
+    <circle cx="125" cy="120" r="13" fill="#7919FF"/><text x="125" y="124.5" text-anchor="middle" font-weight="700" fill="#fff">0</text>
+    <line x1="140" y1="120" x2="612" y2="120" stroke="#B9A6FF" stroke-width="2" marker-end="url(#a)"/>
+    <text x="150" y="110" font-weight="600">Prove shielded funds</text>
+    <text x="150" y="138" fill="#B9A6FF" font-size="12">build-pof over the whole balance → POST /pof/credential: every signer's node re-verifies the proof,</text>
+    <text x="150" y="153" fill="#B9A6FF" font-size="12">k of N write CredentialCreate on the agent's XRPL account; the agent accepts it with its own signature</text>
+    <!-- 1 -->
+    <circle cx="125" cy="188" r="13" fill="#7919FF"/><text x="125" y="192.5" text-anchor="middle" font-weight="700" fill="#fff">1</text>
+    <line x1="140" y1="188" x2="362" y2="188" stroke="#B9A6FF" stroke-width="2" marker-end="url(#a)"/>
+    <line x1="362" y1="203" x2="140" y2="203" stroke="#7F6FB8" stroke-width="1.5" stroke-dasharray="3 4" marker-end="url(#ad)"/>
+    <text x="150" y="178" font-weight="600">GET /resource</text>
+    <text x="150" y="220" fill="#B9A6FF" font-size="12">402 { 0.1 RLUSD, PaymentLedger, chain 1449000, channel } — the merchant is the kit's createX402Merchant, unmodified</text>
+    <!-- 2 -->
+    <circle cx="125" cy="262" r="13" fill="#7919FF"/><text x="125" y="266.5" text-anchor="middle" font-weight="700" fill="#fff">2</text>
+    <rect x="148" y="246" width="212" height="34" rx="10" fill="#1C1540" stroke="#9A5CFF"/>
+    <text x="158" y="261" font-weight="600">Policy, no human</text>
+    <text x="158" y="275" fill="#B9A6FF" font-size="11.5">price ≤ 0.25 and cap left → pay; else stop (exit 3)</text>
+    <!-- 3 -->
+    <circle cx="125" cy="322" r="13" fill="#7919FF"/><text x="125" y="326.5" text-anchor="middle" font-weight="700" fill="#fff">3</text>
+    <line x1="140" y1="322" x2="862" y2="322" stroke="#B9A6FF" stroke-width="2" marker-end="url(#a)"/>
+    <text x="150" y="312" font-weight="600">Pay: EIP-712 voucher over x402</text>
+    <text x="150" y="342" fill="#B9A6FF" font-size="12">redeemVoucher on the PaymentLedger → VoucherRedeemed(channel, claim); the private key never leaves the laptop</text>
+    <!-- 4 -->
+    <circle cx="125" cy="392" r="13" fill="#7919FF"/><text x="125" y="396.5" text-anchor="middle" font-weight="700" fill="#fff">4</text>
+    <line x1="140" y1="392" x2="362" y2="392" stroke="#B9A6FF" stroke-width="2" marker-end="url(#a)"/>
+    <line x1="388" y1="392" x2="612" y2="392" stroke="#B9A6FF" stroke-width="2" marker-end="url(#a)"/>
+    <line x1="388" y1="407" x2="862" y2="407" stroke="#7F6FB8" stroke-width="1.5" stroke-dasharray="3 4" marker-end="url(#ad)"/>
+    <text x="150" y="382" font-weight="600">POST /relay/transfer { record, channel, claim, attest }</text>
+    <text x="150" y="424" fill="#B9A6FF" font-size="12">relay: the claim is redeemed on the EVM and unused; the agent's XRPL account signed the bundle hash</text>
+    <text x="150" y="439" fill="#B9A6FF" font-size="12">and carries the ConfidantPoF credential → exactly one forward</text>
+    <text x="150" y="454" fill="#B9A6FF" font-size="12">quorum: k of N re-verify the proof and anchor on XRPL L1 — memo: root + bundle hash; no sender, receiver or amount</text>
+    <!-- 5 -->
+    <circle cx="125" cy="492" r="13" fill="#7919FF"/><text x="125" y="496.5" text-anchor="middle" font-weight="700" fill="#fff">5</text>
+    <line x1="362" y1="492" x2="140" y2="492" stroke="#B9A6FF" stroke-width="2" marker-end="url(#a)"/>
+    <text x="150" y="482" font-weight="600">Receipt</text>
+    <text x="150" y="511" fill="#B9A6FF" font-size="12">{ claim, channel, bundle hash, anchor, agent account, credential URI } signed by the merchant payout key;</text>
+    <text x="150" y="526" fill="#B9A6FF" font-size="12">the agent countersigns with its channel key and its XRPL key, and keeps the file</text>
+    <!-- 6 -->
+    <circle cx="875" cy="560" r="13" fill="#7919FF"/><text x="875" y="564.5" text-anchor="middle" font-weight="700" fill="#fff">6</text>
+    <line x1="860" y1="560" x2="388" y2="560" stroke="#B9A6FF" stroke-width="2" marker-end="url(#a)"/>
+    <text x="400" y="550" font-weight="600">Settle: RLUSD to the merchant payout</text>
+    <text x="400" y="578" fill="#B9A6FF" font-size="12">ClaimPaid + SettlementRecorded on the PaymentLedger; the AP4M evidence page</text>
+  </g>
+
+  <!-- footer -->
+  <rect x="35" y="602" width="930" height="62" rx="12" fill="#1C1540" stroke="#3A2F6B"/>
+  <text x="50" y="621" font-size="12.5" fill="#F2EEFF" font-weight="600">verify-receipt.mjs — anyone re-checks the receipt from public data only, no key and no log:</text>
+  <text x="50" y="638" font-size="12" fill="#E9E4FF">both signatures recover to the channel's parties · VoucherRedeemed for the claim · the pool's anchor names the bundle hash · the credential on the agent's account</text>
+  <text x="50" y="655" font-size="12" fill="#B9A6FF">The metered payment is public; the settlement is private; the proof of funds is demo-grade (the proof names the proven notes to the signers' nodes). Testnet.</text>
+</svg>

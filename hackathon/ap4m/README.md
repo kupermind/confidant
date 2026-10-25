@@ -8,6 +8,8 @@ anchor, a **receipt** signed by the merchant payout key and countersigned by the
 hash, the anchor and the credential; `verify-receipt.mjs` re-checks it from public data only. Two ledgers, three facts:
 the agent proved funds, the metered payment is public, the settlement of the transfer is private.
 
+![Sequence: the agent proves funds, meets the 402, decides, pays with a voucher, the relay checks and forwards, the quorum anchors, a signed receipt, RLUSD settles](../../docs/assets/ap4m-flow.svg)
+
 **What is and is not touched.** The relay is a fail-closed paywall *in front of* the coordinator's existing
 `POST /submit/transfer`. Core, verifier nodes, signer sidecars and the coordinator's trust path are unchanged; the relay
 holds no Confidant keys and never signs on XRPL L1 — so no audit slice (ROADMAP §0 ship rule: a read gate, not a signing
@@ -159,6 +161,35 @@ operators' revenue line, separate from the pool's protocol fee.
 
 Fallbacks: AP4M side down → the pool demo (`docs/DEMO.md`) plus the rehearsal receipts, said plainly; EVM faucet dry →
 the pre-funded rehearsal wallets; channel exhausted → the second channel opened in advance.
+
+## What is enforced, where — and what is not
+
+The sponsor's payment ledger cannot be the enforcer of "this claim paid for this bundle": the kit fixes the resource URL
+at `/resource` with static content and derives a claim id from the voucher (channel, cumulative amount) only, so the
+payment carries no bundle hash. The binding is therefore ours, and it is enforced in code and by the verifier:
+
+| Rule | Enforced by | How |
+|---|---|---|
+| One forward per claim | relay | a persisted spent-set (`spent-claims.json` in the relay's state); a claim that already bought a forward is refused with `402` |
+| Paid before forwarded | relay | `VoucherRedeemed(channel, claim)` read on the EVM, the claim's amount ≥ the price; refusal = `402`, claim unspent |
+| Underwritten before forwarded | relay | `attest`: the key belongs to the account, the signature over the bundle hash verifies, the account carries the pool's `ConfidantPoF` credential (issuer = the pool from `/config`, accepted, unexpired, URI understood, X ≥ `MIN_POF_XRP`); refusal = `403`, claim unspent |
+| No receipt for another bundle | relay | after the anchor, the bundle hash in the quorum's memo must equal the attested one, else `receipt: null` with the reason |
+| The receipt's signer is the merchant | agent | the signature is recovered and compared with the channel's payout address on-chain before the agent countersigns; the relay itself refuses to start if `MERCHANT_PAYOUT_KEY` is not the key of `MERCHANT_PAYOUT` |
+| Everything above, by anyone | `verify-receipt.mjs` | both signatures recover to the channel's two parties; `VoucherRedeemed` for (channel, claim); the anchor sent by the pool account with the bundle hash in its memo; the credential with that URI on the agent's account; exit 0 only then |
+
+**Not enforceable, said plainly.** A relay that takes a claim and never forwards: ordinary merchant non-delivery under
+x402 — the agent is left with a redeemed voucher and no receipt, which is the evidence. The threshold is a solvency
+signal, not coverage of the transfer: the relay never sees the amount. The proof of funds is a snapshot ("controlled ≥ X
+as of ledger L"), never "controls it now".
+
+**Hardenings not done (each ≈ 10 lines, one more live run):** (1) include the claim id and channel id inside the agent's
+signed attestation, so it reads "this account authorizes claim X to pay for bundle Y" and cannot be replayed with
+another claim — today a replay buys nothing (a bundle anchors once), so this is hygiene, not a hole; (2) a signed quote
+`{claim, bundle hash}` from the relay *before* it forwards, so non-delivery would be provable as the merchant's broken
+commitment rather than an absence.
+
+**`/resource` in a browser** redirects to the how-it-works page's Mastercard section (nginx: no `X-AP4M-CHANNEL-ID`
+header → `302`); agents always send the header and reach the kit's merchant.
 
 ## Honest labels
 

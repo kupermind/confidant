@@ -433,6 +433,51 @@
       move, shielded collateral escrow under joint control, and circuit-level locks are the steps after the weekend.</p>
   </section>
 
+  <!-- MASTERCARD AP4M TRACK -->
+  <section id="ap4m">
+    <p class="kicker">This weekend · Mastercard AP4M track</p>
+    <h2>Pay for privacy: an agent buys the relay of a shielded transfer</h2>
+    <p class="flead">A scripted agent holds shielded funds and needs to pay a supplier without publishing it. Privacy is a
+      metered service: the agent pays <b>RLUSD on XRPL EVM</b> through Mastercard's AP4M for the relay of one
+      zero-knowledge transfer, which the pool's quorum then anchors on XRPL L1. Before it may pay, it <b>proves its
+      shielded funds</b> to the quorum; after the anchor it holds a <b>receipt anyone can re-check</b>.</p>
+
+    <figure style="margin:0 0 22px"><img src="ap4m-flow.svg" alt="Sequence diagram of the agent, the relay, the Confidant quorum and the AP4M service: prove funds, 402, policy, voucher, relay and anchor, receipt, settlement" width="1000" height="676" style="width:100%;height:auto;border-radius:20px;border:1px solid var(--line)"></figure>
+
+    <div class="flow">
+      <div class="step">
+        <span class="n">0 · Prove, then 402</span>
+        <h3>Underwritten by the ledger, not by the merchant's word</h3>
+        <p>The agent proves "I control at least X XRP in the pool" to the quorum; k of N signers write an expiring
+          <em>ConfidantPoF</em> credential on the agent's XRPL account and the agent accepts it. The relay serves only an
+          account that carries one, read from the ledger. Then the ordinary x402 dance: <code>GET /resource</code>,
+          <code>402</code>, the agent's policy (price ≤ its maximum, budget left on its channel) decides to pay — no human.</p>
+      </div>
+      <div class="step">
+        <span class="n">1 · Pay, relay, anchor</span>
+        <h3>Public meter, private settlement</h3>
+        <p>An EIP-712 voucher is redeemed on the PaymentLedger (<em>VoucherRedeemed</em>). The agent posts the bundle with
+          its claim and an attestation — its XRPL account signing the bundle hash. The relay checks the claim on the EVM
+          and the credential on XRPL, forwards once; the quorum re-verifies the proof and anchors it: the memo carries the
+          root and the bundle hash, never a sender, a receiver or an amount.</p>
+      </div>
+      <div class="step">
+        <span class="n">2 · Receipt and settlement</span>
+        <h3>A receipt the judge can verify alone</h3>
+        <p>The relay signs {claim, channel, bundle hash, anchor, agent account, credential} with the merchant payout key
+          named in the 402; the agent countersigns with its channel key and its XRPL key. <code>verify-receipt.mjs</code>
+          re-checks both signatures, the redeemed voucher, the pool's anchor and the credential from public data only.
+          RLUSD then settles to the merchant payout.</p>
+      </div>
+    </div>
+
+    <p class="hnote">Honest line: the metered payment is fully public on AP4M's rail; the settlement of the transfer is
+      private; the proof of funds is <b>demo-grade</b> (the proof names the proven notes to the signers' nodes) and says
+      "controlled ≥ X as of ledger L", not "controls it now". If you opened <code>/resource</code> in a browser and landed
+      here: that URL is the machine-to-machine ticket endpoint of the relay; agents call it with their channel header.
+      Testnet only; the sponsor's kit is for the hackathon.</p>
+  </section>
+
   <!-- THE TEE MOVE -->
   <section>
     <p class="kicker">Where it goes next</p>
