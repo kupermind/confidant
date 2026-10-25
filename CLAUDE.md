@@ -51,6 +51,12 @@ Refer to people by role, never by name, in anything that reaches git (see hard r
   the judged work is the new features built on-site (ROADMAP §0). Any pre-event prototype of them
   is named as pre-event. Be honest.
 - **Scope is fixed in SPEC.md.** Non-goals (multi-asset, AMM, ZKML, on-ledger verify, WASM) stay cut.
+- **UI rule (project lead, 2026-10-25) — Occam's razor on every element.** Every link, button, term,
+  field and input requirement must survive one question: can we say in one sentence why the user has to
+  do this here? If not, prefill it, derive it, move it to the other party, or drop it. The pages are for
+  a non-expert; the ideal is one button; a field nobody knows how to fill is not a field; one action per
+  state; the explanation before the input, not in the error after it; walk every page as a first-time
+  user before opening the PR and say so in it. Full text and the worked example: `docs/UI-RULE.md`.
 
 ## Stack
 
