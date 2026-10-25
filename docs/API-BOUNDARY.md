@@ -141,7 +141,8 @@ the worker op `pof({ amount, challenge })` (one name on every surface: worker op
   the holder's wallet signs over and what every node recomputes from the fields — are the UTF-8 string
   `confidant/pof/v1|<borrower>|<amount>|<ledgerIndex>|<expiry>|<lender>`. The UI builds exactly this string and passes it
   to `pof({ amount, challenge })`; `amount` is in drops.
-- **Verify.** The lender — or the holder on the lender's behalf — POSTs `{ record, amount, challenge }` to **each node**
+- **Verify.** Whoever holds a record — the signer sidecars on the credential path, the check tooling
+  (`backend/quorum/pof-check.mjs`), a third party handed one — POSTs `{ record, amount, challenge }` to **each node**
   at a URL from `/config.nodes` (`/node/<i>/pof/verify` on the UI origin). The coordinator is not in the path and never
   sees the record. The node validates the fields, judges freshness against the validated ledger index **it reads itself**
   (`ledgerIndex` within 200 ledgers of it, `expiry` after it), recomputes the bytes and runs the read-only check on its
@@ -158,32 +159,32 @@ the worker op `pof({ amount, challenge })` (one name on every surface: worker op
   this challenge as of the validated ledger: an underwriting signal, a snapshot, not a lock, and not proof that the borrower
   owns the notes." k verdicts from N nodes are k independent reads of the same ledger-reconstructible state; the lender
   decides how many it wants. Nothing reaches the ledger in this slice.
-- **Holder side (UI, built 2026-10-24).** A fourth tab, **Prove funds**: amount, borrower (prefilled with the holder's
-  XRPL account), lender id, validity (1 / 6 / 24 h → 900 ledgers per hour). The app reads the validated ledger index
-  itself, builds the challenge and the canonical string, proves in the browser (`pof`), POSTs
-  `{ record, amount, challenge }` to **every** URL in `/config.nodes` and shows a per-node verdict table (✓ / the
-  refusal, the ledger judged at, that node's root), the honest label, and the **proof package**
-  `{ amount, challenge, record, bundleHash }` to copy or download for the lender. It then offers to **rotate the notes**
-  (a transfer to the holder's own address, pre-filled on the Transfer tab) so the nodes cannot link the next spend to the
-  proof. The package is never sent to the coordinator and is not stored.
-- **Lender page (`frontend/lender.html`, built 2026-10-24).** Step 1 drafts the request to the borrower (lender id,
-  minimum amount, validity). Step 2 takes the pasted or uploaded package, checks its shape, shows what it claims
-  (amount, borrower with an explorer link, lender id — flagged when it is not the lender's own, the ledger window and
-  how long it is still valid), POSTs to every node in `/config.nodes`, and prints the verdict table with "k of N nodes
-  verified" and the nodes' `meaning` verbatim; a 400 (stale / expired) and a 409 (does not verify) are explained. A
-  "told / not told / not a lock" card closes the page. `?demo=1` fakes four nodes (one busy, 429) and loads a demo
-  package.
-- **On the ledger (signing path, built, passed and deployed 2026-10-24).** When k of N nodes verified, the
-  Prove funds tab offers *record it on the ledger as a Credential*: `POST /pof/credential` with the same body. The answer
-  names the `CredentialCreate` transaction and the fields; the app then offers **Confirm with my signature** —
-  `CredentialAccept { Account: borrower, Issuer: pool, CredentialType }` signed in the browser by the holder's XRPL account
-  (the account named in the challenge; the app refuses to confirm for another account). Both land in Activity. The
-  Credential's `Expiration` is `close_time(L) + 4 s × (E − L)`, its `URI` is the text
-  `confidant/pof/v1|X|L|E|<digest16>` — every node derives both, so sidecars sign only what their node computed. The
-  lender page's step 3 reads the borrower's credentials from the ledger (`account_objects type credential`, issuer = the
-  pool, type `ConfidantPoF`), reports accepted / issued / expired with the expiry time, decodes the URI and says whether it
-  matches the package it verified (the nodes' `credential.uri` from the verdicts). Honest label on both surfaces: the
-  credential says "controlled ≥ X as of ledger L", not "controls it now".
+- **Holder side (UI, rebuilt 2026-10-25 under `docs/UI-RULE.md`).** The **Prove funds** tab is one button. The app
+  fills every field itself: `amount` = the wallet's whole private balance (it always attests the maximum), `borrower` =
+  this browser's XRPL account, `lender` = a request id the app generates (`req-<12 hex>`; the lender never sees it —
+  they read the ledger by address), `ledgerIndex` = the validated ledger the app reads itself, `expiry` = 24 h later
+  (21 600 ledgers). The button says what it will do ("Prove I hold ≥ X XRP"). Pressed, it: removes the holder's
+  previous proof-of-funds credential from the pool if one is still on the account (`CredentialDelete` by the subject —
+  the nodes refuse a borrower who holds one); proves in the browser (`pof`); `POST /pof/credential` (every signer's
+  node re-verifies the proof on its own state; k of N sign `CredentialCreate`); signs `CredentialAccept` with the
+  account (the app refuses to confirm for another account); then **refreshes the notes by itself** — a private
+  transfer of the whole balance to the wallet's own address — so a later payment cannot be tied to the proof. One
+  result line ("controlled at least X as of ledger L, confirmed by your signature, expires …") with the lender's link
+  `lender.html?account=<borrower>`, a *Details* fold (request id, window, signers, URI, bundle hash, proving time) and
+  a quiet refresh line. The record goes to the coordinator for the credential only — never to a file, the clipboard or
+  a package. The page no longer calls `/pof/verify` itself; the per-node verdicts are the sidecars' job.
+- **Lender page (`frontend/lender.html`, rebuilt 2026-10-25).** One input — the borrower's XRPL address, prefilled and
+  checked by itself when opened from the holder's link — and **Check**: `account_objects type credential` on the
+  validated ledger, the object with `Issuer` = the pool (from `/config`) and type `ConfidantPoF`; its URI decoded as
+  `confidant/pof/v1|X|L|E|<digest16>` (anything else is reported as not understood, never read as a verdict);
+  accepted / issued-not-yet-confirmed / expired with the expiry time; the verdict in one line — "controlled at least X
+  XRP in the pool as of ledger L (about N min ago)" — and a short "told / not told / not a lock" card. No package, no
+  `/pof/verify`, no call to the coordinator but `/config`. `?demo=1` fakes the ledger for the demo borrower's address.
+- **On the ledger (signing path, built, passed and deployed 2026-10-24; the only hand-off since 2026-10-25).**
+  `POST /pof/credential` answers with the `CredentialCreate` transaction and the fields. The Credential's `Expiration`
+  is `close_time(L) + 4 s × (E − L)`, its `URI` the text `confidant/pof/v1|X|L|E|<digest16>` — every node derives
+  both, so sidecars sign only what their node computed. Honest label on both surfaces: the credential says
+  "controlled ≥ X as of ledger L", not "controls it now".
 
 ## 3. What the UI must produce — the `record`
 

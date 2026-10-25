@@ -32,24 +32,28 @@ Consequences, each one a check before a page ships:
 Honest labels (`SPEC.md`) stay as they are: the rule removes *noise*, never the *truth*. A one-sentence
 honest limit next to the one button is correct; a paragraph of caveats is not.
 
-## Worked example — Prove funds, as it is and as it should be
+## Worked example — Prove funds, as it was and as it is
 
-**As it is (2026-10-25):** the holder is asked for an amount, a borrower account, a "lender id", a
-validity, then gets a paragraph that names four nodes, a ledger range and three different actions
-(copy or download the package, rotate the notes, record on the ledger) with the buttons inline.
+**As it was (2026-10-25, morning):** the holder was asked for an amount, a borrower account, a "lender id", a
+validity, then got a paragraph that named four nodes, a ledger range and three different actions (copy or
+download the package, rotate the notes, record on the ledger) with the buttons inline. The lender page had a
+"draft the request" section with an id nobody recognised, a paste box, a file picker and a "verify with every
+node" button, then a ledger section nobody understood.
 
-**As it should be:**
-- The **lender's page** produces one link: `/?prove=<lender-id>:<amount>:<hours>` (plus the lender's
-  display name). The lender sends that link to the borrower. Everything the holder was typing is in it.
-- The holder opens the link and sees **one line and one button**: "Acme Loans asks you to prove you hold
-  at least 10 XRP in the pool. Nothing moves, nothing is revealed but the amount." — **[Prove]**.
-  Borrower = the wallet's own account (prefilled, shown, not asked). Validity = the default in the link.
-- After it: one line, one button — "Verified by the pool's nodes. Valid for 24 hours." —
-  **[Send the proof to Acme Loans]** (copies the package, or opens the lender's page with it). A quiet
-  secondary line: "Record it on the XRP Ledger instead →" (the credential path), and a one-sentence
-  honest limit: "This shows what you held at this moment; it does not lock anything."
-- "Rotate your notes" is not a user decision: the wallet does the self-transfer after a proof by default
-  (or the hint lives in the wallet card, not in the proof result).
-- The technical facts (which nodes, which ledger, the root) are a *Details* fold, not the message.
+**As it is (2026-10-25, after the lead's review):**
+- **No field.** The app fills everything itself: the amount is the whole private balance (it always attests the
+  maximum), the borrower is the wallet's own XRPL account, the "lender id" is a request id the app generates, the
+  validity is 24 hours. The button says what it will do: **[Prove I hold ≥ 25 XRP]**.
+- **One press does the whole thing.** Prove → the quorum writes the credential → the account's signature confirms it
+  → the wallet refreshes its notes by itself. "Rotate your notes" was never a user decision.
+- **One line after it:** "controlled at least 25 XRP as of ledger L, confirmed by your signature, expires …", with
+  the lender's link. No package to copy or download — the hand-off is the borrower's address. The technical facts
+  (request id, window, signers, URI, bundle hash) are a *Details* fold, not the message.
+- **The lender page is one field and one button:** the borrower's address (prefilled from the link, checked by
+  itself) and **[Check]**, reading the credential from the ledger; then one line and a short "told / not told / not a
+  lock" card. The lender never has to ask the borrower for anything.
 
-The same walk applies to the lender page, the issuer/provider page and the Compliance row.
+The first sketch had the lender produce a link with an amount and an id for the holder to open; the credential
+path made that unnecessary, so it was dropped rather than built.
+
+The same walk applies to the issuer/provider page and the Compliance row.
