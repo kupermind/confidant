@@ -128,7 +128,9 @@ Orchard circuit reused unchanged — requirements, alternatives, costs accepted:
 
 Built for the AI & Fintech XRPL Hackathon (NYC, Oct 24–25, 2026). The organizers judge only what is built
 during the event, so the state the team arrived with is tagged **`pre-hackathon`** on `main` (cut on the last
-pre-event merge, with CI green on that commit); everything after that tag is event work. The baseline pool runs on XRPL testnet at https://confidant.im/ with 40 bundles
+pre-event merge, with CI green on that commit); everything after that tag is event work. One pre-event prototype
+exists beside the tag: draft PR #29, a spike of the proof-of-funds core on the unchanged circuit, never merged and
+named as pre-event; the proof of funds that ships was built at the event. The baseline pool runs on XRPL testnet at https://confidant.im/ with 40 bundles
 (a synthetic anonymity set funded from the testnet faucet by the operator — say so). Its public log is pinned
 on IPFS — CID `bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda` ([gateway](https://gateway.pinata.cloud/ipfs/bafybeifgshmfpvfw75wbi5755urzjxejvjwv5lwds6lys6nelajd6etzda)), published on the ledger in a
 [`confidant/snapshot` memo](https://testnet.xrpl.org/transactions/8CBBA25CC347F510E626467A4987EF2BC77744944483165E60D960445625C03B) — and a fresh node rebuilds the whole pool from the XRP Ledger plus that

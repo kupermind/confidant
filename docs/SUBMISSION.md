@@ -24,8 +24,9 @@ path only with an explicit flag. The demo issuer's audit is **closed** (its fixe
 no stale client — are live — the deployed service's policy string matches the merged build; the nginx request limit on the
 endpoint is live too: 60 requests a minute per address with a burst of 20, excess answered 429 — probed 2026-10-25
 after the change, 30 rapid `GET /issuer/health` → 17 answered, 13 refused with 429), and every surface carries the
-label *KYC in demo mode*: the gate is the real, working system; the issuer's admission policy in the demo is open registration. The texts
-below say so.
+label *KYC in demo mode*: the gate is the real, working system; the issuer's admission policy in the demo is open registration. A
+pre-event prototype of the proof-of-funds core exists as draft PR #29 (never merged, its CI red on purpose), disclosed as
+pre-event in `ROADMAP.md` §0; the shipped feature was built on-site. The texts below say so.
 
 ---
 

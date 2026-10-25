@@ -48,7 +48,7 @@ unshield, what makes it safe, this weekend's lending features, the enclave horiz
 judges and lenders; it is phone-friendly.
 
 The header shows **N XRP shielded in the pool · public** as a headline stat left of the status pill, with
-"Pool account B = N shielded + E float and unswept fees" under it and a "How it is counted →" link that opens `/balances.html`, which
+"Pool account B = N shielded + E float and unswept fees" under it and a "How balances are counted →" link that opens `/balances.html`, which
 reconciles the two figures live from the ledger and answers the usual questions (memo, stray XRP, fees, float, anchors):
 say "the pool's total is public — every shield and unshield is a Payment on the ledger; what's private
 is who holds what and who paid whom inside."
