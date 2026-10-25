@@ -402,7 +402,12 @@ Credential on the ledger from that issuer, of that type, accepted by the subject
 node itself from the validated ledger at submit and again at endorse (the sidecar rule is unchanged: it signs
 nothing its node did not accept), failing closed when the ledger cannot be read; refusals are 403 and name
 issuer, type and account. Do not say "KYC'd pool": it is gatekeeping on a trusted issuer's say-so at the public
-boundary — the issuer vouches for whoever it chooses — and it says nothing about anyone's notes.
+boundary — the issuer vouches for whoever it chooses — and it says nothing about anyone's notes. On the testnet demo
+the issuer is a service that registers any account that asks (`backend/quorum/issuer.mjs`): KYC in demo mode — the gate is
+the real, working system and graduates to production as it is; the issuer's admission policy in the demo is open
+registration (it registers any account that asks, rate-limited — the model an exchange uses, where an account is opened
+first and KYC raises its limits); a real deployment runs its own issuer policy against the same gate (audit
+ruling 2026-10-25).
 
 **Boundary screening (optional policy; every node enforces its own).** A node started with
 `--screening-list FILE` (one XRPL address per line or a JSON array — e.g. OFAC's "Digital Currency

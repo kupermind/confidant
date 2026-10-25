@@ -137,14 +137,21 @@ ISSUER_KEY=/srv/confidant/data/quorum/issuer.key.json
 COORDINATOR_URL=http://127.0.0.1:7900
 ISSUER_PORT=7960
 # unit: node issuer.mjs in backend/quorum, Restart=always, NoNewPrivileges
-# nginx: location /issuer/ { proxy_pass http://127.0.0.1:7960/; }
+# nginx — the internal cap bounds WRITES only (an idempotent answer is a free ledger read): limit REQUESTS per IP in front
+#   limit_req_zone $binary_remote_addr zone=issuer:1m rate=10r/m;
+#   location /issuer/ { limit_req zone=issuer burst=5 nodelay; proxy_pass http://127.0.0.1:7960/; }
 ```
 
 `GET /issuer/health` shows the issuer, the policy and how many credentials were written this hour; `POST /issuer/issue
-{ subject }` writes one. **Label it as what it is:** the gate's mechanism is real — every node still reads the credential
-from the ledger before it signs — and the issuer's policy is a stub ("whoever asks"). A production pool replaces this
-service with a third-party issuer that has a policy; nothing on the nodes changes. The issuer account pays the reserve
-for each unaccepted credential and the fee for each write; watch its XRP balance on a busy day. To turn it off: stop the
+{ subject }` writes one. **Label it as what it is, on every surface:** this is **KYC in demo mode**. The credential gate, the issuer attestation,
+the fail-closed check by every node before it signs and the holder's on-ledger accept are the real, working system and
+graduate to production as they are. The issuer's admission **policy in the demo is open registration**: this service
+registers any account that asks, rate-limited — the model an exchange uses, where an account is opened first and KYC
+raises its limits. A production pool runs its own decision logic (approve/deny by policy) through the same issuer;
+nothing on the nodes or in the gate changes (audit ruling 2026-10-25, `docs/audit/RESP-demo-issuer-2026-10-25.md`). Say
+neither "not KYC" nor that the demo vetted anyone (project lead, 2026-10-25). The issuer account pays the reserve
+for each unaccepted credential and the fee for each write; fund it so that the capped spend (60 unaccepted credentials an
+hour × the owner reserve, plus fees) cannot hit `tecINSUF_RESERVE` mid-demo, and watch its XRP balance on a busy day. To turn it off: stop the
 unit; the app then says what is missing before any payment, and the team's key saved in the browser (the under-the-hood
 page's fold) can still issue.
 
