@@ -75,6 +75,9 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
   Tests for the pages: `node --test "frontend/test/*.test.mjs"` (pure functions against a public ledger fixture) and
   `node frontend/test/browser-smoke.mjs` (headless Chrome, demo mode: phone-width layout, create-wallet
   states, step ticks, the balances check row) — both run in CI.
+  Site identity since 2026-10-25: the shaped-X mark and the Sora wordmark (`docs/assets/logo-b/`; the header of every
+  page and the favicon set in `frontend/`). The shield logo with the stylized wordmark (`docs/assets/logo.png`) is the
+  hackathon platform's upload and stays as it is.
 - No Solidity, no WASM, no `xrpl-rust`.
 
 ## Privacy and trust — what we claim, what we don't

@@ -108,8 +108,11 @@ wordmark `C0nf!d@nt` (logo only, per the branding rule; the second glyph is a ze
 counter so it does not read as an O) and the line "SHIELDED POOL · CREDENTIAL GATE · PROOF OF FUNDS" — the pool and the
 two hackathon features, named as features. Violet `#7919FF` on deep ink, the UI's accent. Upload the PNG to the form (the
 SVG loads Google Fonts for the wordmark and positions the slash for that font; the PNG has it all baked in).
-`docs/assets/icon.svg` is the shield alone — the website icon, served as `frontend/favicon.svg` with PNG fallbacks on
-every page.
+The **site identity from 2026-10-25** is the designer's variant B: the shaped-X mark in place of the C and the Sora
+wordmark (`docs/assets/logo-b/`: mark and wordmark SVGs, `icon-512.png`) — the header of every page and the favicon set
+(`favicon.ico`, `favicon.svg`, `favicon-64.png`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`,
+`site.webmanifest`, cache-busted `?v=2`). `docs/assets/logo.png` above stays the platform upload. `docs/assets/icon.svg`
+is the shield alone, kept for the decks.
 
 ## Change log
 
