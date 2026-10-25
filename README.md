@@ -63,9 +63,9 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
   service (`backend/quorum/issuer.mjs`): the app asks it to write the XLS-70 entry credential to the holder's own
   account and confirms it under the hood when the holder shields or proves, so anyone can try the pool without a key;
   this is KYC in demo mode: the gate the nodes enforce is the real, working system; the issuer's admission policy in
-  the demo is allow-by-default (any account that asks, rate-limited — standard demo practice; a full KYC decision pipeline
-  is outside the hackathon's scope, so a demo credential attests the request, not a vetting); a real deployment drops its
-  own approve/deny logic into the same issuer, the gate unchanged.
+  the demo is open registration (it registers any account that asks, rate-limited — the model an exchange uses, where an
+  account is opened first and KYC raises its limits); a production deployment runs its own issuer policy against the same
+  gate.
   `frontend/lender.html` is the lender side of proof of funds (hackathon feature C): the holder's **Prove funds**
   tab is one button — the whole private balance is proved in the browser, every signer's node re-verifies the proof,
   the quorum writes an expiring XLS-70 Credential on the holder's XRPL account, the holder's own signature confirms

@@ -79,3 +79,22 @@ On your noun question: **"policy" is the right noun** — allow-by-default IS a 
 
 **Artifact identity on merge:** the owner merges #101 + #100 and redeploys. On that I do one check — `git diff <merged head> 8ce47ae -- backend/quorum` is empty (the merge didn't alter issuer*.mjs) and the deployed issuer is from the merged head. Then #100 is fully closed. Everything here is sound.
 ```
+
+## 5. Owner's final label (2026-10-25) — supersedes the "not a vetting" caveat in §3/§4
+
+The project lead ruled that the demo issuer must not be framed as a shortcoming, placeholder or missing pipeline: open
+registration with KYC to raise limits is a legitimate, ordinary model (the exchange model — an account is opened first,
+KYC lifts limits). So the apologetic phrasing — "placeholder", "standard practice for a demo", "a full KYC decision
+pipeline is outside the hackathon's scope", "not a defect/flaw", and "a demo credential attests the request, not a
+vetting" — is dropped on every surface. The honest core is **kept, not softened**: the surfaces still say plainly that
+the demo issuer registers any account that asks, rate-limited, and that the gate on the ledger is the real system — so
+nothing claims a holder was vetted, and nothing calls the real gate "not KYC". Label of record on every surface:
+
+> "KYC in demo mode: the credential gate every node enforces on the ledger is the real, working system; the issuer's
+> admission policy in the demo is open registration — it registers any account that asks, rate-limited, the model an
+> exchange uses where an account is opened first and KYC raises its limits; a production deployment runs its own issuer
+> policy against the same gate."
+
+This narrows §4's "keep 'attests the request, not a vetting' verbatim": the overclaim it guarded against (implying a
+vetting happened) is instead prevented by stating the open-registration fact directly, which the CI over-claim check and
+the honest-label rule both accept. §1–§4 above are left as the verbatim record of the audit's position at the time.

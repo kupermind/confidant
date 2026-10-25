@@ -686,7 +686,7 @@
             <h4>XRPL account<span class="pub">public</span></h4>
             <div class="kv"><span class="k">Address</span><span class="v" id="xrpl-addr"></span><button class="small ghost copy" data-copy="xrpl-addr">Copy</button></div>
             <div class="kv"><span class="k">Balance</span><span class="v" id="xrpl-balance">—</span><button class="small" id="btn-fund">Fund from faucet</button></div>
-            <div class="kv" id="cred-row" hidden title="Credential-gated pool: a deposit is accepted only from an XRPL account that holds an XLS-70 Credential from the issuer the pool trusts, confirmed by the account's own signature. Every verifier node reads the credential from the ledger itself before it signs; the credential says nothing about anyone's notes. It is a per-pool switch the operator sets, applied to every depositor alike. KYC in demo mode: the gate is the real system; the demo issuer's admission policy is allow-by-default (anyone who asks, rate-limited), so a demo credential attests the request, not a vetting. Details on the under-the-hood page."><span class="k">Credential</span><span class="v" id="cred-status">—</span><button class="small" id="btn-accept-cred" hidden>Confirm</button></div>
+            <div class="kv" id="cred-row" hidden title="Credential-gated pool: a deposit is accepted only from an XRPL account that holds an XLS-70 Credential from the issuer the pool trusts, confirmed by the account's own signature. Every verifier node reads the credential from the ledger itself before it signs; the credential says nothing about anyone's notes. It is a per-pool switch the operator sets, applied to every depositor alike. KYC in demo mode: the gate is the real system; the demo issuer registers anyone who asks (rate-limited) — open registration, the exchange model where an account is opened first and KYC raises its limits. Details on the under-the-hood page."><span class="k">Credential</span><span class="v" id="cred-status">—</span><button class="small" id="btn-accept-cred" hidden>Confirm</button></div>
           </div>
           <div class="col-kv">
             <h4>Pool wallet<span class="pub">off ledger</span></h4>
@@ -988,7 +988,7 @@
   // An issued-not-confirmed credential needs no key: the account confirms it by itself.
   const issuerKey = () => { const i = store.get("issuer"), c = credentialCfg(); return i && c && i.address === c.issuer ? i : null; };
   // The demo issuer as a service (the issuer the nodes trust, operated by the team): it writes the entry credential to
-  // any account that asks, rate-limited — so a judge on a phone needs no key. Its admission policy is allow-by-default for the demo; the gate is real.
+  // any account that asks, rate-limited — so a judge on a phone needs no key. Its admission policy is open registration for the demo; the gate is real.
   let issuerSvc = null;
   async function issuerAvailable() {
     if (DEMO) return !new URLSearchParams(location.search).has("noissuer");

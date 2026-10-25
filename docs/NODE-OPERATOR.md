@@ -145,12 +145,11 @@ ISSUER_PORT=7960
 `GET /issuer/health` shows the issuer, the policy and how many credentials were written this hour; `POST /issuer/issue
 { subject }` writes one. **Label it as what it is, on every surface:** this is **KYC in demo mode**. The credential gate, the issuer attestation,
 the fail-closed check by every node before it signs and the holder's on-ledger accept are the real, working system and
-graduate to production as they are. The issuer's admission **policy in the demo is allow-by-default**: this service
-issues to any account that asks, rate-limited — the standard practice for a demo, not a defect (a full KYC decision
-pipeline is outside the hackathon's scope), so a demo credential attests that the account asked, not a vetting. A
-production pool drops its own decision logic (approve/deny by policy) into the same issuer; nothing on the nodes or in
-the gate changes (audit ruling 2026-10-25, `docs/audit/RESP-demo-issuer-2026-10-25.md`). Say neither "not KYC" nor that
-the demo vetted anyone, and do not call allow-by-default a flaw (project lead, 2026-10-25). The issuer account pays the reserve
+graduate to production as they are. The issuer's admission **policy in the demo is open registration**: this service
+registers any account that asks, rate-limited — the model an exchange uses, where an account is opened first and KYC
+raises its limits. A production pool runs its own decision logic (approve/deny by policy) through the same issuer;
+nothing on the nodes or in the gate changes (audit ruling 2026-10-25, `docs/audit/RESP-demo-issuer-2026-10-25.md`). Say
+neither "not KYC" nor that the demo vetted anyone (project lead, 2026-10-25). The issuer account pays the reserve
 for each unaccepted credential and the fee for each write; fund it so that the capped spend (60 unaccepted credentials an
 hour × the owner reserve, plus fees) cannot hit `tecINSUF_RESERVE` mid-demo, and watch its XRP balance on a busy day. To turn it off: stop the
 unit; the app then says what is missing before any payment, and the team's key saved in the browser (the under-the-hood

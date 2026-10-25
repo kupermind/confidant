@@ -6,11 +6,10 @@
 // What it is: the issuer whose address the nodes trust (/config.credential.issuer), as a service, so that anyone —
 // a judge on a phone — can enter the pool without the team pasting a key into their browser. Say what that means: this
 // is KYC in demo mode. The credential gate, the issuer attestation, the fail-closed check by every node before it signs
-// and the holder's on-ledger accept are the real, working system; the issuer's admission POLICY in the demo is
-// allow-by-default — this service issues to any account that asks, rate-limited — the standard practice for a demo (a full
-// KYC decision pipeline is outside the hackathon's scope), so a demo credential attests the request, not a vetting. A real
-// deployment drops its own approve/deny logic into this same issuer with no change to the gate (audit ruling 2026-10-25,
-// docs/audit/RESP-demo-issuer-2026-10-25.md).
+// and the holder's on-ledger accept are the real, working system and graduate to production as they are. The issuer's
+// admission POLICY in the demo is open registration — this service registers any account that asks, rate-limited, the
+// model an exchange uses: an account is opened first, and KYC raises its limits. A production deployment runs its own
+// issuer policy against the same gate (audit ruling 2026-10-25, docs/audit/RESP-demo-issuer-2026-10-25.md).
 //
 // What it holds: the demo issuer's key only (ISSUER_KEY). Never a pool key, never a holder's key. It signs
 // CredentialCreate (and, for an expired one, CredentialDelete) from the issuer account; the holder's own
@@ -44,7 +43,7 @@ if (!cfg.credential?.issuer) { console.error("issuer: the pool has no credential
 if (cfg.credential.issuer !== issuer.address) { console.error(`issuer: ISSUER_KEY is ${issuer.address}, the nodes trust ${cfg.credential.issuer}`); process.exit(2); }
 const TYPE = String(cfg.credential.type).toUpperCase(), TYPE_TEXT = cfg.credential.typeText ?? "credential";
 const limiter = new RateLimiter({ perHour: Number(env.ISSUER_PER_HOUR ?? 60), perSubjectMinutes: Number(env.ISSUER_PER_SUBJECT_MINUTES ?? 10) });
-const POLICY = "KYC in demo mode: the gate the nodes read on the ledger is the real system; this issuer's admission policy is allow-by-default — the entry credential is issued to any account that asks, rate-limited — so a demo credential attests the request, not a vetting";
+const POLICY = "KYC in demo mode: the credential gate every node reads on the ledger is the real, working system; the issuer's admission policy in the demo is open registration — any account that asks, rate-limited, the exchange model where an account is opened first and KYC raises its limits; a production deployment runs its own issuer policy against the same gate";
 
 let client = null;
 async function xrpl_() {

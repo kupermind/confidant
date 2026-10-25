@@ -65,9 +65,9 @@ too. The app does the gate under the hood.
    issuer service to **write** it (`CredentialCreate`, type `ConfidantKYC`, rate-limited, idempotent) and **confirms** it
    with the holder's own signature (`CredentialAccept`) — two status lines, ≈ 12 s — then shields. The wallet card's
    **Credential** row turns "accepted ✓". Say: "KYC in demo mode — the gate, the issuer's attestation, the fail-closed check by every node and
-   the on-ledger accept are the real system; the issuer's admission policy in this demo is allow-by-default — it issues to anyone who
-   asks, the standard practice for a demo; a full KYC decision pipeline is not what we built here; a real deployment drops
-   its approve/deny logic into the same issuer."
+   the on-ledger accept are the real system; the issuer's admission policy in this demo is open registration — it registers anyone who
+   asks, the way an exchange opens an account first and uses KYC to raise limits; a production deployment runs its own
+   issuer policy against the same gate."
 2. If the service were down, the app says what is missing before any payment ("One step first: … not answering"), and
    the team's browser can still issue from the key saved in the under-the-hood fold. The verifiers refuse a deposit
    without the credential (403 naming the issuer). The gate is on when the nodes run with `CREDENTIAL_ARGS` (then
