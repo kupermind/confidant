@@ -98,6 +98,7 @@ npm run prepare-wallet   # once: the agent's shielded notes on XRPL L1 (asks the
 node relay.mjs            # :4308 ticket merchant, :4309 relay → COORDINATOR_URL
 node agent.mjs            # one run = prove funds → 402 → pay → relay → receipt → settle
 node verify-receipt.mjs agent-state/receipts/<bundleHash>.json   # anyone: re-check the receipt from public data
+npm run record            # the demo video in one command: captions, explorer tabs, screen recording (STAGE.md §5)
 ```
 
 **On stage the relay runs on the demo host** as a systemd service behind the site's TLS (`confidant-ap4m-relay`;

@@ -11,7 +11,8 @@
     "relay": "node relay.mjs",
     "agent": "node agent.mjs",
     "prepare-wallet": "node prepare-wallet.mjs",
-    "verify-receipt": "node verify-receipt.mjs"
+    "verify-receipt": "node verify-receipt.mjs",
+    "record": "./record-demo.sh"
   },
   "dependencies": {
     "ethers": "6.17.0",

@@ -140,10 +140,13 @@ Footer 2: `node verify-receipt.mjs agent-state/receipts/<bundleHash>.json` — r
 
 ## 5. What to record (the Mastercard beat on video)
 
-The sponsor judges the live flow; a recording is for the submission form and the fallback. One take, ≈ 2 minutes, a
-single screen split in two: the agent's terminal on the left, a browser on the right. Record with the OS screen
-recorder (or `asciinema` for the terminal alone); no voice-over needed if the captions below are typed as the title of
-each segment.
+The sponsor judges the live flow; a recording is for the submission form and the fallback. **One command does the whole
+take:** `npm run record` (`record-demo.sh`) — pre-flight, then macOS's own screen recorder starts, the live run prints a
+caption under each milestone and opens each explorer link in your browser as it appears, the receipt is verified, the
+closing card is shown, the recorder stops and the `.mov` is named. Layout once: this terminal on the left (≥ 18 pt, ≤ 100
+columns), the browser on the right. Upload the file to YouTube as Unlisted. `OVER_CAP=<0.15-cap channel> npm run record`
+adds the refusal beat; `REPLAY=<saved run log> npm run record` rehearses the captions without paying (never for the real
+video). The segment list below is what the command shows, for reference.
 
 1. 0:00 — terminal: `node agent.mjs` with the stage `.env`. Caption: *"an agent with shielded funds on XRPL buys the
    relay of a private transfer; it pays RLUSD through Mastercard's AP4M"*.

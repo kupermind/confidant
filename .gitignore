@@ -70,6 +70,7 @@ hackathon/ap4m/.env
 hackathon/ap4m/node_modules/
 hackathon/ap4m/*-state/
 hackathon/ap4m/*-state-*/   # scratch state directories (STATE_DIRECTORY=./agent-state-test …) hold keys too
+hackathon/ap4m/*.mov        # screen recordings made by record-demo.sh
 hackathon/ap4m/ap4m-hackathon-sdk.cjs
 hackathon/ap4m/ap4m-x402.mjs
 hackathon/ap4m/package-lock.json
