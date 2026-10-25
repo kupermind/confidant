@@ -43,6 +43,11 @@ for (const k of ["AGENT_PRIVATE_KEY", "TEAM_NAME", "SUPPLIER", "AMOUNT"]) if (!e
 mkdirSync(STATE, { recursive: true });
 const t0 = Date.now(); const say = (m) => console.log(`[${String(Date.now() - t0).padStart(6)} ms] ${m}`);
 const cli = (args) => execFileSync(CLI, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+// The public XRPL EVM RPC is load-balanced over replicas at different heights: a read at the finalized height can be
+// answered "height in the future" or "failed to fetch header" by a lagging one. Such answers are retried, never treated
+// as a decision. (The kit's own 503 "resume the same operation" is handled where the purchase is made.)
+const TRANSIENT = /height in the future|failed to fetch header|missing revert data|CALL_EXCEPTION|ECONNRESET|ETIMEDOUT|fetch failed|503/;
+const rpc = async (fn, what, tries = 5) => { let last; for (let i = 1; i <= tries; i++) { try { return await fn(); } catch (e) { last = e; if (!TRANSIENT.test(String(e.message)) || i === tries) throw e; say(`${what}: the RPC answered "${String(e.message).slice(0, 70)}…" — retrying in 5 s (${i}/${tries})`); await new Promise((ok) => setTimeout(ok, 5000)); } } throw last; };
 const post = async (url, body, tries = 1) => {
   for (let i = 1; ; i++) {
     try { const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(170_000) }); const j = await r.json().catch(() => ({})); return { status: r.status, body: j }; }
@@ -120,7 +125,7 @@ if (!channelId) {
   writeFileSync(PENDING, JSON.stringify({ ...(pending ?? { bundleHash: built.bundleHash, operation: `relay-${built.bundleHash.slice(0, 24)}`, pof }), channelId }, null, 1));
   say(`opened channel ${channelId.slice(0, 10)}… with a ${env.CHANNEL_CAP ?? "2"} RLUSD cap`);
 }
-const state = await getChannelState(provider, config.contracts.paymentLedger, channelId);
+const state = await rpc(() => getChannelState(provider, config.contracts.paymentLedger, channelId), "channel state");
 const remaining = BigInt(state.cap ?? state.limit ?? 0n) - BigInt(state.redeemed ?? 0n);
 if (price > MAX_PRICE) { say(`policy: price ${ethers.formatUnits(price, 18)} > max ${ethers.formatUnits(MAX_PRICE, 18)} RLUSD — NOT paying`); process.exit(3); }
 if (remaining > 0n && remaining < price) { say(`policy: channel has ${ethers.formatUnits(remaining, 18)} RLUSD left < price — NOT paying`); process.exit(3); }
@@ -132,7 +137,7 @@ say(`policy: price ${ethers.formatUnits(price, 18)} ≤ max ${ethers.formatUnits
 let purchase;
 for (let i = 1; ; i++) {
   try { purchase = await buyResource({ context, provider, wallet: agent, stateDirectory: STATE, resourceUrl: RESOURCE_URL, channelId, maximumAmount: MAX_PRICE.toString(), operation: pending?.operation ?? `relay-${built.bundleHash.slice(0, 24)}` }); break; }
-  catch (e) { if (i < 5 && /resume the same operation|retry the same operation/.test(e.message)) { say(`merchant not ready (${String(e.message).slice(0, 60)}…) — resuming in 5 s`); await new Promise((ok) => setTimeout(ok, 5000)); continue; } throw e; }
+  catch (e) { if (i < 8 && (/resume the same operation|retry the same operation/.test(e.message) || TRANSIENT.test(String(e.message)))) { say(`${/resume|retry the same/.test(e.message) ? "merchant not ready" : "RPC hiccup"} (${String(e.message).slice(0, 60)}…) — resuming in 5 s`); await new Promise((ok) => setTimeout(ok, 5000)); continue; } throw e; }
 }
 writeFileSync(PENDING, JSON.stringify({ ...(pending ?? { bundleHash: built.bundleHash, operation: `relay-${built.bundleHash.slice(0, 24)}`, pof }), channelId, claimId: purchase.claimId }, null, 1));
 say(`paid: claim ${purchase.claimId.slice(0, 12)}…, VoucherRedeemed ${config.network.explorerUrl}/tx/${purchase.transactionHash}`);
@@ -160,7 +165,7 @@ let receiptFile = null;
 if (r.body.receipt?.statement) {
   const { statement, merchantSignature } = r.body.receipt; const text = statementText(statement);
   const signer = ethers.verifyMessage(text, merchantSignature);
-  const chan = await readParticipantPaymentChannel(provider, context.participantRequest, channelId);
+  const chan = await rpc(() => readParticipantPaymentChannel(provider, context.participantRequest, channelId), "channel read");
   if (signer.toLowerCase() !== String(chan.payout).toLowerCase()) say(`WARNING: the receipt is signed by ${signer}, not the channel's payout ${chan.payout} — kept, but do not trust it`);
   else say(`receipt signed by the channel's payout ${signer} ✓`);
   if (statement.bundleHash !== built.bundleHash || statement.claimId !== purchase.claimId.toLowerCase()) say("WARNING: the receipt names another bundle or claim");
@@ -181,7 +186,7 @@ try {
 
 // 8. The funded limit, shown: a second relay only if the cap still covers it.
 if (env.OVER_CAP_DEMO === "1") {
-  const after = await getChannelState(provider, config.contracts.paymentLedger, channelId);
+  const after = await rpc(() => getChannelState(provider, config.contracts.paymentLedger, channelId), "channel state");
   const left = BigInt(after.cap ?? 0n) - BigInt(after.redeemed ?? 0n);
   if (left < price) say(`second relay: policy refuses — ${ethers.formatUnits(left, 18)} RLUSD left on the channel < price ${ethers.formatUnits(price, 18)}; the ledger enforces settled ≤ redeemed ≤ cap and would refuse the voucher too. NOT paying.`);
   else say(`second relay: ${ethers.formatUnits(left, 18)} RLUSD left ≥ price — the policy would pay (set CHANNEL_CAP=0.15 to show the over-cap refusal)`);
