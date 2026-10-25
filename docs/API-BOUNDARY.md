@@ -121,7 +121,7 @@ coordinator copies into `/config.credential`.*
   the issuer page. Until the node side ships `credential` in `/config`, the issuer page hands the holder over with
   `/?accept=<issuer>:<typeHex>`, which the app keeps in storage and treats as the gate's config (demo path only; the
   stored link is dropped as soon as `/config.credential` is set, since a URL must not outrank the nodes' config).
-  The demo issuer is a static page (`frontend/issuer.html`): a faucet-funded XRPL
+  The demo issuer lives in the browser (`frontend/issuer.html`, now the *under-the-hood* page: the team saves the issuer's seed in a fold at the bottom; the app issues and confirms the credential by itself when the holder shields or proves). Formerly a faucet-funded XRPL
   account acting as the issuer the nodes trust, which signs `CredentialCreate { Account: issuer, Subject: holder,
   CredentialType, Expiration? }` for any address pasted in and prints its own address and the type for
   the node operators' config. Honest label: the issuer is a demo persona; the gate is real on the ledger.
@@ -163,15 +163,17 @@ the worker op `pof({ amount, challenge })` (one name on every surface: worker op
   fills every field itself: `amount` = the wallet's whole private balance (it always attests the maximum), `borrower` =
   this browser's XRPL account, `lender` = a request id the app generates (`req-<12 hex>`; the lender never sees it —
   they read the ledger by address), `ledgerIndex` = the validated ledger the app reads itself, `expiry` = 24 h later
-  (21 600 ledgers). The button says what it will do ("Prove I hold X XRP" — the credential then reads "at least X", a lower bound being what a proof can state). When the pool's entry gate is on and the account is not eligible (no accepted gate credential), the tab says so before the press — the nodes refuse the credential otherwise (bound A). Pressed, it: removes the holder's
+  (21 600 ledgers). The button says what it will do ("Prove I hold X XRP" — the credential then reads "at least X", a lower bound being what a proof can state). Pressed, it first settles the **entry gate** when the account is not eligible (bound A — the nodes refuse the credential otherwise): an issued credential is confirmed with the account's signature; a missing one is **issued by the app itself** when this browser holds the trusted issuer's key (`localStorage` `confidant.issuer`, saved on the under-the-hood page — on stage the team's laptop is holder and demo issuer; a real deployment has a third party write it) and then confirmed; without the key the tab says the one thing to do before any press. The same gate step runs in Shield before any payment leaves the account. Then it: removes the holder's
   previous proof-of-funds credential from the pool if one is still on the account (`CredentialDelete` by the subject —
   the nodes refuse a borrower who holds one); proves in the browser (`pof`); `POST /pof/credential` (every signer's
   node re-verifies the proof on its own state; k of N sign `CredentialCreate`); signs `CredentialAccept` with the
   account (the app refuses to confirm for another account); then **refreshes the notes by itself** — a private
   transfer of the whole balance to the wallet's own address — so a later payment cannot be tied to the proof. One
   result line ("controlled at least X as of ledger L, confirmed by your signature, expires …") with the lender's link
-  `lender.html?account=<borrower>`, a *Details* fold (request id, window, signers, URI, bundle hash, proving time) and
-  a quiet refresh line. The record goes to the coordinator for the credential only — never to a file, the clipboard or
+  `lender.html?account=<borrower>`, **Download the receipt** (a JSON of what was written on the ledger — account, amount,
+  window, both credentials' transactions, signers, bundle hash, refresh anchor; no record, no nullifiers), a link to the
+  under-the-hood page (`issuer.html`), a *Details* fold and a quiet refresh line. The steps shown are built per press
+  (Entry credential · Prove · Record · Confirm · Refresh). The record goes to the coordinator for the credential only — never to a file, the clipboard or
   a package. The page no longer calls `/pof/verify` itself; the per-node verdicts are the sidecars' job.
 - **Lender page (`frontend/lender.html`, rebuilt 2026-10-25).** One input — the borrower's XRPL address, prefilled and
   checked by itself when opened from the holder's link — and **Check**: `account_objects type credential` on the

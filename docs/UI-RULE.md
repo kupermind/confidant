@@ -44,8 +44,12 @@ node" button, then a ledger section nobody understood.
 - **No field.** The app fills everything itself: the amount is the whole private balance (it always attests the
   maximum), the borrower is the wallet's own XRPL account, the "lender id" is a request id the app generates, the
   validity is 24 hours. The button says what it will do: **[Prove I hold 25 XRP]**.
-- **One press does the whole thing.** Prove → the quorum writes the credential → the account's signature confirms it
-  → the wallet refreshes its notes by itself. "Rotate your notes" was never a user decision.
+- **One press does the whole thing.** Entry credential if the account lacks it (issued from the issuer key in this
+  browser, confirmed by the account) → Prove → the quorum writes the credential → the account's signature confirms it
+  → the wallet refreshes its notes by itself. "Rotate your notes" was never a user decision, and neither was "go to
+  the issuer page and press Issue". The former issuer page is now the *under the hood* explanation (what each step
+  wrote on the ledger, what the gate is mechanically) with the team's key fold at the bottom — the one page a judge
+  opens to ask "what just happened"; the app links to it next to **Download the receipt**.
 - **One line after it:** "controlled at least 25 XRP as of ledger L, confirmed by your signature, expires …", with
   the lender's link. No package to copy or download — the hand-off is the borrower's address. The technical facts
   (request id, window, signers, URI, bundle hash) are a *Details* fold, not the message.

@@ -130,7 +130,7 @@
   .big { font-family: var(--f-display); font-size: 42px; font-weight: 700; letter-spacing: -.015em; line-height: 1; font-variant-numeric: tabular-nums; }
   .big small { font-family: var(--f-body); font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 8px; letter-spacing: 0; }
   /* While the wallet syncs, the balance is a moving placeholder, not a number that looks missing. */
-  .big .skel { display: inline-block; width: 3.4ch; height: .78em; border-radius: 8px; vertical-align: -.06em; background: linear-gradient(90deg, var(--sunken) 25%, var(--line-2) 50%, var(--sunken) 75%); background-size: 200% 100%; animation: shimmer 1.3s linear infinite; }
+  .big .skel { display: inline-flex; align-items: center; justify-content: center; min-width: 3.4ch; padding: 0 12px; height: .78em; border-radius: 8px; vertical-align: -.06em; font: 500 14px/1 var(--f-body); letter-spacing: .02em; color: var(--muted); background: linear-gradient(90deg, var(--sunken) 25%, var(--line-2) 50%, var(--sunken) 75%); background-size: 200% 100%; animation: shimmer 1.3s linear infinite; }
   @keyframes shimmer { to { background-position: -200% 0; } }
   @media (prefers-reduced-motion: reduce) { .big .skel { animation: none; background: var(--line-2); } }
   @media (max-width: 760px) { .big { font-size: 34px; } .cell.main { width: 100%; margin: 0; } .cell.links { margin: 4px 0 0; width: 100%; text-align: left; } .pool { gap: 14px 28px; } }
@@ -218,6 +218,7 @@
   .out { grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; }
   .out:empty { display: none; }
   #prove-details details.keys { border-top: 0; margin-top: 10px; } #prove-details .note { margin: 0 0 6px; }
+  #steps-prove { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
   .msg { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: 14px; background: var(--sunken); border: 1px solid var(--line); }
   .msg.err { border-color: var(--danger); color: var(--danger); }
   .msg.warn { border-color: var(--warn); }
@@ -675,7 +676,7 @@
       </div>
       <div id="haswallet" hidden>
         <div class="k">Your private balance<button class="tip" type="button" aria-label="About your private balance" data-tip="What the notes you hold in the pool are worth, counted from your own key. Anyone you give your viewing key can see it too."></button></div>
-        <div class="big"><span id="priv-balance"><span class="skel" role="status" aria-label="syncing"></span></span><small>XRP</small></div>
+        <div class="big"><span id="priv-balance"><span class="skel" role="status">Loading</span></span><small>XRP</small></div>
         <div class="two-col">
           <div class="col-kv">
             <h4>XRPL account<span class="pub">public</span></h4>
@@ -924,7 +925,7 @@
     if (!w) return;
     $("orchard-addr").textContent = w.address;
     $("keys-mode").textContent = wbFor(w).label;
-    if (!walletReady) { $("sync-hint").textContent = "Syncing your notes…"; $("priv-balance").innerHTML = `<span class="skel" role="status" aria-label="syncing"></span>`; }
+    if (!walletReady) { $("sync-hint").textContent = "Syncing your notes…"; $("priv-balance").innerHTML = `<span class="skel" role="status">Loading</span>`; }
     else {
       try {
         const s = await wbFor(w).summary(w); $("priv-balance").textContent = fmt(s.balance); $("sync-hint").textContent = `Synced ${s.synced} bundle${s.synced === 1 ? "" : "s"}`;
@@ -947,7 +948,7 @@
   // trusted issuer. The issuer and type come from /config, or from the issuer page's hand-off link
   // (?accept=<issuer>:<typeHex>, kept in storage) while the node side is not configured yet.
   const LSF_ACCEPTED = 0x00010000;
-  let demoCred = "issued"; // demo mode: the holder arrives with a credential issued, not yet accepted
+  let demoCred = new URLSearchParams(location.search).has("nocred") ? "none" : "issued"; // demo: issued, not yet accepted (?nocred: none at all)
   const credentialCfg = () => cfg.credential ?? store.get("credential") ?? null;
   async function credentialState(c, address) {
     if (DEMO) return demoCred;
@@ -966,7 +967,7 @@
     if (!x) { $("cred-status").textContent = "needs an XRPL account first"; return; }
     if (!$("cred-status").textContent.trim() || $("cred-status").textContent === "—") $("cred-status").textContent = "checking…";
     let state; try { state = await credentialState(c, x.address); } catch (e) { $("cred-status").textContent = "ledger not readable"; return; }
-    const issuerHref = `issuer.html?subject=${encodeURIComponent(x.address)}`;
+    const issuerHref = `issuer.html#team`;
     setMsg("prove-gate", proveGateText(c, x, state), "warn"); // the Prove tab says it before the press, not after
     // Short on purpose: the cell is narrow; the tooltip and the issuer page carry the explanation.
     if (state === "accepted") $("cred-status").textContent = `accepted ✓ (${c.typeText ?? "credential"})`;
@@ -976,11 +977,43 @@
   }
   // Bound (A) on the nodes: the quorum writes a proof-of-funds credential only on an account that is eligible under
   // the pool's entry gate (when the gate is on). Empty when eligible; otherwise the one thing to do first.
+  // The entry gate, under the hood. When the gate is on and the account holds no accepted entry credential, the app
+  // issues one itself if this browser holds the trusted issuer's key (on stage the team's laptop is both the holder and
+  // the demo issuer; a real deployment has a third party write it) and confirms it with the account's own signature.
+  // An issued-not-confirmed credential needs no key: the account confirms it by itself.
+  const issuerKey = () => { const i = store.get("issuer"), c = credentialCfg(); return i && c && i.address === c.issuer ? i : null; };
+  /** The one thing to do first when the app cannot act by itself; "" when it can (or nothing is needed). */
   function proveGateText(c, x, state) {
-    if (!c || !x || state === "accepted") return "";
-    const t = esc(c.typeText ?? "credential"), issuerHref = `issuer.html?subject=${encodeURIComponent(x.address)}`;
-    if (state === "issued") return `One step first: your account holds the pool's entry credential (${t}) but has not confirmed it — press <b>Confirm</b> in the Credential row of your wallet card, then prove.`;
-    return `One step first: the quorum writes a proof-of-funds credential only on an account that holds the pool's entry credential (${t}), and your account ${esc(short(x.address))} has ${state === "expired" ? "an expired one" : "none"} — <a href="${issuerHref}">get one from the issuer</a>, confirm it in the Credential row of your wallet card, then prove.`;
+    if (!c || !x || state === "accepted" || state === "issued" || issuerKey()) return "";
+    const t = esc(c.typeText ?? "credential");
+    return `One step first: the pool's verifiers accept a deposit — and the quorum writes a proof-of-funds credential — only for an account that holds the pool's entry credential (${t}), and your account ${esc(short(x.address))} has ${state === "expired" ? "an expired one" : "none"}. The pool's issuer writes it: on this testnet that is the team, from the console at the bottom of <a href="issuer.html#team">the under-the-hood page</a>. Once written, the app confirms it by itself when you shield or prove.`;
+  }
+  /** Null when nothing was needed; { issued, accepted } hashes when it did the work; { blocked } when it cannot act. */
+  async function ensureEntryCredential(x, say) {
+    const c = credentialCfg(); if (!c) return null;
+    const state = await credentialState(c, x.address).catch(() => "unknown");
+    if (state === "accepted" || state === "unknown") return null; // an unreadable ledger is left to the quorum's own answer
+    const blocked = proveGateText(c, x, state); if (blocked) return { blocked };
+    const t = esc(c.typeText ?? "credential"), out = { issued: null, accepted: null };
+    if (state !== "issued") {
+      const key = issuerKey();
+      if (state === "expired") { say("Removing your expired entry credential…"); if (!DEMO) await signAndSubmit({ TransactionType: "CredentialDelete", Subject: x.address, Issuer: c.issuer, CredentialType: c.type }); }
+      say(`Issuing the entry credential (${t}) for your address…`);
+      if (DEMO) { await sleep(900); demoCred = "issued"; out.issued = fakeHex(64).toUpperCase(); }
+      else {
+        const cl = await xrpl_(); const iw = xrpl.Wallet.fromSeed(key.seed);
+        const tx = await cl.autofill({ TransactionType: "CredentialCreate", Account: iw.address, Subject: x.address, CredentialType: c.type, Expiration: Math.floor(Date.now() / 1000) - RIPPLE_EPOCH + 30 * 86400 });
+        const signed = iw.sign(tx); const res = await cl.submitAndWait(signed.tx_blob);
+        const code = res.result.meta?.TransactionResult; if (code !== "tesSUCCESS") throw new Error(`The issuer's CredentialCreate was refused: ${code}`);
+        out.issued = signed.hash;
+      }
+    }
+    say("Confirming the entry credential with your account's signature…");
+    if (DEMO) { await sleep(900); demoCred = "accepted"; out.accepted = fakeHex(64).toUpperCase(); }
+    else out.accepted = await signAndSubmit({ TransactionType: "CredentialAccept", Issuer: c.issuer, CredentialType: c.type });
+    addActivity({ type: "credential", text: `entry credential ${out.issued ? "issued and " : ""}confirmed for ${short(x.address)}`, links: [["CredentialCreate", out.issued], ["CredentialAccept", out.accepted]].filter((l) => l[1]) });
+    refreshCredential().catch(() => {});
+    return out;
   }
   async function acceptCredential() {
     const c = credentialCfg(); const x = store.get("xrpl"); if (!c || !x) return;
@@ -1047,6 +1080,8 @@
       const fee = feeOf(drops, cfg.fees?.shieldBps), net = Number(drops) - fee;
       if (net <= 0) throw new Error("Amount too small for the fee");
       busy(btn, true); setMsg("msg-shield", "");
+      // The entry gate first — before any payment leaves the account (the quorum would refuse the deposit otherwise).
+      { const gate = await ensureEntryCredential(store.get("xrpl"), (t) => setMsg("msg-shield", `<span class="spin"></span>${t}`, "warn")); if (gate?.blocked) { setMsg("msg-shield", gate.blocked, "warn"); return; } setMsg("msg-shield", ""); }
       setSteps("steps-shield", 0); const built = await wbFor(w).build(w, "shield", { amount: net });
       setSteps("steps-shield", 1); const depositTxHash = await deposit(drops, built.bundleHash);
       // The deposit is on the ledger now. Keep what anchoring needs, so a lost answer or a closed tab
@@ -1168,8 +1203,12 @@
       const acc = await be.submit("transfer", { record: fresh.record });
       setMsg("msg-prove-refresh", `Notes refreshed ✓ — ${fmt(amount)} XRP now sits in fresh notes of yours; the old proof no longer verifies. ${link("Anchor", acc.anchorTx)}`, "ok");
       addActivity({ type: "transfer", text: `${fmt(amount)} XRP refreshed (a transfer to yourself)`, links: [["Anchor", acc.anchorTx]] });
-    } catch (e) { setMsg("msg-prove-refresh", `Could not refresh the notes (${esc(e.message)}) — until you do, your next payment of these notes can be linked to this proof. Transfer your balance to yourself from the Transfer tab.`, "err"); }
+      return acc.anchorTx;
+    } catch (e) { setMsg("msg-prove-refresh", `Could not refresh the notes (${esc(e.message)}) — until you do, your next payment of these notes can be linked to this proof. Transfer your balance to yourself from the Transfer tab.`, "err"); return null; }
   }
+  const PROVE_STEPS = { gate: ["Entry credential", "Issued and confirmed for your address"], prove: ["Prove", "In your browser"], record: ["Record", "The signers re-check, the quorum writes the credential"], confirm: ["Confirm", "Your account's signature"], refresh: ["Refresh", "Fresh notes: this proof cannot be tied to your next payment"] };
+  /** Draws the steps this press will take and returns a function to light them. */
+  function proveSteps(keys) { $("steps-prove").innerHTML = keys.map((k) => `<div class="step"><span class="node"></span><b>${PROVE_STEPS[k][0]}</b><span class="d">${PROVE_STEPS[k][1]}</span></div>`).join(""); return (k, done = false) => setSteps("steps-prove", keys.indexOf(k), done); }
   async function doProve() {
     const btn = $("btn-prove"); const w = wallet();
     try {
@@ -1177,29 +1216,40 @@
       if (!walletReady) throw new Error("The wallet is still preparing");
       const x = store.get("xrpl"); if (!x) throw new Error("Fund an XRPL account first (Fund from faucet) — the credential is written on it");
       if (!cfg.pool) throw new Error("The coordinator names no pool account (config.pool); retry in a moment");
-      const c = credentialCfg(); const gate = c ? proveGateText(c, x, await credentialState(c, x.address).catch(() => "accepted")) : "";
-      if (gate) { setMsg("prove-gate", gate, "warn"); setMsg("msg-prove", ""); return; } // an unreadable ledger is left to the quorum's own answer
       busy(btn, true); setMsg("msg-prove", ""); setMsg("msg-prove-refresh", ""); $("prove-details").innerHTML = "";
       const amount = Number((await wbFor(w).summary(w)).balance);
       if (!(amount > 0)) throw new Error("Nothing to prove: your private balance is 0 — shield first");
-      setSteps("steps-prove", 0);
+      const c = credentialCfg(); const gateState = c ? await credentialState(c, x.address).catch(() => "accepted") : "accepted";
+      const step = proveSteps([...(gateState === "accepted" ? [] : ["gate"]), "prove", "record", "confirm", "refresh"]);
+      let entry = null;
+      if (gateState !== "accepted") {
+        step("gate");
+        entry = await ensureEntryCredential(x, (t) => setMsg("msg-prove", `<span class="spin"></span>${t}`, "warn"));
+        if (entry?.blocked) { setSteps("steps-prove", -1); setMsg("msg-prove", ""); setMsg("prove-gate", entry.blocked, "warn"); return; }
+        setMsg("prove-gate", "");
+      }
+      step("prove"); setMsg("msg-prove", "");
       if (await dropOldPofCredential(x)) setMsg("msg-prove", "Your previous proof-of-funds credential was removed; proving afresh…", "warn");
       const L = await validatedLedger();
       const challenge = { borrower: x.address, lender: `req-${fakeHex(12)}`, ledgerIndex: L, expiry: L + POF_HOURS * LEDGERS_PER_HOUR };
       const built = await wbFor(w).build(w, "pof", { amount, challenge: challengeString(challenge, amount) });
-      setSteps("steps-prove", 1);
+      step("record");
       // The quorum: every signer's node re-verifies the proof read-only on its own state and signs only fields it
       // derived itself; k of N sign CredentialCreate from the pool account. The record goes nowhere else.
       const r = await be.pofCredential({ record: built.record, amount, challenge });
-      setSteps("steps-prove", 2);
+      step("confirm");
       const accepted = await acceptPofCredential(r, x);
-      setSteps("steps-prove", 2, true);
-      const expires = new Date((r.expiration + RIPPLE_EPOCH) * 1000).toLocaleString();
+      step("refresh");
+      const expires = new Date((r.expiration + RIPPLE_EPOCH) * 1000);
       const lenderUrl = `lender.html?account=${encodeURIComponent(x.address)}`;
-      setMsg("msg-prove", `<b>Done ✓</b> Your account now carries a credential from the pool: <b>controlled at least ${fmt(amount)} XRP as of ledger ${L}</b>, confirmed by your signature, expires ${esc(expires)}. A lender checks it by your address on <a href="${lenderUrl}">the lender page</a> — send them that link, nothing else. ${link("CredentialCreate", r.tx)} · ${link("CredentialAccept", accepted)}`, "ok");
-      $("prove-details").innerHTML = `<details class="keys"><summary>Details</summary><p class="note">Request <span class="mono">${esc(challenge.lender)}</span> · ledger window ${L} → ${challenge.expiry} · signed by ${r.signers?.length ?? "?"} of ${esc(cfg.signers ?? "?")} signers${r.refusals?.length ? ` (${r.refusals.length} refused)` : ""} · credential URI <span class="mono">${esc(hexToText(r.uri))}</span> · bundle <span class="mono">${esc(short(built.bundleHash))}</span>${proved(built)}. It says "controlled at least X as of ledger L", not "controls it now". The signers' nodes saw your account, the amount and the window; the lender sees only the credential.</p></details>`;
+      setMsg("msg-prove", `<b>Done ✓</b> Your account now carries a credential from the pool: <b>controlled at least ${fmt(amount)} XRP as of ledger ${L}</b>, confirmed by your signature, expires ${esc(expires.toLocaleString())}. A lender checks it by your address on <a href="${lenderUrl}">the lender page</a> — send them that link, nothing else. ${link("CredentialCreate", r.tx)} · ${link("CredentialAccept", accepted)}`, "ok");
       addActivity({ type: "credential", text: `proved ≥ ${fmt(amount)} XRP as of ledger ${L} — credential on ${short(x.address)}`, links: [["CredentialCreate", r.tx], ["CredentialAccept", accepted]] });
-      await refreshNotes(w, amount);
+      const refreshed = await refreshNotes(w, amount);
+      step("refresh", true);
+      // The receipt: what was written on the ledger and by whom — no record, no nullifiers, nothing secret.
+      const receipt = { kind: "confidant/proof-of-funds-receipt/v1", network: cfg.network, borrower: x.address, amountDrops: amount, amountXrp: fmt(amount), ledgerIndex: L, expiry: challenge.expiry, requestId: challenge.lender, says: `controlled at least ${fmt(amount)} XRP as of ledger ${L} — not "controls it now"; a snapshot, not a lock`, credential: { issuer: r.issuer, type: r.credentialTypeText ?? "ConfidantPoF", uri: hexToText(r.uri), expiration: expires.toISOString(), create: r.tx, accept: accepted, signers: r.signers ?? [] }, entryCredential: entry ? { create: entry.issued, accept: entry.accepted } : undefined, bundleHash: built.bundleHash, refreshAnchor: refreshed, explorer: cfg.explorer };
+      const file = URL.createObjectURL(new Blob([JSON.stringify(receipt, null, 2)], { type: "application/json" }));
+      $("prove-details").innerHTML = `<p class="note"><a href="${file}" download="confidant-proof-of-funds-${L}.json">Download the receipt</a> — what was written on the ledger, nothing secret in it · <a href="issuer.html">What happened under the hood →</a></p><details class="keys"><summary>Details</summary><p class="note">Request <span class="mono">${esc(challenge.lender)}</span> · ledger window ${L} → ${challenge.expiry} · signed by ${r.signers?.length ?? "?"} of ${esc(cfg.signers ?? "?")} signers${r.refusals?.length ? ` (${r.refusals.length} refused)` : ""} · credential URI <span class="mono">${esc(hexToText(r.uri))}</span> · bundle <span class="mono">${esc(short(built.bundleHash))}</span>${proved(built)}. It says "controlled at least X as of ledger L", not "controls it now". The signers' nodes saw your account, the amount and the window; the lender sees only the credential.</p></details>`;
     } catch (e) { setMsg("msg-prove", esc(e.message), "err"); }
     finally { busy(btn, false); refreshWallet(); refreshStatus(); }
   }
@@ -1281,8 +1331,7 @@
       refreshCredential().catch(() => {});
       await refreshWallet();
       try {
-        if (w.mode === "browser") setMsg("wallet-progress", `<span class="spin"></span>Restoring your wallet in this browser…`, "warn");
-        await wbFor(w).restore(w); walletReady = true; setMsg("wallet-progress", "");
+        await wbFor(w).restore(w); walletReady = true; setMsg("wallet-progress", ""); // the balance placeholder says "Loading" meanwhile
       } catch (e) { setMsg("wallet-progress", `Could not restore the wallet: ${e.message}`, "err"); }
     }
     await refreshWallet();
