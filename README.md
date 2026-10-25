@@ -57,10 +57,11 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
   `/how-it-works.html` and linked from the app's header — explains the pool, the quorum, the hackathon
   lending features and the honest limits. `frontend/balances.html` (`/balances.html`) reconciles the
   shielded total with the pool account's balance live from the ledger and answers the usual questions.
-  `frontend/issuer.html` is the credential issuer page for the Credential gate (hackathon feature A) — the
-  demo issuer the pool's nodes trust: a faucet-funded testnet account that writes XLS-70 Credentials; the holder
-  accepts one in the app's wallet card (Credential row, "confirm it to shield") and only then can shield when the
-  gate is on.
+  `frontend/issuer.html` is the **under-the-hood** page: what one press of the app's button does step by step
+  (entry credential, proof, the quorum's credential, confirmation, refresh), what the Credential gate (hackathon
+  feature A) is mechanically, and — at the bottom — the team's issuer-key fold. With the demo issuer's key in the
+  browser the app issues the XLS-70 entry credential to its own account and confirms it under the hood when the holder
+  shields or proves; without it, the app says what is missing before any payment.
   `frontend/lender.html` is the lender side of proof of funds (hackathon feature C): the holder's **Prove funds**
   tab is one button — the whole private balance is proved in the browser, every signer's node re-verifies the proof,
   the quorum writes an expiring XLS-70 Credential on the holder's XRPL account, the holder's own signature confirms

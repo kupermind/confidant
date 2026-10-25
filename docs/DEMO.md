@@ -58,15 +58,24 @@ on the ledger — transfers inside are free."
 
 ## Credential gate (feature A) — the holder side on stage
 
-1. Open `/issuer.html` (the credential issuer — the team's laptop operates the issuer the nodes trust: import its key once), paste the holder's XRPL address, **Issue**.
-   Say: "a demo issuer; the credential it writes is a real XLS-70 object on the ledger."
-2. In the app the wallet card's **Credential** row reads "issued — confirm it to shield"; press **Confirm** (the holder's
-   own signature binds the account). It turns into "accepted ✓".
-3. Shield as usual. Without the credential the verifiers refuse with a 403 that names the issuer (every node reads the
-   credential from the ledger at submit and at endorse), and the app links to the issuer page. The gate is on when the
+The team's browser holds the demo issuer's key (saved once: `/issuer.html`, the fold at the bottom). Nothing else to
+operate: the app does the gate under the hood.
+
+1. Shield as usual. Before any payment leaves the account the app sees the holder has no entry credential, **issues**
+   it from the issuer key in this browser (`CredentialCreate`, type `ConfidantKYC`) and **confirms** it with the holder's
+   own signature (`CredentialAccept`) — two status lines, ≈ 12 s — then shields. The wallet card's **Credential** row
+   turns "accepted ✓". Say: "a demo issuer — on stage the team is both holder and issuer; the credential it writes is a
+   real XLS-70 object on the ledger, and every node reads it from the ledger before it signs."
+2. On a browser without the key the app says what is missing before any payment ("One step first: … the pool's issuer
+   writes it"), and the verifiers would refuse a deposit without it (403 naming the issuer). The gate is on when the
    nodes run with `CREDENTIAL_ARGS` (then `/config.credential` is set); off, the row hides and shields are open.
+3. `/issuer.html` is the **under-the-hood** page: what the one button does step by step, what the gate is mechanically,
+   and the team's issuer-key fold at the bottom. Open it only if a judge asks "what just happened".
 
 ## Proof of funds (feature C) — the lender on stage, under the 2026-10-25 ruling
+
+The demo nodes run with `--pof-revealing-enabled` (the path is off by default since the Tier-4 ruling; the flag is the
+operator's deliberate choice for this demo, set in the node units on the host).
 
 Say first, in one sentence: "this is a demo of the flow — the proof as built reveals the proven notes' nullifiers to
 whoever verifies it, so the holder's next spend of those notes is linkable; the real feature is a circuit that proves
@@ -81,7 +90,9 @@ with the quorum; the lender reads XRPL, never a file):
    (the account's own `CredentialAccept`, ≈ 7 s). One line: "controlled at least 50 XRP as of ledger L, confirmed by
    your signature, expires …", with the lender's link. Under it the app is already refreshing the notes (a transfer to
    itself; a second proof + anchor): "Notes refreshed ✓". Say: "the wallet does this by itself — no human is the last
-   link." Open *Details* only if asked (request id, window, 2 of 3 signers, the URI).
+   link." If the account had no entry credential, the press starts with an **Entry credential** step (issued and
+   confirmed under the hood, as in the gate beat). After the refresh: **Download the receipt** (the transactions, nothing
+   secret) and **What happened under the hood →** (`/issuer.html`). Open *Details* only if asked.
 3. Tab C: paste the address (or open the link from the holder's line — the verdict loads by itself) → **Check** →
    "r… controlled at least 50 XRP in the pool as of ledger L (about a minute ago). Confirmed by the borrower's own
    signature ✓ · expires …". Say: a loan broker reads one credential; it says "controlled ≥ X as of ledger L", not

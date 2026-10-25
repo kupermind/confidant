@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Confidant — credential issuer</title>
+<title>Confidant — under the hood</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -13,7 +13,7 @@
     if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     document.documentElement.setAttribute("data-theme", t); })();
 </script>
-<meta name="description" content="The credential issuer for a Confidant pool: the account whose XLS-70 Credentials the pool's nodes require before accepting a deposit. Demo issuer on testnet; the gate on the ledger is real.">
+<meta name="description" content="Under the hood of Confidant's one button: what each step writes on the XRP Ledger — the entry credential, the proof, the quorum's credential, the confirmation, the refresh — and what the gate at the pool's door is, mechanically.">
 <style>
   /* Palette and scale shared by every page. Surfaces, grays and the type scale follow liminal-ui;
      the violet is the one accent: --accent for fills, --accent-text for text on the page background. */
@@ -168,7 +168,7 @@
     <div class="brand">
       <a class="mark" href="/">CONFIDANT</a>
       <span class="sep"></span>
-      <small>Credential issuer · <span id="net">testnet</span></small>
+      <small>Under the hood · <span id="net">testnet</span></small>
     </div>
     <nav class="nav">
       <a href="/">Open the app</a>
@@ -178,15 +178,38 @@
     <button class="theme" id="theme-toggle" type="button" aria-label="Switch theme" title="Switch theme"><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
   </header>
 
-  <h1>Credential issuer</h1>
-  <p class="lede">This pool accepts a deposit only from an XRPL account that holds an <b>XLS-70 Credential</b> from the
-    issuer the pool trusts, confirmed by the account's own signature. The issuer writes the credential on the XRP Ledger;
-    the holder accepts it in the app; every verifier node reads it from the ledger before it signs. The credential says
-    nothing about anyone's notes. On this testnet the issuer is an account operated by the Confidant team — the issuer is
-    a demo; the gate on the ledger is real.</p>
+  <h1>Under the hood</h1>
+  <p class="lede">What one press of <b>Prove I hold X XRP</b> does, what each step writes on the XRP Ledger, and what the
+    gate at the pool's door is. Nothing on this page is needed to use the app; it is here so that nothing is hidden.</p>
+
+  <h2>What the button does, step by step</h2>
+  <div class="card">
+    <p><b>1 · Entry credential</b> (only when your account lacks it). The pool's issuer writes an XLS-70 Credential of type
+      <code>ConfidantKYC</code> to your XRPL account (<code>CredentialCreate</code>), and your account accepts it with its
+      own signature (<code>CredentialAccept</code>). The pool's verifiers refuse a deposit — and the quorum refuses to write
+      a proof-of-funds credential — for an account without it. In this demo the issuer's key sits in the same browser, so
+      the app issues the credential to itself; in a real deployment a third party writes it.</p>
+    <p><b>2 · Prove.</b> Your browser builds a zero-knowledge proof (the Orchard circuit, Halo 2) that unspent notes worth
+      at least your whole private balance are yours — bound to your account, a request id, the current ledger and a 24-hour
+      expiry. Nothing moves. The proof goes to the quorum for the next step and nowhere else.</p>
+    <p><b>3 · Record.</b> Each signer's node re-verifies the proof read-only against its own state; k of N signers sign one
+      <code>CredentialCreate</code> from the pool account to yours: type <code>ConfidantPoF</code>, URI
+      <code>confidant/pof/v1|X|L|E|digest</code>, expiry 24 hours from ledger L's close time. Every signer signs only fields
+      its own node derived.</p>
+    <p><b>4 · Confirm.</b> Your account signs <code>CredentialAccept</code>. From here the credential counts: a lender who
+      types your address on the lender page reads "controlled at least X XRP as of ledger L" — not "controls it now".</p>
+    <p><b>5 · Refresh.</b> A private transfer of your whole balance to yourself: the notes the proof named are spent into
+      fresh ones, so your next payment cannot be tied to the proof. Why: the proof as built reveals the identifiers
+      (nullifiers) of the proven notes to the signers' nodes. That is the honest limit of this flow — demo-grade until a
+      circuit that reveals none of them ships.</p>
+    <p class="src">The receipt the app offers after the press lists exactly these transactions and nothing secret.</p>
+  </div>
 
   <h2>What the gate is, mechanically</h2>
-  <div class="card" id="explain-card">
+  <div class="card">
+    <p>On this testnet the issuer is an account operated by the Confidant team — the issuer is a demo; the gate on the
+      ledger is real. The pool trusts one issuer: <span class="mono" id="trusted">reading the pool's configuration…</span>.
+      Only credentials issued by that account count; a credential from any other account is ignored by the pool.</p>
     <p><b>What is checked.</b> One on-ledger fact: that the depositing XRPL account holds an accepted XLS-70 Credential of
       the configured type from the configured issuer, and that it has not expired. Nothing inside the pool is examined —
       not notes, not balances, not transfers.</p>
@@ -201,182 +224,94 @@
       the nodes; an operator who does not runs the pool open. The protocol is the same either way.</p>
   </div>
 
-  <div class="card" id="holder-card">
-    <div class="k">For holders: getting a credential</div>
-    <p>The pool trusts one issuer: <span class="mono" id="trusted-provider">reading the pool's configuration…</span>.
-      Only credentials issued by that account count; a credential from any other account is ignored by the pool.</p>
-    <div id="req-block" hidden>
-      <p>Credential request for your address <span class="mono" id="req-subject"></span> — send it to the issuer's
-        operator (the Confidant team at the event):</p>
-      <div class="row"><span class="mono" id="req-text"></span><button class="btn" id="btn-copy-req" type="button">Copy</button></div>
-      <div class="src">After the issuer writes the credential, open the app: the Credential row reads
-        "issued — confirm it to shield" — press <b>Confirm</b>, and the pool accepts your deposits.</div>
+  <details id="team">
+    <summary>Team: the issuer key in this browser</summary>
+    <div>
+      <div id="key-none">
+        <p>This browser holds no issuer key. The app issues the entry credential by itself only when the key of the issuer
+          the pool trusts is in this browser; without it, the Prove and Shield buttons say what is missing.</p>
+        <div class="row"><input type="password" id="seed" placeholder="issuer account seed (s…)" autocomplete="off"><button class="btn primary" id="btn-save-key" type="button">Save in this browser</button></div>
+        <div class="src">The seed stays in this browser's storage and is sent nowhere. Testnet only.</div>
+      </div>
+      <div id="key-has" hidden>
+        <p>Issuer key in this browser: <span class="mono" id="key-addr"></span> <span id="key-match"></span>
+          <button class="btn" id="btn-forget" type="button" style="margin-left:8px">Forget it</button></p>
+        <div class="row"><span id="issue-to"></span><button class="btn primary" id="btn-issue" type="button">Issue</button></div>
+        <div class="src">Only needed if the app could not do it by itself. The app confirms the credential with the
+          account's own signature the next time you shield or prove.</div>
+      </div>
+      <div id="key-msg"></div>
     </div>
-    <div id="req-none" class="src">Open this page from the app's Credential row to get a request pre-filled with your address.</div>
-  </div>
+  </details>
 
-  <h2>Issuer console</h2>
-  <div class="card">
-    <div class="k">Issuer account</div>
-    <div id="issuer-none">
-      <p>No issuer key in this browser. The issuer's operator imports the key of the account the pool's nodes trust;
-        anyone else can only read this page.</p>
-      <details open><summary>Operate the pool's issuer (import its key)</summary>
-        <div class="row"><input type="password" id="seed" placeholder="issuer account seed (s…)" autocomplete="off"><button class="btn primary" id="btn-import-issuer" type="button">Import</button></div>
-        <div class="src">The seed stays in this browser's storage; nothing is sent anywhere. Testnet only.</div>
-      </details>
-      <details><summary>Create a separate test issuer (not trusted by this pool)</summary>
-        <p class="src">For your own pool or for the <code>?demo=1</code> walkthrough. This pool's nodes trust only the issuer
-          shown above: credentials from a freshly created account are <b>ignored</b> by this pool. Creating one takes a
-          testnet faucet call (10–30 s).</p>
-        <div class="row"><button class="btn" id="btn-create-issuer" type="button">Create a test issuer account</button></div>
-      </details>
-    </div>
-    <div id="issuer-has" hidden>
-      <div class="row"><span class="mono" id="issuer-addr"></span><button class="btn" id="btn-copy-issuer" type="button">Copy</button><a id="issuer-link" href="#" target="_blank" rel="noopener">on the explorer</a></div>
-      <div id="provider-mismatch" class="msg warn" hidden></div>
-      <div class="src">Credential type <code id="type-text">ConfidantKYC</code> = <code class="mono" id="type-hex"></code>.
-        For the node operators' config: issuer <code class="mono" id="cfg-issuer"></code>, type <code class="mono" id="cfg-type"></code>.</div>
-    </div>
-    <div id="issuer-msg"></div>
-  </div>
-
-  <h2>Issue a credential to an address</h2>
-  <div class="card">
-    <div class="row"><input type="text" id="subject" placeholder="Holder's XRPL address (r…)" autocomplete="off" spellcheck="false"><input type="number" id="days" value="30" min="1" max="3650" title="valid for N days" style="flex:0 0 90px"><button class="btn primary" id="btn-issue" type="button">Issue</button></div>
-    <div class="src">Signs <code>CredentialCreate { Account: issuer, Subject, CredentialType, Expiration }</code>
-      from the issuer account. The holder must accept it before the pool counts it: send them to the app with
-      <span class="mono" id="accept-link">—</span>.</div>
-    <div id="issue-msg"></div>
-  </div>
-
-  <h2>Credentials issued by this issuer</h2>
-  <div class="card">
-    <div class="row"><button class="btn" id="btn-refresh" type="button">Refresh</button><span class="src" id="list-src"></span></div>
-    <table class="cred" id="cred-table"><thead><tr><th>Holder</th><th>Type</th><th>Status</th><th>Expires</th><th></th></tr></thead><tbody></tbody></table>
-  </div>
-
-  <p class="note">What this proves on stage: a holder's eligibility is an on-ledger fact anyone can check
-    (<code>account_objects</code>, type <code>credential</code>), written by the issuer the pool trusts and accepted by
-    the holder's own signature; the pool's verifiers read it from the ledger themselves and refuse a deposit without it.
-    What it does not prove: anything about the issuer's diligence — on this testnet the issuer is a demo account, and it
-    vouches for whoever its operator enters.</p>
-
-  <footer>This page holds the issuer's seed in this browser's storage (testnet only, never real value) and talks to the
-    public XRPL WebSocket. It never touches the pool or anyone's notes. <code>?demo=1</code> simulates everything.</footer>
+  <footer>This page talks to the public XRPL WebSocket and reads the pool's configuration. It never touches the pool or
+    anyone's notes. <code>?demo=1</code> simulates everything.</footer>
 </div>
 
 <script src="https://unpkg.com/xrpl@5.3.0/build/xrpl-latest-min.js"></script>
 <script>
   const DEMO = new URLSearchParams(location.search).has("demo");
   const $ = (id) => document.getElementById(id);
-  const TYPE_TEXT = "ConfidantKYC";
-  const TYPE_HEX = Array.from(new TextEncoder().encode(TYPE_TEXT)).map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
   const RIPPLE_EPOCH = 946684800;
-  const LSF_ACCEPTED = 0x00010000;
   const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const store = {
     get(k, d) { try { const v = localStorage.getItem("confidant." + k); return v ? JSON.parse(v) : d; } catch { return d; } },
     set(k, v) { try { localStorage.setItem("confidant." + k, JSON.stringify(v)); } catch {} },
+    del(k) { try { localStorage.removeItem("confidant." + k); } catch {} },
   };
   const msg = (id, text, kind) => { $(id).innerHTML = text ? `<div class="msg ${kind ?? ""}">${text}</div>` : ""; };
-  const busy = (b, on) => { b.disabled = on; };
   let cfg = { explorer: "https://testnet.xrpl.org", xrplWs: "wss://s.altnet.rippletest.net:51233" };
   let client = null;
-  async function xrpl_() { if (DEMO) return null; if (client?.isConnected()) return client; client = new xrpl.Client(cfg.xrplWs); await client.connect(); return client; }
-  const issuer = () => store.get("issuer");
-  const appAccept = (iss) => `${location.origin}/?accept=${iss}:${TYPE_HEX}`;
-
-  // Demo data: one issued, one accepted credential; issuing adds a row.
-  const demo = { list: [] };
-
+  async function xrpl_() { if (client?.isConnected()) return client; client = new xrpl.Client(cfg.xrplWs); await client.connect(); return client; }
   const trusted = () => cfg.credential?.issuer ?? null;
+  const appAccount = () => store.get("xrpl")?.address ?? null;
   function render() {
-    const i = issuer();
-    $("issuer-none").hidden = !!i; $("issuer-has").hidden = !i;
-    const t = trusted();
-    $("trusted-provider").textContent = DEMO ? "rDEMOissuerKYCxxxxxxxxxxxxxxxxxxxx (demo data)" : t ? `${t} (${cfg.credential.typeText ?? TYPE_TEXT})` : "none — this pool has no credential gate configured, deposits are open";
-    const mm = $("provider-mismatch");
-    if (i && t && i.address !== t) { mm.hidden = false; mm.textContent = `This browser operates ${i.address}, but the pool trusts ${t}: credentials issued here are NOT accepted by this pool.`; }
-    else mm.hidden = true;
-    $("type-hex").textContent = TYPE_HEX; $("cfg-type").textContent = TYPE_HEX;
-    if (i) { $("issuer-addr").textContent = i.address; $("cfg-issuer").textContent = i.address; $("issuer-link").href = `${cfg.explorer}/accounts/${i.address}`; $("accept-link").textContent = appAccept(i.address); }
-    $("btn-issue").disabled = !i;
-  }
-  async function createIssuer() {
-    const b = $("btn-create-issuer"); busy(b, true); msg("issuer-msg", "Funding a testnet account from the faucet…", "warn");
-    try {
-      let w;
-      if (DEMO) { await new Promise((r) => setTimeout(r, 800)); w = xrpl.Wallet.generate(); }
-      else { const c = await xrpl_(); ({ wallet: w } = await c.fundWallet()); }
-      store.set("issuer", { seed: w.seed, address: w.address }); msg("issuer-msg", `Test issuer account ready: <span class="mono">${w.address}</span>`, "ok"); render(); await refresh();
-    } catch (e) { msg("issuer-msg", esc(e.message), "err"); } finally { busy(b, false); }
+    const t = trusted(), key = store.get("issuer"), acct = appAccount();
+    $("trusted").textContent = t ? `${t} (${cfg.credential.typeText ?? "credential"})` : "none — this pool has no entry gate configured; deposits are open";
+    $("key-none").hidden = !!key; $("key-has").hidden = !key;
+    if (!key) { $("team").open = !!t; return; }
+    $("key-addr").textContent = key.address;
+    const ok = t && key.address === t;
+    $("key-match").innerHTML = ok ? "✓ the issuer this pool trusts" : `<b>✗ not the issuer this pool trusts (${esc(t ?? "gate off")})</b>`;
+    $("issue-to").innerHTML = acct ? `Issue the entry credential to <span class="mono">${esc(acct)}</span> (this browser's wallet)` : "Create a wallet in the app first — the app then issues it under the hood when you shield or prove.";
+    $("btn-issue").disabled = !(ok && acct);
   }
   async function issue() {
-    const i = issuer(); if (!i) return;
-    const subject = $("subject").value.trim(); const days = Math.max(1, Math.min(3650, Number($("days").value) || 30));
-    if (!/^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(subject)) { msg("issue-msg", "Enter the holder's XRPL address (starts with r).", "err"); return; }
-    const b = $("btn-issue"); busy(b, true); msg("issue-msg", "Signing CredentialCreate from the issuer account…", "warn");
+    const key = store.get("issuer"), acct = appAccount(), c = cfg.credential; if (!key || !acct || !c) return;
+    const b = $("btn-issue"); b.disabled = true; msg("key-msg", "Signing CredentialCreate from the issuer account…", "warn");
     try {
-      const expiration = Math.floor(Date.now() / 1000) - RIPPLE_EPOCH + days * 86400;
       let hash;
-      if (DEMO) { await new Promise((r) => setTimeout(r, 900)); hash = Array.from({ length: 64 }, () => "0123456789ABCDEF"[Math.floor(Math.random() * 16)]).join(""); demo.list.push({ Subject: subject, CredentialType: TYPE_HEX, Flags: 0, Expiration: expiration }); }
+      if (DEMO) { await new Promise((r) => setTimeout(r, 900)); hash = Array.from({ length: 64 }, () => "0123456789ABCDEF"[Math.floor(Math.random() * 16)]).join(""); }
       else {
-        const c = await xrpl_(); const w = xrpl.Wallet.fromSeed(i.seed);
-        const tx = await c.autofill({ TransactionType: "CredentialCreate", Account: w.address, Subject: subject, CredentialType: TYPE_HEX, Expiration: expiration });
-        const signed = w.sign(tx); const res = await c.submitAndWait(signed.tx_blob);
-        const code = res.result.meta?.TransactionResult; if (code !== "tesSUCCESS") throw new Error(`Ledger refused: ${code}`);
+        const cl = await xrpl_(); const w = xrpl.Wallet.fromSeed(key.seed);
+        const tx = await cl.autofill({ TransactionType: "CredentialCreate", Account: w.address, Subject: acct, CredentialType: c.type, Expiration: Math.floor(Date.now() / 1000) - RIPPLE_EPOCH + 30 * 86400 });
+        const signed = w.sign(tx); const res = await cl.submitAndWait(signed.tx_blob);
+        const code = res.result.meta?.TransactionResult;
+        if (code === "tecDUPLICATE") { msg("key-msg", `Already issued to <span class="mono">${esc(acct)}</span> — the app confirms it by itself when you shield or prove.`, "ok"); return; }
+        if (code !== "tesSUCCESS") throw new Error(`Ledger refused: ${code}`);
         hash = signed.hash;
       }
-      msg("issue-msg", `Issued to <span class="mono">${esc(subject)}</span>, valid ${days} day${days === 1 ? "" : "s"} — <a href="${cfg.explorer}/transactions/${hash}" target="_blank" rel="noopener">transaction</a>. Now the holder confirms it in the app: <a href="${appAccept(i.address)}">${esc(appAccept(i.address))}</a>`, "ok");
-      await refresh();
-    } catch (e) { msg("issue-msg", esc(e.message), "err"); } finally { busy(b, false); }
-  }
-  async function revoke(subject) {
-    const i = issuer(); if (!i) return;
-    try {
-      if (DEMO) { demo.list = demo.list.filter((x) => x.Subject !== subject); }
-      else { const c = await xrpl_(); const w = xrpl.Wallet.fromSeed(i.seed); const tx = await c.autofill({ TransactionType: "CredentialDelete", Account: w.address, Subject: subject, CredentialType: TYPE_HEX }); const res = await c.submitAndWait(w.sign(tx).tx_blob); const code = res.result.meta?.TransactionResult; if (code !== "tesSUCCESS") throw new Error(`Ledger refused: ${code}`); }
-      await refresh();
-    } catch (e) { msg("issue-msg", esc(e.message), "err"); }
-  }
-  async function refresh() {
-    const i = issuer(); const tb = $("cred-table").querySelector("tbody"); tb.innerHTML = ""; if (!i) return;
-    let rows = [];
-    if (DEMO) rows = demo.list;
-    else { const c = await xrpl_(); const r = await c.request({ command: "account_objects", account: i.address, type: "credential", ledger_index: "validated" }); rows = (r.result.account_objects ?? []).filter((o) => o.Issuer === i.address); }
-    const now = Math.floor(Date.now() / 1000) - RIPPLE_EPOCH;
-    for (const o of rows) {
-      const accepted = (o.Flags & LSF_ACCEPTED) !== 0, expired = o.Expiration && o.Expiration < now;
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td class="mono">${esc(o.Subject)}</td><td class="mono">${esc(o.CredentialType === TYPE_HEX ? TYPE_TEXT : o.CredentialType)}</td><td>${expired ? "expired" : accepted ? "confirmed ✓" : "issued, awaiting the holder's confirmation"}</td><td>${o.Expiration ? new Date((o.Expiration + RIPPLE_EPOCH) * 1000).toLocaleDateString("en-US") : "—"}</td><td><button class="btn" type="button">Revoke</button></td>`;
-      tr.querySelector("button").addEventListener("click", () => revoke(o.Subject));
-      tb.append(tr);
-    }
-    $("list-src").textContent = rows.length ? `${rows.length} credential${rows.length === 1 ? "" : "s"} on the ledger${DEMO ? " (demo data)" : ""}` : "nothing issued yet";
+      msg("key-msg", `Issued ✓ to <span class="mono">${esc(acct)}</span>, valid 30 days — <a href="${cfg.explorer}/transactions/${hash}" target="_blank" rel="noopener">transaction</a>. The app confirms it by itself when you shield or prove.`, "ok");
+    } catch (e) { msg("key-msg", esc(e.message), "err"); } finally { b.disabled = false; }
   }
   (async () => {
-    if (!DEMO) { try { const c = await (await fetch("/api/config")).json(); cfg = { ...cfg, ...c }; $("net").textContent = c.network ?? "testnet"; } catch {} }
-    else $("net").textContent = "testnet (demo data)";
-    const sub = new URLSearchParams(location.search).get("subject"); if (sub) $("subject").value = sub;
-    if (sub) { $("req-block").hidden = false; $("req-none").hidden = true; $("req-subject").textContent = sub; $("req-text").textContent = `Please verify ${sub} for the Confidant pool (credential type ${TYPE_TEXT}).`; }
-    $("btn-copy-req").addEventListener("click", async () => { try { await navigator.clipboard.writeText($("req-text").textContent); } catch {} });
-    render(); $("btn-create-issuer").addEventListener("click", createIssuer); $("btn-issue").addEventListener("click", issue); $("btn-refresh").addEventListener("click", refresh);
-    $("btn-import-issuer").addEventListener("click", async () => {
+    if (DEMO) { cfg = { ...cfg, network: "testnet (demo data)", credential: { issuer: "rDEMOissuerKYCxxxxxxxxxxxxxxxxxxxx", type: "436F6E666964616E744B5943", typeText: "ConfidantKYC" } }; $("net").textContent = cfg.network; }
+    else { try { const c = await (await fetch("/api/config")).json(); cfg = { ...cfg, ...c }; $("net").textContent = c.network ?? "testnet"; } catch { msg("key-msg", "Coordinator unreachable: the pool's issuer is unknown right now.", "err"); } }
+    $("btn-save-key").addEventListener("click", () => {
       const seed = $("seed").value.trim();
-      try { const w = xrpl.Wallet.fromSeed(seed); store.set("issuer", { seed, address: w.address }); $("seed").value = ""; msg("issuer-msg", `Issuer key imported: <span class="mono">${w.address}</span>`, "ok"); render(); await refresh(); }
-      catch (e) { msg("issuer-msg", "That is not a valid seed.", "err"); }
+      try { const w = xrpl.Wallet.fromSeed(seed); store.set("issuer", { seed, address: DEMO ? cfg.credential.issuer : w.address }); $("seed").value = ""; msg("key-msg", "", ""); render(); }
+      catch { msg("key-msg", "That is not a valid seed.", "err"); }
     });
-    $("btn-copy-issuer").addEventListener("click", async () => { try { await navigator.clipboard.writeText(issuer().address); } catch {} });
-    await refresh();
+    $("btn-forget").addEventListener("click", () => { store.del("issuer"); msg("key-msg", "", ""); render(); });
+    $("btn-issue").addEventListener("click", issue);
+    render();
+    if (location.hash === "#team") { $("team").open = true; $("team").scrollIntoView(); }
   })();
 </script>
 <script>
-  // Theme switch: flips data-theme and remembers the choice; the script in <head> applies it on the next load.
   (function () { var b = document.getElementById("theme-toggle"); if (!b) return;
     b.addEventListener("click", function () { var n = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
       document.documentElement.setAttribute("data-theme", n); try { localStorage.setItem("confidant-theme", n); } catch (e) {} }); })();
-  // Demo mode (?demo=1) is kept when moving between the three pages.
   (function () { var q = location.search; if (!/[?&]demo(=|&|$)/.test(q)) return;
     document.querySelectorAll("a[href]").forEach(function (a) { var h = a.getAttribute("href"); if (/^([/]|index[.]html|how-it-works[.]html|balances[.]html)$/.test(h)) a.setAttribute("href", h + q); }); })();
 </script>
