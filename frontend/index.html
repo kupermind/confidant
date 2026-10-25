@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-64.png" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Confidant</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -219,6 +222,7 @@
   .out:empty { display: none; }
   #prove-details details.keys { border-top: 0; margin-top: 10px; } #prove-details .note { margin: 0 0 6px; }
   #steps-prove { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
+  .msg .ledger-links { display: inline-block; margin-top: 6px; color: var(--muted); font-size: 13px; }
   .msg { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: 14px; background: var(--sunken); border: 1px solid var(--line); }
   .msg.err { border-color: var(--danger); color: var(--danger); }
   .msg.warn { border-color: var(--warn); }
@@ -1246,7 +1250,7 @@
       step("refresh");
       const expires = new Date((r.expiration + RIPPLE_EPOCH) * 1000);
       const lenderUrl = `lender.html?account=${encodeURIComponent(x.address)}`;
-      setMsg("msg-prove", `<b>Done ✓</b> Your account now carries a credential from the pool: <b>controlled at least ${fmt(amount)} XRP as of ledger ${L}</b>, confirmed by your signature, expires ${esc(expires.toLocaleString())}. A lender checks it by your address on <a href="${lenderUrl}" target="_blank" rel="noopener">the lender page</a> — send them that link, nothing else. ${link("CredentialCreate", r.tx)} · ${link("CredentialAccept", accepted)}`, "ok");
+      setMsg("msg-prove", `<b>Done ✓</b> Your account now carries a credential from the pool: <b>controlled at least ${fmt(amount)} XRP as of ledger ${L}</b>, confirmed by your signature, expires ${esc(expires.toLocaleString())}. A lender checks it by your address on <a href="${lenderUrl}" target="_blank" rel="noopener">the lender page</a> — send them that link, nothing else.<br><span class="ledger-links">On the ledger: ${link("CredentialCreate", r.tx)} · ${link("CredentialAccept", accepted)}</span>`, "ok");
       addActivity({ type: "credential", text: `proved ≥ ${fmt(amount)} XRP as of ledger ${L} — credential on ${short(x.address)}`, links: [["CredentialCreate", r.tx], ["CredentialAccept", accepted]] });
       const refreshed = await refreshNotes(w, amount);
       step("refresh", true);
