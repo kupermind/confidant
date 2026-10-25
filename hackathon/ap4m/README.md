@@ -16,11 +16,39 @@ path). The relay fee is a **metering fee**, separate from the pool's protocol fe
 
 | File | Role |
 |---|---|
-| `relay.mjs` | x402 Merchant (the kit's `createX402Merchant`, unmodified, sells a static "relay ticket" at `GET /resource`) **+** `POST /relay/transfer { record, channelId, claimId }`: verifies the claim **on-chain** (a `VoucherRedeemed` for that channel and claim at the PaymentLedger, amount ≥ price) and **unused** (spent-set in the state directory), forwards the bundle to the coordinator, returns the anchor. Missing / unknown / reused claim → `402`. The `VoucherRedeemed` scan looks back 200 000 blocks from the chain head (≈ the event's lifetime); an older claim reads as "not found". The spent-set lives on disk per relay process — one relay instance per deployment. |
+| `relay.mjs` | x402 Merchant (the kit's `createX402Merchant`, unmodified, sells a static "relay ticket" at `GET /resource`; its store lives in `RELAY_STATE_DIRECTORY`, default `./relay-state`) **+** `POST /relay/transfer { record, channelId, claimId }`: verifies the claim **on-chain** (a `VoucherRedeemed` for that channel and claim at the PaymentLedger, amount ≥ price) and **unused** (spent-set in the state directory), forwards the bundle to the coordinator, returns the anchor. Missing / unknown / reused claim → `402`. The `VoucherRedeemed` scan looks back 200 000 blocks from the chain head (≈ the event's lifetime); an older claim reads as "not found". The spent-set lives on disk per relay process — one relay instance per deployment. |
 | `agent.mjs` | Builds a private transfer with the native Confidant wallet (CLI), meets the `402`, applies the **payment policy** (price ≤ `MAX_PRICE_RLUSD`, channel cap remaining), pays with `buyResource` on its Channel, retries with the `claimId`, calls `settle`, prints both explorer links. The operation name is derived from the bundle hash: a rerun resumes, never pays twice. |
 | `setup.sh` | `npm install` + download of `ap4m-hackathon-sdk.cjs` and `ap4m-x402.mjs` from the service. |
 | `prepare-wallet.mjs` | One-time pool side for the agent: two native wallet files (agent, supplier — keys stay in the state directory), a faucet XRPL account, waits for the gate's issuer to write its credential and accepts it, shields `DEPOSIT_XRP` through the live coordinator, prints `SUPPLIER` / `WALLET_FILE` / `LOG_FILE` for `.env`. |
 | `env.example` | Every variable; copy to `.env` (gitignored) and fill from the portal. **Never commit keys.** |
+
+## Live run (2026-10-25, testnet, our wallets, the organizers' 20 RLUSD budget)
+
+First the kit's own Demo 1 (sign → `redeemVoucher` → settle) with our wallets, then this relay + agent:
+
+```
+[  7853 ms] 402 received: the relay costs 0.1 RLUSD (chain 1449000, ledger 0xcAB42800…)
+[ 31771 ms] opened channel 0x758ea328… with a 2 RLUSD cap
+[ 31955 ms] policy: price 0.1 ≤ max 0.25 RLUSD, channel redeemed so far 0.0 — paying
+[ 45815 ms] paid: claim 0x3e9e70c35b…, VoucherRedeemed https://explorer.testnet.xrplevm.org/tx/0xb9aaa78632e07d33c9c66b3f0a28be92ef160234c515787f2357b9eb30cad7df
+[ 59571 ms] relayed: anchored on XRPL L1 — https://testnet.xrpl.org/transactions/533B62011D10B35C6B6DB92F0B4AD50888372DBBBB880D4638F3CA76652B0100 (no sender, receiver or amount in the memo)
+[ 68050 ms] settled: payout https://explorer.testnet.xrplevm.org/tx/0x3af20d2ae569bb7ab816d9c75a49df44fae5dc8bfac8d2631088cf9b01f84671; receipt https://hackathon.ap4m.build/public/evidence/claims/…
+```
+
+68 s wall from the 402 to the settlement receipt, of which ≈ 24 s is the channel opening (skip it on stage by setting
+`CHANNEL_ID` to an open channel), ≈ 14 s the voucher redemption, ≈ 14 s the quorum's anchor, ≈ 8 s the settlement.
+A second full run the same morning (fresh bundle, a 0.15-cap channel) anchored `2104CB64…` and settled payout
+`0x326f3830…`; the platform caps the number of open channels per team (`ActivePayoutLimitExceeded`), so close the
+spares with `closeChannel` and reuse one open channel on stage.
+
+What the first attempt taught (all fixed here): the relay's forward to the coordinator can hit a reset connection while
+the quorum anchors — the relay must never die on it (guarded handler, retried forward, the claim kept unused on any
+failure); a rerun of the agent must **resume** (`pending.json`: same bundle, same purchase name — the kit replays the
+paid purchase, nothing is paid twice); the public XRPL EVM RPC occasionally fails a read ("failed to fetch header by
+number") — reads are retried; the kit's merchant keeps a SQLite store with a **lock file** in the relay's state
+directory — after a crash, delete `merchant.lock` before restarting, and never point two merchants at one directory.
+A forward that was applied by the quorum but whose answer was lost shows up on a retry as `409 nullifier already
+spent`: the transfer is on the ledger (the pool account's newest anchor memo), only the receipt was lost.
 
 ## Run
 
@@ -61,10 +89,11 @@ Walk-in sign-up (no form answered) needs a connected browser wallet that signs t
 3. **Proof.** EVM explorer: `VoucherRedeemed` at the PaymentLedger; then XRPL testnet explorer: the pool account's new
    anchor Payment — no sender, no receiver, no amount. "Two ledgers, two receipts."
 4. **Settlement.** `settle` → RLUSD to the merchant payout (`ClaimPaid` + `SettlementRecorded`), the receipt URL.
-5. **Over-cap attempt rejected.** With `OVER_CAP_DEMO=1` the agent tries a second relay against what is left of the cap
-   (demo channel `CHANNEL_CAP=0.15`, price `0.1`): the policy refuses — "0.05 RLUSD left < 0.1, not paying" — and the
-   ledger would refuse the voucher anyway (`settled ≤ redeemed ≤ cap`). Say: "the limit is funded and enforced by the
-   contract, the agent only decides inside it."
+5. **Over-cap attempt rejected.** Run the agent once more with `CHANNEL_ID` set to the 0.15-cap channel that already
+   paid once: it meets the 402, reads the channel and stops — rehearsed 2026-10-25: *"policy: channel has 0.05 RLUSD
+   left < price — NOT paying"* (exit code 3, nothing signed). The ledger would refuse the voucher anyway
+   (`settled ≤ redeemed ≤ cap`). Say: "the limit is funded and enforced by the contract; the agent only decides inside
+   it." (`OVER_CAP_DEMO=1` does the same check right after a successful relay on a 0.15 channel.)
 
 Judging (deck): real-world utility 25 %, trust & control 25 %, technical execution 25 %, path to production 15 %,
 demo & story 10 %. The web guide's rubric adds: autonomy (the agent reads the 402 and decides), use-case clarity (the

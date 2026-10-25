@@ -9,12 +9,15 @@ and the credential gate are checks at the public boundary, not proofs about any 
 Formal name everywhere in this text: **Confidant**. The stylized wordmark `C0nf!d@nt` is for the logo only.
 
 Limits (from the form): short description ≤ 200 characters · description ≤ 5000 · technical description ≤ 1000.
-Markdown is accepted in all three. Counts are of the text between the fences (`wc -m` on each block): 177 / 4119 / 961 on 2026-10-24.
+Markdown is accepted in all three. Counts are of the text between the fences (`wc -m` on each block): 177 / 4851 / 989 on 2026-10-25.
 
-**Status (2026-10-24, end of day 1):** everything below is **live on the XRPL testnet** at `https://confidant.im`
-— the pre-existing pool (baseline tag `pre-hackathon`), plus, built on-site and audited today: the credential gate
-(A), proof of funds with per-node verdicts and the quorum-signed on-ledger Credential (C, Tier 1), the lender page,
-and the Mastercard-track relay (code complete, awaiting portal onboarding to run).
+**Status (2026-10-25, day 2):** everything below is **live on the XRPL testnet** at `https://confidant.im` — the
+pre-existing pool (baseline tag `pre-hackathon`), plus, built on-site and audited: the credential gate (A), proof of
+funds with per-node verdicts and the quorum-signed on-ledger Credential (C), the lender page, and the Mastercard-track
+relay (run end to end on 2026-10-25, both receipts). **Ruling of 2026-10-25 (lead, audit concurring):** the proof of
+funds as built reveals the proven notes' nullifiers to whoever holds the proof, so it is a **demo of the flow,
+labelled as degrading the holder's privacy — not the product feature**; the accepted design is a circuit that proves
+control of unspent notes ≥ X without revealing nullifiers (the committed next step). The texts below say so.
 
 ---
 
@@ -35,9 +38,9 @@ Confidant — a compliant shielded pool on the XRP Ledger: private transfers ins
 
 1. **Credential-gated entrance (XLS-70).** A pool can require that a depositing account holds an accepted Credential from an issuer the pool trusts. Every node reads it from the ledger itself at submit and again at endorse; a sidecar signs nothing its own node did not accept; `Expiration` is judged by the ledger's own clock. The holder accepts the credential with their own signature in the app; the issuer page is a demo issuer on testnet, the gate on the ledger is real. It is an engineering switch per pool — gatekeeping on a trusted issuer's say-so at the public boundary, nothing about anyone's notes.
 
-2. **Proof of funds for a lender.** A holder proves "I control at least X XRP in the pool" against a lender's challenge (borrower account, lender id, ledger window) without revealing which notes or how much more. The proof is the same Orchard circuit under its own signature domain; it is *refused by every apply path* (it can never move funds) and checked *read-only* by every node — nothing is logged, nothing persisted. The lender pastes the package on the lender page and sees k-of-N verdicts. Then the holder can have the quorum **record the verdict on the ledger** as an expiring XLS-70 Credential on the borrower's account (every signer re-verifies the proof on its own node at signing time and signs only its node's own fields), the borrower confirms with their signature, and a loan broker reads one credential — no file, no API. The credential says "controlled ≥ X as of ledger L", not "controls it now": an underwriting signal, a snapshot, not a lock.
+2. **Proof of funds for a lender — the flow, built end to end, and its honest verdict.** A holder proves "I control at least X XRP in the pool" against a challenge (borrower account, a request id, ledger window) without revealing more than X. The proof is the same Orchard circuit under its own signature domain; it is *refused by every apply path* (it can never move funds) and checked *read-only* by every node — nothing is logged, nothing persisted. The quorum then **records the verdict on the ledger** as an expiring XLS-70 Credential on the borrower's account (every signer re-verifies the proof on its own node at signing time and signs only its node's own fields), the borrower confirms with their signature, and a loan broker reads one credential — no file, no API. The holder presses one button; the lender types one address. The credential says "controlled ≥ X as of ledger L", not "controls it now": an underwriting signal, a snapshot, not a lock. **What we found and say plainly:** on the unchanged circuit the proof reveals the nullifiers of the proven notes to whoever holds it (the signers' node operators), so the holder's *next spend* of those notes becomes linkable to the proof; the wallet therefore refreshes its notes by itself right after proving. A privacy property that depends on a refresh step is not a property of the protocol — so this flow ships as a **demo, labelled as degrading the holder's privacy**, and the committed next step is a circuit that proves control of unspent notes without revealing nullifiers.
 
-**What makes it special.** Compliance and privacy are usually traded against each other; here the ledger's own primitives — Credentials, SignerLists, memos — carry the compliance, and the zero-knowledge pool carries the privacy. Every node is independent and ledger-reconstructible; every signing path is audited and mutation-tested before it ships; every surface says plainly what it does and does not prove.
+**What makes it special.** Compliance and privacy are usually traded against each other; here the ledger's own primitives — Credentials, SignerLists, memos — carry the compliance, and the zero-knowledge pool carries the privacy. Every node is independent and ledger-reconstructible; every signing path is audited and mutation-tested before it ships; every surface says plainly what it does and does not prove — including, when our own audit found a privacy cost in a feature we had just shipped, relabelling it the same day rather than shipping it as a feature.
 
 **Honest limits.** The pool account and proof verification are federated (k of N): collusion of k signers can drain the pool account but cannot spend anyone's notes. Shield and unshield amounts and addresses are public by construction; an empty pool has no privacy. The quorum exists because today's XRPL has no on-ledger Halo 2 verifier. Testnet only.
 
@@ -49,7 +52,7 @@ FYI, our crypto/ZK lead was unable to join the hackathon in person and is attend
 ## Technical description (≤ 1000 characters)
 
 ```markdown
-Rust core (`confidant-core`): Orchard/Halo 2 circuit reused unchanged; a `Wallet` builds, proves and signs bundles; a `Verifier` re-verifies proofs, nullifiers and the note commitment tree and emits anchor memos; `rebuild_checked` reconstructs state from the ledger. Rust verifier nodes (axum) read XRPL by JSON-RPC only and hold no keys; Node.js signer sidecars (xrpl.js) each hold one SignerList key and sign only what their own node endorsed; a coordinator multisigns and submits. Browser wallet = the core compiled to WebAssembly (multithreaded proving under COOP/COEP, ~3 s per proof). Hackathon additions: XLS-70 credential gate (ledger-read, fail-closed), proof of funds (own op tag refused by every apply path, read-only verify, canonical challenge bytes recomputed by each node, bounded ingress), quorum-signed `CredentialCreate` with node-derived fields. 100% core / 95% node line-coverage gates, mutation tables and an audit REQ/RESP for every slice.
+Rust core (`confidant-core`): Orchard/Halo 2 circuit reused unchanged; a `Wallet` builds, proves and signs bundles; a `Verifier` re-verifies proofs, nullifiers and the commitment tree, emits anchor memos and rebuilds state from the ledger. Rust verifier nodes (axum) read XRPL by JSON-RPC only, hold no keys; Node.js signer sidecars (xrpl.js) each hold one SignerList key and sign only what their own node endorsed; a coordinator multisigns and submits. Browser wallet = the core as WebAssembly (multithreaded proving, ~3 s per proof). Hackathon additions: XLS-70 credential gate (ledger-read, fail-closed, expiry by the ledger's clock); proof of funds (own op tag refused by every apply path, read-only verify, challenge bytes recomputed per node, bounded ingress; demo-grade until a nullifier-free circuit); quorum-signed `CredentialCreate` with node-derived fields; an x402 relay paid in RLUSD on XRPL EVM. 100% core / 95% node coverage gates, mutation tables, audit REQ/RESP per slice.
 ```
 
 ## Logo
@@ -63,3 +66,5 @@ PNG to the form (the SVG loads Google Fonts for the wordmark; the PNG has them b
 
 - 2026-10-24 — first draft, end of day 1: A and C live; Mastercard-track relay code complete.
 - 2026-10-24 (later) — remote-attendance note in the description; logo added (`docs/assets/`).
+- 2026-10-25 — the proof-of-funds ruling (demo-grade, privacy cost stated) and the Mastercard-track run folded in; counts updated.
+- 2026-10-25 (later) — the one-button Prove funds / one-field lender page (`docs/UI-RULE.md`) reflected in the description; counts updated.

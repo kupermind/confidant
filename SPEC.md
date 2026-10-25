@@ -203,6 +203,20 @@ external_ctx)`. The op tag keeps a bundle of one operation from being presented 
 unshield context binds the payout to the destination and the amount, the amount always taken from
 the bundle's own `value_balance`.
 
+**Design rule — no human as the last link (project lead, 2026-10-25).** A security or privacy property that holds only
+if the user performs a step, in the right order, is not a property of the protocol and is not shipped as one.
+
+**Proof of funds — privacy cost, stated plainly.** Built on the Orchard circuit unchanged, a proof of funds reveals the
+nullifiers of the notes it proves to everyone who holds the proof: the node operators that verify it and, in the
+package flow, the lender. A nullifier does not name the note or its value, but it reappears in the public log when that
+note is spent, so the holder's *next spend of those notes* becomes linkable to the proof (when, not to whom or how
+much). The only mitigation today is a self-transfer after the proof — a manual, order-dependent user step, which the
+rule above forbids relying on. **Status (lead's ruling, 2026-10-25): what is built is a demo of the flow, labelled as
+degrading the holder's privacy; it is not the product feature. The only accepted design is a circuit that proves
+control of unspent notes ≥ X without revealing nullifiers (`docs/PROOF-OF-FUNDS.md` §5).** The package flow also
+hands the lender the record, contrary to the design's "nullifiers stay with the nodes" (requirement 6); the
+on-ledger credential flow is the one that keeps them with the quorum.
+
 **Proof of funds (hackathon feature C, core slice).** A fourth op tag, `ProofOfFunds` (4), names a bundle built like an
 unshield of X with the change back to the holder and signed under a separate BLAKE2b domain, `ConfidantPoF_v1_`, over
 `bundle_commitment ‖ len(challenge) ‖ challenge ‖ X`. No pool sighash is ever computed under that domain and no

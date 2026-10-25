@@ -1,4 +1,4 @@
-// Headless-Chrome smoke test of the three static pages in demo mode (`?demo=1`, no backend, no
+// Headless-Chrome smoke test of the static pages in demo mode (`?demo=1`, no backend, no
 // network): what a phone shows, not what the services do (that is backend/quorum/smoke-ui.mjs).
 //
 //   node frontend/test/browser-smoke.mjs            (CHROME=<path or command> to pick the browser)
@@ -145,46 +145,45 @@ for (const name of ["index.html", "how-it-works.html", "balances.html", "lender.
   check("credential: accepted ✓ after the Confirm step", /^accepted ✓/.test(after.status ?? "") && after.btn === true, after);
 }
 
-// 10. Proof of funds, holder side (demo): create the wallet, prove 5 XRP to a lender → every node's verdict, the
-//     success line, the package buttons; the Share step done. Demo timings: faucet 2.5 s, prove 0.9 s, nodes ≤ 0.9 s.
+// 10. Proof of funds, holder side (demo): create the wallet, shield 25 XRP (24.9375 after the demo's 25 bps fee), then the
+//     one button — the whole balance is proved, the quorum writes the credential, the account confirms it, the notes are refreshed; the balance stays.
+//     Demo timings: faucet 2.5 s; entry-credential confirm 0.9 s; shield 3.5 s; prove 0.9 s, credential 1.5 s, confirm 0.9 s;
+//     refresh 0.9 + 1.4 s.
 {
-  const file = probe("index.html",
-    `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("tabbtn-prove").click();document.getElementById("prove-amount").value="5";document.getElementById("prove-borrower").value="rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf";document.getElementById("prove-lender").value="ACME-1";document.getElementById("btn-prove").click()},3200)`,
-    `{steps:[...document.getElementById("steps-prove").children].map(e=>(e.classList.contains("on")?"on":"")+(e.classList.contains("done")?"✓":"")).join("|"),msg:${text("msg-prove")},rows:document.querySelectorAll("#prove-verdicts tr").length,copy:!!document.getElementById("btn-pof-copy"),hidden:document.getElementById("tab-prove").hidden}`);
-  const r = sample(file, 390, 7000);
-  check("prove: 4 of 4 nodes verified, every step done, package offered", r.steps === "✓|✓|✓" && /^4 of 4 nodes verified it/.test(r.msg ?? "") && r.rows === 5 && r.copy === true && r.hidden === false, r);
-  // The signing path on stage: record the verdict as a Credential (quorum), then confirm with the account's signature.
-  const rec = probe("index.html",
-    `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("tabbtn-prove").click();document.getElementById("prove-amount").value="5";document.getElementById("prove-borrower").value=JSON.parse(localStorage.getItem("confidant.xrpl")).address;document.getElementById("prove-lender").value="ACME-1";document.getElementById("btn-prove").click()},3200);setTimeout(()=>document.getElementById("btn-pof-record")?.click(),6200);setTimeout(()=>document.getElementById("btn-pof-accept")?.click(),8200)`,
-    `{led:${text("msg-prove-ledger")},acts:[...document.querySelectorAll("#activity .type")].map(e=>e.textContent).join(",")}`);
-  const mid = sample(rec, 390, 8000);
-  check("prove → credential: issued by the pool, Confirm offered", /^Credential ConfidantPoF issued by the pool account/.test(mid.led ?? "") && /Confirm with my signature/.test(mid.led ?? ""), mid);
-  const fin = sample(rec, 390, 9800);
-  check("prove → credential: confirmed with the account's signature, two activity lines", /^Confirmed ✓/.test(fin.led ?? "") && (fin.acts ?? "").split(",").filter((t) => t === "credential").length === 2, fin);
-  const bad = probe("index.html",
-    `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("tabbtn-prove").click();document.getElementById("prove-amount").value="5";document.getElementById("prove-borrower").value="nobody";document.getElementById("prove-lender").value="a|b";document.getElementById("btn-prove").click()},3200)`,
+  // The demo holder arrives with the entry credential issued, not confirmed: the Prove tab says so before the press.
+  const gate = probe("index.html",
+    `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("tabbtn-prove").click();document.getElementById("btn-prove").click()},3200)`,
+    `{gate:${text("prove-gate")},msg:${text("msg-prove")},steps:[...document.getElementById("steps-prove").children].map(e=>e.classList.contains("on")||e.classList.contains("done")?"x":"").join("|")}`);
+  const g = sample(gate, 390, 4500);
+  check("prove: entry credential not confirmed — said before the press, press refused, no step started", /^One step first: .*not confirmed it — press Confirm in the Credential row/.test(g.gate ?? "") && (g.msg ?? "") === "" && g.steps === "||", g);
+  const setup = `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("btn-accept-cred").click();document.getElementById("shield-amount").value="25";document.getElementById("btn-shield").click()},3200);setTimeout(()=>{document.getElementById("tabbtn-prove").click();document.getElementById("btn-prove").click()},7600)`;
+  const report = `{steps:[...document.getElementById("steps-prove").children].map(e=>(e.classList.contains("on")?"on":"")+(e.classList.contains("done")?"✓":"")).join("|"),msg:${text("msg-prove")},refresh:${text("msg-prove-refresh")},details:${text("prove-details")},label:${text("btn-prove")},gate:${text("prove-gate")},bal:${text("priv-balance")},acts:[...document.querySelectorAll("#activity .type")].map(e=>e.textContent).join(","),hidden:document.getElementById("tab-prove").hidden}`;
+  const file = probe("index.html", setup, report);
+  const mid = sample(file, 390, 11500);
+  check("prove: one button — every step done, the line names the whole balance and the lender link, refresh under way",
+    mid.steps === "✓|✓|✓" && /^Done ✓/.test(mid.msg ?? "") && /controlled at least 24.9375 XRP as of ledger 12345678/.test(mid.msg ?? "") && /lender page/.test(mid.msg ?? "") && /Refreshing your notes/.test(mid.refresh ?? "") && mid.hidden === false, mid);
+  const fin = sample(file, 390, 14500);
+  check("prove: notes refreshed, balance unchanged, details fold, one credential + one transfer in Activity, button re-labelled",
+    /^Notes refreshed ✓/.test(fin.refresh ?? "") && fin.bal === "24.9375" && /Request req-[0-9a-f]{12}/.test(fin.details ?? "") && /confidant\/pof\/v1\|24937500\|12345678\|12367278\|/.test(fin.details ?? "")
+      && (fin.acts ?? "").split(",").filter((t) => t === "credential").length === 1 && (fin.acts ?? "").split(",").filter((t) => t === "transfer").length === 1 && fin.label === "Prove I hold 24.9375 XRP" && (fin.gate ?? "") === "", fin);
+  const empty = probe("index.html",
+    `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>document.getElementById("btn-accept-cred").click(),3200);setTimeout(()=>{document.getElementById("tabbtn-prove").click();document.getElementById("btn-prove").click()},4600)`,
     `{msg:${text("msg-prove")},steps:[...document.getElementById("steps-prove").children].map(e=>e.classList.contains("on")||e.classList.contains("done")?"x":"").join("|")}`);
-  const b = sample(bad, 390, 4500);
-  check("prove: a bad borrower is refused before proving", /classic XRPL address/.test(b.msg ?? "") && b.steps === "||", b);
+  const b = sample(empty, 390, 5800);
+  check("prove: an empty private balance is refused before proving", /Nothing to prove/.test(b.msg ?? "") && b.steps === "||", b);
 }
 
-// 11. Proof of funds, lender side (demo): the demo package verifies on 3 of 4 nodes (one busy), the claims are
-//     summarised, the lender id is flagged as the lender's own, the meaning is printed; a bad paste is refused.
+// 11. Lender page (demo): the holder's link carries the borrower's address, so the verdict loads by itself; another
+//     account has no credential and is told what the borrower should do; a bad address is refused.
 {
-  const file = probe("lender.html",
-    `setTimeout(()=>{const a=document.getElementById("ask-lender");a.value="ACME-4471";a.dispatchEvent(new Event("input"));document.getElementById("btn-demo-pkg").click();document.getElementById("btn-verify").click()},400)`,
-    `{msg:${text("verdict-msg")},rows:document.querySelectorAll("#verdict-table tbody tr").length,sum:${text("pkg-summary")},label:${text("verdict-label")},ask:${text("ask-text")}}`);
-  const r = sample(file, 390, 3000);
-  const led = probe("lender.html",
-    `setTimeout(()=>{document.getElementById("btn-demo-pkg").click();document.getElementById("btn-verify").click()},400);setTimeout(()=>document.getElementById("btn-ledger").click(),2600)`,
-    `{led:${text("ledger-msg")}}`);
-  const l = sample(led, 390, 4000);
-  check("lender: the credential read back from the ledger is accepted and matches the package", /accepted ✓/.test(l.led ?? "") && /matches the package you verified ✓/.test(l.led ?? "") && /confidant\/pof\/v1\|25000000\|12345650\|12346550\|/.test(l.led ?? ""), l);
-  check("lender: 3 of 4 nodes verified, claims summarised, own id flagged, meaning shown",
-    /^3 of 4 nodes verified it \(1 did not answer or refused\)/.test(r.msg ?? "") && r.rows === 4 && /at least 25 XRP/.test(r.sum ?? "") && /your id ✓/.test(r.sum ?? "") && /not a lock/.test(r.label ?? "") && /lender id "ACME-4471"/.test(r.ask ?? ""), r);
-  const bad = probe("lender.html", `setTimeout(()=>{document.getElementById("pkg").value="{not json";document.getElementById("btn-verify").click()},400)`, `{msg:${text("verdict-msg")}}`);
-  const b = sample(bad, 390, 1500);
-  check("lender: a non-JSON paste is refused with a readable reason", /not JSON/.test(b.msg ?? ""), b);
+  const report = `{res:${text("result")},busy:document.getElementById("btn-check").disabled}`;
+  const hit = sample(probe("lender.html", "", report), 390, 2500, "?demo=1&account=rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf");
+  check("lender: the credential is read from the ledger — amount, ledger, confirmed, signers, the honest line",
+    /^rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf controlled at least 25 XRP in the pool as of ledger 12345650/.test(hit.res ?? "") && /Confirmed by the borrower's own signature ✓/.test(hit.res ?? "") && /2 of 3 signers/.test(hit.res ?? "") && /not "controls it now"/.test(hit.res ?? "") && hit.busy === false, hit);
+  const none = sample(probe("lender.html", "", report), 390, 2500, "?demo=1&account=rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh");
+  check("lender: an account without the credential is told so, and what the borrower should do", /^No proof of funds on this account/.test(none.res ?? "") && /Prove funds/.test(none.res ?? ""), none);
+  const bad = sample(probe("lender.html", `setTimeout(()=>{document.getElementById("account").value="nobody";document.getElementById("btn-check").click()},400)`, report), 390, 1500);
+  check("lender: a bad address is refused with a readable reason", /not a classic XRPL address/.test(bad.res ?? ""), bad);
 }
 
 console.log(`\n${pass}/${pass + fail} checks ok${fail ? ` — ${fail} FAILED` : ""}`);
