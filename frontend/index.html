@@ -129,6 +129,10 @@
   .pub { font-size: 11px; font-weight: 500; color: var(--muted); border: 1px solid var(--line-2); border-radius: 999px; padding: 1px 7px; letter-spacing: .02em; }
   .big { font-family: var(--f-display); font-size: 42px; font-weight: 700; letter-spacing: -.015em; line-height: 1; font-variant-numeric: tabular-nums; }
   .big small { font-family: var(--f-body); font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 8px; letter-spacing: 0; }
+  /* While the wallet syncs, the balance is a moving placeholder, not a number that looks missing. */
+  .big .skel { display: inline-block; width: 3.4ch; height: .78em; border-radius: 8px; vertical-align: -.06em; background: linear-gradient(90deg, var(--sunken) 25%, var(--line-2) 50%, var(--sunken) 75%); background-size: 200% 100%; animation: shimmer 1.3s linear infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) { .big .skel { animation: none; background: var(--line-2); } }
   @media (max-width: 760px) { .big { font-size: 34px; } .cell.main { width: 100%; margin: 0; } .cell.links { margin: 4px 0 0; width: 100%; text-align: left; } .pool { gap: 14px 28px; } }
 
   /* Wallet: one card, two states; the private balance appears with the wallet */
@@ -671,7 +675,7 @@
       </div>
       <div id="haswallet" hidden>
         <div class="k">Your private balance<button class="tip" type="button" aria-label="About your private balance" data-tip="What the notes you hold in the pool are worth, counted from your own key. Anyone you give your viewing key can see it too."></button></div>
-        <div class="big"><span id="priv-balance">…</span><small>XRP</small></div>
+        <div class="big"><span id="priv-balance"><span class="skel" role="status" aria-label="syncing"></span></span><small>XRP</small></div>
         <div class="two-col">
           <div class="col-kv">
             <h4>XRPL account<span class="pub">public</span></h4>
@@ -722,6 +726,7 @@
       </div>
       <div class="op" id="tab-prove" role="tabpanel" aria-labelledby="tabbtn-prove" hidden>
         <div class="head"><p class="note">Show a lender you hold at least your private balance in the pool. Nothing moves and nothing is unshielded: each of the pool's signers re-checks the proof on its own node, and the quorum writes the result on your XRPL account as a credential that expires in 24 hours — a lender reads it from the ledger by your address. <b>Demo-grade:</b> the proof names the notes it proves, so the node operators can see when those notes are next spent; the app spends them to yourself right after, so your later payments are not linked to this proof. <span class="how" tabindex="0">How it works<span class="tipbox">Your wallet proves, in your browser, that unspent notes worth at least your balance are yours — bound to your account, a fresh request id, the current ledger and a 24-hour expiry. Each signer's node re-verifies that proof read-only against its own state; k of N signers then sign a CredentialCreate from the pool account to your account, and your account's own signature accepts it. The credential says "controlled at least X as of ledger L", not "controls it now": a snapshot, not a lock. The signers' nodes see your account, the amount and the ledger window; a lender sees only the credential.</span></span></p></div>
+        <div class="out" id="prove-gate" aria-live="polite"></div>
         <div class="steps" id="steps-prove"><div class="step"><span class="node"></span><b>Prove</b><span class="d">In your browser</span></div><div class="step"><span class="node"></span><b>Record</b><span class="d">The signers re-check, the quorum writes the credential</span></div><div class="step"><span class="node"></span><b>Confirm</b><span class="d">Your account's signature</span></div></div>
         <div class="action"><button class="primary" id="btn-prove">Prove funds</button></div>
         <div class="out" id="msg-prove" aria-live="polite"></div>
@@ -919,14 +924,14 @@
     if (!w) return;
     $("orchard-addr").textContent = w.address;
     $("keys-mode").textContent = wbFor(w).label;
-    if (!walletReady) { $("sync-hint").textContent = "Preparing…"; $("priv-balance").textContent = "…"; }
+    if (!walletReady) { $("sync-hint").textContent = "Syncing your notes…"; $("priv-balance").innerHTML = `<span class="skel" role="status" aria-label="syncing"></span>`; }
     else {
       try {
         const s = await wbFor(w).summary(w); $("priv-balance").textContent = fmt(s.balance); $("sync-hint").textContent = `Synced ${s.synced} bundle${s.synced === 1 ? "" : "s"}`;
         // The one button says what it will do: prove the whole balance (the label is kept while it is busy).
-        const pb = $("btn-prove"); if (!pb.disabled) { pb.dataset.label = Number(s.balance) > 0 ? `Prove I hold ≥ ${fmt(s.balance)} XRP` : "Prove funds"; pb.textContent = pb.dataset.label; }
+        const pb = $("btn-prove"); if (!pb.disabled) { pb.dataset.label = Number(s.balance) > 0 ? `Prove I hold ${fmt(s.balance)} XRP` : "Prove funds"; pb.textContent = pb.dataset.label; }
       }
-      catch (e) { $("sync-hint").textContent = `Sync failed: ${e.message}`; }
+      catch (e) { $("sync-hint").textContent = `Sync failed: ${e.message}`; $("priv-balance").textContent = "—"; }
     }
     const x = store.get("xrpl");
     $("xrpl-addr").textContent = x ? x.address : "None yet — press Fund from faucet";
@@ -956,17 +961,26 @@
   }
   async function refreshCredential() {
     const c = credentialCfg(); const row = $("cred-row"); const x = store.get("xrpl");
-    if (!c) { row.hidden = true; return; }
+    if (!c) { row.hidden = true; setMsg("prove-gate", ""); return; }
     row.hidden = false; $("btn-accept-cred").hidden = true;
     if (!x) { $("cred-status").textContent = "needs an XRPL account first"; return; }
     if (!$("cred-status").textContent.trim() || $("cred-status").textContent === "—") $("cred-status").textContent = "checking…";
     let state; try { state = await credentialState(c, x.address); } catch (e) { $("cred-status").textContent = "ledger not readable"; return; }
     const issuerHref = `issuer.html?subject=${encodeURIComponent(x.address)}`;
+    setMsg("prove-gate", proveGateText(c, x, state), "warn"); // the Prove tab says it before the press, not after
     // Short on purpose: the cell is narrow; the tooltip and the issuer page carry the explanation.
     if (state === "accepted") $("cred-status").textContent = `accepted ✓ (${c.typeText ?? "credential"})`;
     else if (state === "issued") { $("cred-status").textContent = `issued — confirm it to shield`; $("btn-accept-cred").hidden = false; }
     else if (state === "expired") $("cred-status").innerHTML = `expired — <a href="${issuerHref}">renew with the issuer</a>`;
     else $("cred-status").innerHTML = `none — <a href="${issuerHref}">get one from the issuer</a>`;
+  }
+  // Bound (A) on the nodes: the quorum writes a proof-of-funds credential only on an account that is eligible under
+  // the pool's entry gate (when the gate is on). Empty when eligible; otherwise the one thing to do first.
+  function proveGateText(c, x, state) {
+    if (!c || !x || state === "accepted") return "";
+    const t = esc(c.typeText ?? "credential"), issuerHref = `issuer.html?subject=${encodeURIComponent(x.address)}`;
+    if (state === "issued") return `One step first: your account holds the pool's entry credential (${t}) but has not confirmed it — press <b>Confirm</b> in the Credential row of your wallet card, then prove.`;
+    return `One step first: the quorum writes a proof-of-funds credential only on an account that holds the pool's entry credential (${t}), and your account ${esc(short(x.address))} has ${state === "expired" ? "an expired one" : "none"} — <a href="${issuerHref}">get one from the issuer</a>, confirm it in the Credential row of your wallet card, then prove.`;
   }
   async function acceptCredential() {
     const c = credentialCfg(); const x = store.get("xrpl"); if (!c || !x) return;
@@ -1163,6 +1177,8 @@
       if (!walletReady) throw new Error("The wallet is still preparing");
       const x = store.get("xrpl"); if (!x) throw new Error("Fund an XRPL account first (Fund from faucet) — the credential is written on it");
       if (!cfg.pool) throw new Error("The coordinator names no pool account (config.pool); retry in a moment");
+      const c = credentialCfg(); const gate = c ? proveGateText(c, x, await credentialState(c, x.address).catch(() => "accepted")) : "";
+      if (gate) { setMsg("prove-gate", gate, "warn"); setMsg("msg-prove", ""); return; } // an unreadable ledger is left to the quorum's own answer
       busy(btn, true); setMsg("msg-prove", ""); setMsg("msg-prove-refresh", ""); $("prove-details").innerHTML = "";
       const amount = Number((await wbFor(w).summary(w)).balance);
       if (!(amount > 0)) throw new Error("Nothing to prove: your private balance is 0 — shield first");

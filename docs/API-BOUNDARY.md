@@ -163,7 +163,7 @@ the worker op `pof({ amount, challenge })` (one name on every surface: worker op
   fills every field itself: `amount` = the wallet's whole private balance (it always attests the maximum), `borrower` =
   this browser's XRPL account, `lender` = a request id the app generates (`req-<12 hex>`; the lender never sees it —
   they read the ledger by address), `ledgerIndex` = the validated ledger the app reads itself, `expiry` = 24 h later
-  (21 600 ledgers). The button says what it will do ("Prove I hold ≥ X XRP"). Pressed, it: removes the holder's
+  (21 600 ledgers). The button says what it will do ("Prove I hold X XRP" — the credential then reads "at least X", a lower bound being what a proof can state). When the pool's entry gate is on and the account is not eligible (no accepted gate credential), the tab says so before the press — the nodes refuse the credential otherwise (bound A). Pressed, it: removes the holder's
   previous proof-of-funds credential from the pool if one is still on the account (`CredentialDelete` by the subject —
   the nodes refuse a borrower who holds one); proves in the browser (`pof`); `POST /pof/credential` (every signer's
   node re-verifies the proof on its own state; k of N sign `CredentialCreate`); signs `CredentialAccept` with the
