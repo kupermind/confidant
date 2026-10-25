@@ -647,8 +647,8 @@
       <small>Shielded XRPL · testnet</small>
     </div>
     <nav class="nav">
-      <a href="how-it-works.html">How it works</a>
-      <a href="balances.html">Balances</a>
+      <a href="how-it-works.html" target="_blank" rel="noopener">How it works</a>
+      <a href="balances.html" target="_blank" rel="noopener">Balances</a>
       <span class="pill" id="netpill"><span class="dot"></span><span id="nettext">Connecting…</span></span>
     </nav>
     <button class="theme" id="theme-toggle" type="button" aria-label="Switch theme" title="Switch theme"><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
@@ -660,7 +660,7 @@
       <div class="cell"><span class="k">Bundles</span><b id="st-bundles">—</b></div>
       <div class="cell"><span class="k">Quorum</span><b id="st-quorum">—</b></div>
       <div class="cell"><span class="k">Anchored root</span><b class="mono" id="st-root">—</b></div>
-      <div class="cell links"><a id="pool-breakdown" href="balances.html">How it is counted →</a><a id="st-pool-link" href="#" target="_blank" rel="noopener">Pool account on explorer →</a></div>
+      <div class="cell links"><a id="pool-breakdown" href="balances.html" target="_blank" rel="noopener">How it is counted →</a><a id="st-pool-link" href="#" target="_blank" rel="noopener">Pool account on explorer →</a></div>
     </section>
 
     <section class="card wallet" id="walletcard">
@@ -755,7 +755,7 @@
 
   <footer>
     <details class="trust">
-      <summary><a href="how-it-works.html">How Confidant works</a><a href="balances.html">Balances, explained</a><span class="toggle">Trust model</span></summary>
+      <summary><a href="how-it-works.html" target="_blank" rel="noopener">How Confidant works</a><a href="balances.html" target="_blank" rel="noopener">Balances, explained</a><span class="toggle">Trust model</span></summary>
       <p>Notes are non-custodial: this wallet's spending key never reaches the pool. The pool account is held by a k-of-N quorum of independent verifiers; collusion of k can drain the pool account but cannot spend anyone's notes. Shield and unshield amounts and addresses are public by nature; the transfer graph inside the pool is not. Your wallet runs in this browser (WebAssembly): the spending key, your notes and the proofs never leave it. Only if WebAssembly is unavailable does the page fall back to the demo wallet service on the demo host, testnet demo only, never for real value.</p>
     </details>
   </footer>
@@ -968,12 +968,13 @@
     if (!$("cred-status").textContent.trim() || $("cred-status").textContent === "—") $("cred-status").textContent = "checking…";
     let state; try { state = await credentialState(c, x.address); } catch (e) { $("cred-status").textContent = "ledger not readable"; return; }
     const issuerHref = `issuer.html#team`;
-    setMsg("prove-gate", proveGateText(c, x, state), "warn"); // the Prove tab says it before the press, not after
+    const gate = proveGateText(c, x, state); setMsg("prove-gate", gate, "warn"); // the Prove tab says it before the press, not after
+    if (!gate && /^Not yet/.test($("msg-prove").textContent.trim())) setMsg("msg-prove", "");
     // Short on purpose: the cell is narrow; the tooltip and the issuer page carry the explanation.
     if (state === "accepted") $("cred-status").textContent = `accepted ✓ (${c.typeText ?? "credential"})`;
     else if (state === "issued") { $("cred-status").textContent = `issued — confirm it to shield`; $("btn-accept-cred").hidden = false; }
-    else if (state === "expired") $("cred-status").innerHTML = `expired — <a href="${issuerHref}">renew with the issuer</a>`;
-    else $("cred-status").innerHTML = `none — <a href="${issuerHref}">get one from the issuer</a>`;
+    else if (state === "expired") $("cred-status").innerHTML = `expired — <a href="${issuerHref}" target="_blank" rel="noopener">renew with the issuer</a>`;
+    else $("cred-status").innerHTML = `none — <a href="${issuerHref}" target="_blank" rel="noopener">get one from the issuer</a>`;
   }
   // Bound (A) on the nodes: the quorum writes a proof-of-funds credential only on an account that is eligible under
   // the pool's entry gate (when the gate is on). Empty when eligible; otherwise the one thing to do first.
@@ -985,8 +986,11 @@
   /** The one thing to do first when the app cannot act by itself; "" when it can (or nothing is needed). */
   function proveGateText(c, x, state) {
     if (!c || !x || state === "accepted" || state === "issued" || issuerKey()) return "";
-    const t = esc(c.typeText ?? "credential");
-    return `One step first: the pool's verifiers accept a deposit — and the quorum writes a proof-of-funds credential — only for an account that holds the pool's entry credential (${t}), and your account ${esc(short(x.address))} has ${state === "expired" ? "an expired one" : "none"}. The pool's issuer writes it: on this testnet that is the team, from the console at the bottom of <a href="issuer.html#team">the under-the-hood page</a>. Once written, the app confirms it by itself when you shield or prove.`;
+    const t = esc(c.typeText ?? "credential"), saved = store.get("issuer"), page = `<a href="issuer.html#team" target="_blank" rel="noopener">the under-the-hood page</a>`;
+    const key = saved
+      ? `The issuer key saved in this browser is for <span class="mono">${esc(saved.address)}</span>, <b>not the pool's issuer</b> <span class="mono">${esc(c.issuer)}</span> — replace it in the fold at the bottom of ${page}, then come back here.`
+      : `The pool's issuer writes it: on this testnet that is the team, by saving the issuer's key once in the fold at the bottom of ${page} — after that the app issues and confirms it by itself when you shield or prove.`;
+    return `One step first: the pool's verifiers accept a deposit — and the quorum writes a proof-of-funds credential — only for an account that holds the pool's entry credential (${t}), and your account ${esc(short(x.address))} has ${state === "expired" ? "an expired one" : "none"}. ${key}`;
   }
   /** Null when nothing was needed; { issued, accepted } hashes when it did the work; { blocked } when it cannot act. */
   async function ensureEntryCredential(x, say) {
@@ -1096,7 +1100,7 @@
     } catch (e) {
       const p = store.get("pending-shield");
       if (p) showResume(p, e.message);
-      else if (e.status === 403 && /credential/i.test(e.message)) { const x = store.get("xrpl"); setMsg("msg-shield", `${esc(e.message)} — this pool accepts deposits only from accounts holding a credential from its trusted issuer. <a href="issuer.html?subject=${encodeURIComponent(x?.address ?? "")}">Get one from the issuer</a>, confirm it in the wallet card, then shield again.`, "err"); }
+      else if (e.status === 403 && /credential/i.test(e.message)) { const x = store.get("xrpl"); setMsg("msg-shield", `${esc(e.message)} — this pool accepts deposits only from accounts holding a credential from its trusted issuer. <a href="issuer.html#team" target="_blank" rel="noopener">Get one from the issuer</a>, confirm it in the wallet card, then shield again.`, "err"); }
       else setMsg("msg-shield", esc(e.message), "err");
     }
     finally { busy(btn, false); refreshWallet(); refreshStatus(); }
@@ -1225,7 +1229,7 @@
       if (gateState !== "accepted") {
         step("gate");
         entry = await ensureEntryCredential(x, (t) => setMsg("msg-prove", `<span class="spin"></span>${t}`, "warn"));
-        if (entry?.blocked) { setSteps("steps-prove", -1); setMsg("msg-prove", ""); setMsg("prove-gate", entry.blocked, "warn"); return; }
+        if (entry?.blocked) { setSteps("steps-prove", -1); setMsg("prove-gate", entry.blocked, "warn"); setMsg("msg-prove", "Not yet — the step above comes first.", "err"); $("prove-gate").scrollIntoView({ block: "center", behavior: "smooth" }); return; }
         setMsg("prove-gate", "");
       }
       step("prove"); setMsg("msg-prove", "");
@@ -1242,14 +1246,14 @@
       step("refresh");
       const expires = new Date((r.expiration + RIPPLE_EPOCH) * 1000);
       const lenderUrl = `lender.html?account=${encodeURIComponent(x.address)}`;
-      setMsg("msg-prove", `<b>Done ✓</b> Your account now carries a credential from the pool: <b>controlled at least ${fmt(amount)} XRP as of ledger ${L}</b>, confirmed by your signature, expires ${esc(expires.toLocaleString())}. A lender checks it by your address on <a href="${lenderUrl}">the lender page</a> — send them that link, nothing else. ${link("CredentialCreate", r.tx)} · ${link("CredentialAccept", accepted)}`, "ok");
+      setMsg("msg-prove", `<b>Done ✓</b> Your account now carries a credential from the pool: <b>controlled at least ${fmt(amount)} XRP as of ledger ${L}</b>, confirmed by your signature, expires ${esc(expires.toLocaleString())}. A lender checks it by your address on <a href="${lenderUrl}" target="_blank" rel="noopener">the lender page</a> — send them that link, nothing else. ${link("CredentialCreate", r.tx)} · ${link("CredentialAccept", accepted)}`, "ok");
       addActivity({ type: "credential", text: `proved ≥ ${fmt(amount)} XRP as of ledger ${L} — credential on ${short(x.address)}`, links: [["CredentialCreate", r.tx], ["CredentialAccept", accepted]] });
       const refreshed = await refreshNotes(w, amount);
       step("refresh", true);
       // The receipt: what was written on the ledger and by whom — no record, no nullifiers, nothing secret.
       const receipt = { kind: "confidant/proof-of-funds-receipt/v1", network: cfg.network, borrower: x.address, amountDrops: amount, amountXrp: fmt(amount), ledgerIndex: L, expiry: challenge.expiry, requestId: challenge.lender, says: `controlled at least ${fmt(amount)} XRP as of ledger ${L} — not "controls it now"; a snapshot, not a lock`, credential: { issuer: r.issuer, type: r.credentialTypeText ?? "ConfidantPoF", uri: hexToText(r.uri), expiration: expires.toISOString(), create: r.tx, accept: accepted, signers: r.signers ?? [] }, entryCredential: entry ? { create: entry.issued, accept: entry.accepted } : undefined, bundleHash: built.bundleHash, refreshAnchor: refreshed, explorer: cfg.explorer };
       const file = URL.createObjectURL(new Blob([JSON.stringify(receipt, null, 2)], { type: "application/json" }));
-      $("prove-details").innerHTML = `<p class="note"><a href="${file}" download="confidant-proof-of-funds-${L}.json">Download the receipt</a> — what was written on the ledger, nothing secret in it · <a href="issuer.html">What happened under the hood →</a></p><details class="keys"><summary>Details</summary><p class="note">Request <span class="mono">${esc(challenge.lender)}</span> · ledger window ${L} → ${challenge.expiry} · signed by ${r.signers?.length ?? "?"} of ${esc(cfg.signers ?? "?")} signers${r.refusals?.length ? ` (${r.refusals.length} refused)` : ""} · credential URI <span class="mono">${esc(hexToText(r.uri))}</span> · bundle <span class="mono">${esc(short(built.bundleHash))}</span>${proved(built)}. It says "controlled at least X as of ledger L", not "controls it now". The signers' nodes saw your account, the amount and the window; the lender sees only the credential.</p></details>`;
+      $("prove-details").innerHTML = `<p class="note"><a href="${file}" download="confidant-proof-of-funds-${L}.json">Download the receipt</a> — what was written on the ledger, nothing secret in it · <a href="issuer.html" target="_blank" rel="noopener">What happened under the hood →</a></p><details class="keys"><summary>Details</summary><p class="note">Request <span class="mono">${esc(challenge.lender)}</span> · ledger window ${L} → ${challenge.expiry} · signed by ${r.signers?.length ?? "?"} of ${esc(cfg.signers ?? "?")} signers${r.refusals?.length ? ` (${r.refusals.length} refused)` : ""} · credential URI <span class="mono">${esc(hexToText(r.uri))}</span> · bundle <span class="mono">${esc(short(built.bundleHash))}</span>${proved(built)}. It says "controlled at least X as of ledger L", not "controls it now". The signers' nodes saw your account, the amount and the window; the lender sees only the credential.</p></details>`;
     } catch (e) { setMsg("msg-prove", esc(e.message), "err"); }
     finally { busy(btn, false); refreshWallet(); refreshStatus(); }
   }
@@ -1308,6 +1312,9 @@
   $("btn-transfer").addEventListener("click", doTransfer);
   $("btn-unshield").addEventListener("click", doUnshield);
   $("btn-prove").addEventListener("click", doProve);
+  // The issuer key is saved on another page: re-read the gate when storage changes or this tab comes back.
+  window.addEventListener("storage", (e) => { if (!e.key || /^confidant\.(issuer|xrpl)$/.test(e.key)) refreshCredential().catch(() => {}); });
+  window.addEventListener("focus", () => { if (wallet()) refreshCredential().catch(() => {}); });
   $("btn-reveal").addEventListener("click", doReveal);
   $("btn-fresh").addEventListener("click", () => { $("unshield-to").value = xrpl.Wallet.generate().classicAddress; });
   $("btn-own").addEventListener("click", () => { const x = store.get("xrpl"); $("unshield-to").value = x ? x.address : ""; });

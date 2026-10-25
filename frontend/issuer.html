@@ -177,9 +177,9 @@
       <small>Under the hood · <span id="net">testnet</span></small>
     </div>
     <nav class="nav">
-      <a href="/">Open the app</a>
-      <a href="how-it-works.html">How it works</a>
-      <a href="balances.html">Balances</a>
+      <a href="/" target="_blank" rel="noopener">Open the app</a>
+      <a href="how-it-works.html" target="_blank" rel="noopener">How it works</a>
+      <a href="balances.html" target="_blank" rel="noopener">Balances</a>
     </nav>
     <button class="theme" id="theme-toggle" type="button" aria-label="Switch theme" title="Switch theme"><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
   </header>
@@ -234,7 +234,7 @@
     <summary>Team: the issuer key in this browser</summary>
     <div>
       <div id="key-none">
-        <p>This browser holds no issuer key. The app issues the entry credential by itself only when the key of the issuer
+        <p id="key-none-text">This browser holds no issuer key. The app issues the entry credential by itself only when the key of the issuer
           the pool trusts is in this browser; without it, the Prove and Shield buttons say what is missing.</p>
         <div class="row"><input type="password" id="seed" placeholder="issuer account seed (s…)" autocomplete="off"><button class="btn primary" id="btn-save-key" type="button">Save in this browser</button></div>
         <div class="src">The seed stays in this browser's storage and is sent nowhere. Testnet only.</div>
@@ -274,11 +274,15 @@
   function render() {
     const t = trusted(), key = store.get("issuer"), acct = appAccount();
     $("trusted").textContent = t ? `${t} (${cfg.credential.typeText ?? "credential"})` : "none — this pool has no entry gate configured; deposits are open";
-    $("key-none").hidden = !!key; $("key-has").hidden = !key;
+    const ok = !!key && !!t && key.address === t;
+    $("key-has").hidden = !key; $("key-none").hidden = ok;
+    $("key-none-text").innerHTML = key
+      ? `<b>This key is not the issuer the pool trusts.</b> The pool's nodes accept credentials only from <span class="mono">${esc(t ?? "— gate off —")}</span>; the key saved here belongs to <span class="mono">${esc(key.address)}</span>, so the app cannot issue with it. Paste the trusted issuer's seed to replace it.`
+      : "This browser holds no issuer key. The app issues the entry credential by itself only when the key of the issuer the pool trusts is in this browser; without it, the Prove and Shield buttons say what is missing.";
     if (!key) { $("team").open = !!t; return; }
+    $("team").open = $("team").open || !ok;
     $("key-addr").textContent = key.address;
-    const ok = t && key.address === t;
-    $("key-match").innerHTML = ok ? "✓ the issuer this pool trusts" : `<b>✗ not the issuer this pool trusts (${esc(t ?? "gate off")})</b>`;
+    $("key-match").innerHTML = ok ? "✓ the issuer this pool trusts" : `<b>✗ not the issuer this pool trusts</b>`;
     $("issue-to").innerHTML = acct ? `Issue the entry credential to <span class="mono">${esc(acct)}</span> (this browser's wallet)` : "Create a wallet in the app first — the app then issues it under the hood when you shield or prove.";
     $("btn-issue").disabled = !(ok && acct);
   }

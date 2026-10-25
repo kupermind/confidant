@@ -117,3 +117,13 @@ test("the lender page reads the credential's URI exactly as the nodes write it",
   for (const bad of ["", "confidant/pof/v2|1|2|3|9f3a1c7e5b2d4a60", "confidant/pof/v1|1|2|3|short", "confidant/pof/v1|1|2|3|9f3a1c7e5b2d4a60|x", "confidant/pof/v1|-1|2|3|9f3a1c7e5b2d4a60"]) assert.equal(parsePofUri(bad), null, bad);
 });
 
+test("every link to another page opens in a new tab (the app stays where the user is)", () => {
+  for (const name of PAGES) {
+    const html = page(name);
+    for (const m of html.matchAll(/<a\b[^>]*\bhref="(?:\/|(?:index|how-it-works|balances|lender|issuer)\.html[^"]*|\$\{(?:lenderUrl|issuerHref)\})"[^>]*>/g)) {
+      if (/class="mark"/.test(m[0])) continue; // the wordmark is the home link of the page itself
+      assert.match(m[0], /target="_blank"/, `${name}: ${m[0].slice(0, 120)}`);
+      assert.match(m[0], /rel="noopener"/, `${name}: ${m[0].slice(0, 120)}`);
+    }
+  }
+});

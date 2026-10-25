@@ -132,6 +132,12 @@ for (const name of ["index.html", "how-it-works.html", "balances.html", "lender.
     `{key:${text("key-addr")},to:${text("issue-to")},msg:${text("key-msg")},trusted:${text("trusted")}}`);
   const r = sample(flow, 390, 2800);
   check("under the hood: key saved as the pool's issuer, credential issued to this browser's wallet", /^rDEMOissuer/.test(r.key ?? "") && /rJASAbKaKY7LybEdFwkgpv5gCc2YA9VYbF/.test(r.to ?? "") && /^Issued ✓ to rJASAbKaKY7LybEdFwkgpv5gCc2YA9VYbF/.test(r.msg ?? "") && /ConfidantKYC/.test(r.trusted ?? ""), r);
+  // A key that is not the pool's issuer (an old test issuer, a wrong paste): said loudly, the seed field stays, Issue is off.
+  const wrong = probe("issuer.html",
+    `localStorage.setItem("confidant.xrpl",JSON.stringify({address:"rJASAbKaKY7LybEdFwkgpv5gCc2YA9VYbF",seed:"x"}));localStorage.setItem("confidant.issuer",JSON.stringify({seed:"s",address:"rWRONGissuerxxxxxxxxxxxxxxxxxxxxxx"}))`,
+    `{match:${text("key-match")},none:document.getElementById("key-none").hidden,text:${text("key-none-text")},issue:document.getElementById("btn-issue").disabled,open:document.getElementById("team").open}`);
+  const w = sample(wrong, 390, 1500);
+  check("under the hood: a key that is not the pool's issuer — warned, seed field shown to replace it, Issue disabled, fold open", /✗ not the issuer/.test(w.match ?? "") && w.none === false && /not the issuer the pool trusts/.test(w.text ?? "") && w.issue === true && w.open === true, w);
 }
 
 // 7b. The entry gate under the hood (demo, ?nocred: the account holds no entry credential at all).
@@ -143,6 +149,10 @@ for (const name of ["index.html", "how-it-works.html", "balances.html", "lender.
     `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("shield-amount").value="25";document.getElementById("btn-shield").click()},3200)`, report);
   const n = sample(noKey, 390, 4500, "?demo=1&nocred");
   check("gate, no key: shield refused before any payment with the one step first; the Prove tab says it too", /^One step first: .*under-the-hood page/.test(n.msg ?? "") && /^One step first/.test(n.gate ?? "") && n.steps === "||", n);
+  const wrongKey = probe("index.html",
+    `localStorage.setItem("confidant.issuer",JSON.stringify({seed:"s",address:"rWRONGissuerxxxxxxxxxxxxxxxxxxxxxx"}));setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("shield-amount").value="25";document.getElementById("btn-shield").click()},3200)`, report);
+  const wk = sample(wrongKey, 390, 4500, "?demo=1&nocred");
+  check("gate, wrong key: the gate line names the saved key and the pool's issuer; shield refused before any payment", /not the pool's issuer/.test(wk.gate ?? "") && /rWRONGissuer/.test(wk.gate ?? "") && /rDEMOissuerKYC/.test(wk.gate ?? "") && /^One step first/.test(wk.msg ?? "") && wk.steps === "||", wk);
   const withKey = probe("index.html",
     `localStorage.setItem("confidant.issuer",JSON.stringify({seed:"s",address:"rDEMOissuerKYCxxxxxxxxxxxxxxxxxxxx"}));setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("shield-amount").value="25";document.getElementById("btn-shield").click()},3200)`, report);
   const mid = sample(withKey, 390, 4000, "?demo=1&nocred");
