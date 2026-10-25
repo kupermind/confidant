@@ -971,14 +971,16 @@
     if (!x) { $("cred-status").textContent = "needs an XRPL account first"; return; }
     if (!$("cred-status").textContent.trim() || $("cred-status").textContent === "—") $("cred-status").textContent = "checking…";
     let state; try { state = await credentialState(c, x.address); } catch (e) { $("cred-status").textContent = "ledger not readable"; return; }
-    const issuerHref = `issuer.html#team`;
-    const gate = proveGateText(c, x, state, await issuerAvailable()); setMsg("prove-gate", gate, "warn"); // the Prove tab says it before the press, not after
+    const svc = await issuerAvailable(), can = svc || !!issuerKey(); // the app can write the credential itself: the service, or the team's key
+    const gate = proveGateText(c, x, state, svc); setMsg("prove-gate", gate, "warn"); // the Prove tab says it before the press, not after
     if (!gate && /^Not yet/.test($("msg-prove").textContent.trim())) setMsg("msg-prove", "");
     // Short on purpose: the cell is narrow; the tooltip and the issuer page carry the explanation.
     if (state === "accepted") $("cred-status").textContent = `accepted ✓ (${c.typeText ?? "credential"})`;
     else if (state === "issued") { $("cred-status").textContent = `issued — confirm it to shield`; $("btn-accept-cred").hidden = false; }
-    else if (state === "expired") $("cred-status").innerHTML = `expired — <a href="${issuerHref}" target="_blank" rel="noopener">renew with the issuer</a>`;
-    else $("cred-status").innerHTML = `none — <a href="${issuerHref}" target="_blank" rel="noopener">get one from the issuer</a>`;
+    // Before the first press nothing is asked of the user: the app writes the credential under the hood when they shield or
+    // prove. Only when it cannot (service down and no team key) does the row point at the team fold.
+    else if (can) $("cred-status").textContent = state === "expired" ? "expired — renewed under the hood when you next shield or prove" : "not yet — written under the hood when you first shield or prove";
+    else $("cred-status").innerHTML = `${state === "expired" ? "expired" : "none"} — the issuer is not answering; <a href="issuer.html#team" target="_blank" rel="noopener">team key</a>`;
   }
   // Bound (A) on the nodes: the quorum writes a proof-of-funds credential only on an account that is eligible under
   // the pool's entry gate (when the gate is on). Empty when eligible; otherwise the one thing to do first.

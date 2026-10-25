@@ -118,7 +118,7 @@ RevealReport{ balance, notes: [{ direction: "incoming" | "outgoing", amount, lea
   — то же семейство статусов, что у скрининга; UI различает по слову `credential`. Выпущенный, но не
   принятый Credential тоже отклоняется (принять его должен субъект: эта подпись и привязывает аккаунт).
 - **Сторона держателя (UI).** В карточке кошелька строка *Credential*: `accepted ✓` / `issued — confirm it to shield`
-  / `none — get one from the issuer`; *Confirm* подписывает `CredentialAccept { Account: держатель, Issuer,
+  / `not yet — written under the hood when you first shield or prove`; *Confirm* подписывает `CredentialAccept { Account: держатель, Issuer,
   CredentialType }` XRPL-аккаунтом держателя в браузере (xrpl.js); отклонённый shield ссылается на страницу
   эмитента. Пока узел не отдаёт `credential` в `/config`, страница эмитента передаёт держателя по ссылке
   `/?accept=<issuer>:<typeHex>`, которую приложение сохраняет и считает конфигом ворот (только демо-путь; сохранённая
