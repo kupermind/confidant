@@ -5,7 +5,9 @@ facts come from the 2026-10-25 live runs: 68 s wall from the 402 to the settleme
 channel; price 0.1 RLUSD under a policy max of 0.25; the over-cap refusal exits with code 3 and signs nothing. Run 3
 (2026-10-25, 03:57 UTC) measured the newest parts: the proof-of-funds beat ≈ 28 s before the 402 (≈ 11 s sync + proof,
 ≈ 10 s the quorum's `CredentialCreate`, ≈ 6 s the agent's `CredentialAccept`), 92 s wall to the settlement including a
-12 s pause of the sponsor's service, the signed receipt written at the anchor, `verify-receipt.mjs` ≈ 5 s.
+12 s pause of the sponsor's service, the signed receipt written at the anchor, `verify-receipt.mjs` ≈ 5 s. Run 4 (04:07 UTC)
+in the stage configuration — the relay as a service on the demo host behind TLS, the agent on the laptop — took 80 s wall
+with no pause (proof of funds ≈ 28 s, voucher ≈ 18 s, relay + anchor ≈ 19 s, settlement ≈ 8 s).
 
 ## 1. Stage checklist (run blind, 5 minutes before)
 
@@ -22,7 +24,8 @@ fields so that no seed or key ever reaches the terminal; `node -p` does the same
    ```
 
 2. **Channel id set, so the 24 s channel opening is skipped.** `CHANNEL_ID` in `.env` must be the open 2-RLUSD
-   channel; `cap − redeemed` must be ≥ 0.1 (one run) — read it on-chain:
+   channel (after runs 3 and 4 it has 0.3 redeemed, 1.7 left); `cap − redeemed` must be ≥ 0.1 (one run) — read it on-chain.
+   With it empty the agent tries to open a channel and the platform refuses (`PayoutBindingLimitExceeded`):
 
    ```bash
    node -e 'const s=require("./ap4m-hackathon-sdk.cjs"),{ethers}=require("ethers");(async()=>{

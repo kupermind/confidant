@@ -70,6 +70,14 @@ The proof-of-funds beat costs ≈ 28 s before the 402 (≈ 11 s sync + proof nat
 `rAMxdUQz71EzKwJVy5QpsvVBUFQAyxiti` (`account_objects`, type credential, issuer = the pool); the relay's policy was
 `MIN_POF_XRP=1`, the agent proved its whole balance.
 
+**Run 4 (2026-10-25, 04:07 UTC) — the stage configuration:** the relay as a service on the demo host behind TLS, the agent
+on the laptop (`RELAY_URL=https://confidant.im`, `RESOURCE_URL=https://confidant.im/resource`, an open channel). 80 s wall:
+proof of funds ≈ 28 s, voucher ≈ 18 s, relay + anchor ≈ 19 s, settlement ≈ 8 s. VoucherRedeemed
+`https://explorer.testnet.xrplevm.org/tx/0x565e3c2adbc6265200ffb25eb8f728e994114f6b50f8f057796bf047342816a1`, anchor
+`https://testnet.xrpl.org/transactions/302AB16D2A61C6F221A885C1B13C99B00C9841718805EA5078AC0C56F5FB2554`, payout
+`https://explorer.testnet.xrplevm.org/tx/0x6a06e4104258359c40928a85faded20499852968fdc0f975b44ff1639bce437a`;
+`verify-receipt` 10/10 ✓ on `receipts/cf18bf64….json`.
+
 What the first attempt taught (all fixed here): the relay's forward to the coordinator can hit a reset connection while
 the quorum anchors — the relay must never die on it (guarded handler, retried forward, the claim kept unused on any
 failure); a rerun of the agent must **resume** (`pending.json`: same bundle, same purchase name — the kit replays the
@@ -86,8 +94,15 @@ cd hackathon/ap4m && ./setup.sh && cp env.example .env   # fill AGENT_PRIVATE_KE
 set -a; . ./.env; set +a
 npm run prepare-wallet   # once: the agent's shielded notes on XRPL L1 (needs the gate's issuer to write one credential)
 node relay.mjs            # :4308 ticket merchant, :4309 relay → COORDINATOR_URL
-node agent.mjs            # one run = one 402 → pay → relay → settle, both receipts printed
+node agent.mjs            # one run = prove funds → 402 → pay → relay → receipt → settle
+node verify-receipt.mjs agent-state/receipts/<bundleHash>.json   # anyone: re-check the receipt from public data
 ```
+
+**On stage the relay runs on the demo host** as a systemd service behind the site's TLS (`confidant-ap4m-relay`;
+its env file holds the merchant keys, its state under the host's data directory; nginx maps `/resource` to the ticket
+merchant and `/relay/` to the relay). The agent on the laptop then runs with `RELAY_URL=https://confidant.im`
+`RESOURCE_URL=https://confidant.im/resource` (`https://confidant.im/relay/health` is the liveness check). The kit's
+merchant requires the resource URL to be exactly `/resource` on an HTTPS origin, which is why it sits at the site root.
 
 Prerequisites: Node ≥ 22.13; the team onboarded (below); `target/release/examples/cli` built; a Confidant wallet file
 with shielded notes (`WALLET_FILE`, created with `cli wallet --file … init` and funded by a shield — the e2e harness

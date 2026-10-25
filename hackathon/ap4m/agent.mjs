@@ -31,7 +31,7 @@ import { statementText, statementHex, findPofCredential, hexToText } from "./rec
 const { signIn, requestChannel, settle, getChannelState } = hackathonSdk;
 const env = process.env;
 const AP4M_API_URL = (env.AP4M_API_URL ?? "https://hackathon.ap4m.build").replace(/\/$/, "");
-const RELAY_URL = (env.RELAY_URL ?? "http://127.0.0.1:4309").replace(/\/$/, "");
+const RELAY_URL = (env.RELAY_URL ?? "http://127.0.0.1:4309").replace(/\/$/, "").replace(/\/relay$/, ""); // the origin; the agent appends /relay/transfer
 const RESOURCE_URL = env.RESOURCE_URL ?? "http://127.0.0.1:4308/resource";
 const COORDINATOR_URL = (env.COORDINATOR_URL ?? "http://127.0.0.1:7900").replace(/\/$/, "");
 const MAX_PRICE = ethers.parseUnits(env.MAX_PRICE_RLUSD ?? "0.25", 18);
