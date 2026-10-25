@@ -744,7 +744,7 @@
           <div><b>Nothing about others</b><span class="d">No other holder's balance or history</span></div>
           <div><b>Read-only access</b><span class="d">A viewing key never moves funds</span></div>
         </div></div>
-        <div class="fields"><div class="field grow"><div class="lbl"><label for="audit-vk">Viewing key</label><span class="fill only-wallet"><button class="link" type="button" id="btn-myvk">Use my key</button></span></div><input id="audit-vk" class="mono" placeholder="96-byte full viewing key, hex"></div></div>
+        <div class="fields"><div class="field grow"><div class="lbl"><label for="audit-vk">Viewing key</label></div><input id="audit-vk" class="mono" placeholder="96-byte full viewing key, hex"><span class="hint only-wallet">Yours by default — just press <b>Reveal</b>. Paste another viewing key to audit that one instead.</span></div></div>
         <div class="action"><button class="primary" id="btn-reveal">Reveal</button></div>
         <div class="out" id="msg-audit" aria-live="polite"></div>
         <div class="out" id="audit-table"></div>
@@ -944,7 +944,6 @@
     if (!x) $("xrpl-balance").textContent = "—";
     else if (funding) $("xrpl-balance").textContent = "Funding…";
     else { const b = await xrplBalance(); $("xrpl-balance").textContent = `${fmt(b ?? 0)} XRP${Number(b) > 0 ? "" : " — empty; press Fund from faucet"}`; }
-    $("audit-vk").value ||= w.viewingKey;
     refreshCredential().catch(() => {});
   }
   // ---- credential gate (feature A, holder side) -------------------------------------------
@@ -1279,7 +1278,10 @@
   async function doReveal() {
     const btn = $("btn-reveal");
     try {
-      const vk = $("audit-vk").value.trim(); if (!/^[0-9a-fA-F]{192}$/.test(vk)) throw new Error("A full viewing key is 96 bytes in hex");
+      // Your own key is the default: on your device the only key that makes sense is yours, so an empty field reveals
+      // your own activity. The field is only for the auditor case — a key you were handed to check someone else's.
+      let vk = $("audit-vk").value.trim(); const w = wallet(); if (!vk && w) vk = w.viewingKey;
+      if (!/^[0-9a-fA-F]{192}$/.test(vk)) throw new Error(w ? "A full viewing key is 96 bytes in hex" : "Paste the viewing key you were handed (96 bytes of hex)");
       busy(btn, true); setMsg("msg-audit", "");
       const r = await be.reveal(vk);
       $("audit-table").innerHTML = `<table><tr><th>direction</th><th>amount</th><th>status</th><th>recipient</th></tr>${(r.notes ?? []).map((n) => `<tr><td>${esc(n.direction)}</td><td>${fmt(n.amount)} XRP</td><td>${n.direction === "incoming" ? (n.spent ? "spent" : "unspent") : "sent"}</td><td class="mono">${n.recipient ? esc(short(n.recipient)) : ""}</td></tr>`).join("")}</table>`;
@@ -1337,7 +1339,6 @@
   $("btn-reveal").addEventListener("click", doReveal);
   $("btn-fresh").addEventListener("click", () => { $("unshield-to").value = xrpl.Wallet.generate().classicAddress; });
   $("btn-own").addEventListener("click", () => { const x = store.get("xrpl"); $("unshield-to").value = x ? x.address : ""; });
-  $("btn-myvk").addEventListener("click", () => { const w = wallet(); if (w) $("audit-vk").value = w.viewingKey; });
   document.querySelectorAll("button.primary, #btn-fund, #btn-create, #btn-shield, #btn-transfer, #btn-unshield, #btn-reveal").forEach((b) => (b.dataset.label = b.textContent));
 
   (async () => {
