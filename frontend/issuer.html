@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="icon" href="favicon-64.png" sizes="64x64" type="image/png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="favicon.ico?v=2" sizes="any">
+<link rel="icon" href="favicon.svg?v=2" type="image/svg+xml">
+<link rel="icon" href="favicon-64.png?v=2" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=2">
+<link rel="manifest" href="site.webmanifest?v=2">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Confidant — under the hood</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -169,20 +171,30 @@
   .card .mono, .card code, #trusted, #issue-to, #key-addr { overflow-wrap: anywhere; }
   .row input { min-width: 0; flex: 1 1 160px; }
   details p, details .src { overflow-wrap: anywhere; }
+
+/* Confidant logo in the header: the SVG is 1em tall, so at the header's 16px its letters match the old text exactly. */
+.mark svg { display: block; height: 1em; width: auto; }
+.mark .logo-mark { fill: var(--logo-mark, #7919FF); }
+/* The mark is violet on light pages and a lighter violet on dark ones (4.8:1 contrast instead of 3.1:1). */
+:root[data-theme="dark"] .mark { --logo-mark: #9A5CFF; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mark { --logo-mark: #9A5CFF; } }
+/* The nav's "Open the app" button, the same look on every page (how-it-works' primary small button). */
+.nav a.btn { display: inline-flex; align-items: center; gap: 6px; font: 600 13px/1.25 var(--f-body); color: var(--accent-ink, #fff); background: var(--accent); border: 0; padding: 5px 10px; border-radius: 10px; text-decoration: none; white-space: nowrap; box-shadow: inset 0 -2px 0 0 rgb(0 0 0 / .18); }
+.nav a.btn:hover { color: var(--accent-ink, #fff); filter: brightness(1.06); text-decoration: none; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="bar">
     <div class="brand">
-      <a class="mark" href="/">CONFIDANT</a>
+      <a class="mark" href="/" aria-label="Confidant"><svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 7349 980"> <g transform="translate(-45.96 14.04) scale(1.85337)" class="logo-mark" fill="#7919FF"><path d="M404.10 402.05L320.28 318.23A40 40 0 0 0 263.72 318.23L212.46 369.49A12 12 0 0 1 203.97 373.00L170.03 373.00A12 12 0 0 1 161.54 352.51L229.77 284.28A40 40 0 0 0 229.77 227.72L161.54 159.49A12 12 0 0 1 170.03 139.00L203.97 139.00A12 12 0 0 1 212.46 142.51L263.72 193.77A40 40 0 0 0 320.28 193.77L404.10 109.95A208 208 0 1 0 404.10 402.05Z"/></g> <path fill="currentColor" d="M1282 874Q1183 874 1109.5 839.5Q1036 805 988 748.5Q940 692 916.5 626Q893 560 893 499V477Q893 409 917.5 342.5Q942 276 991 222Q1040 168 1113 135.5Q1186 103 1282 103Q1378 103 1451 135.5Q1524 168 1573 222Q1622 276 1647 342.5Q1672 409 1672 477V499Q1672 560 1648 626Q1624 692 1576 748.5Q1528 805 1454.5 839.5Q1381 874 1282 874ZM1282 721Q1334 721 1375.5 703Q1417 685 1446.5 653Q1476 621 1491 579Q1506 537 1506 489Q1506 438 1490.5 395.5Q1475 353 1445.5 321.5Q1416 290 1375 273Q1334 256 1282 256Q1230 256 1189 273Q1148 290 1118.5 321.5Q1089 353 1074 395.5Q1059 438 1059 489Q1059 537 1074 579Q1089 621 1118.5 653Q1148 685 1189 703Q1230 721 1282 721ZM1916 855V125H2185L2460 722H2494L2474 740V125H2628V855H2357L2082 258H2048L2068 240V855ZM2912 855V125H3076V855ZM3056 561V425H3338V561ZM3056 261V125H3350V261ZM3594 855V125H3758V855ZM4188 859V706H4324Q4375 706 4416 690.5Q4457 675 4486 646.5Q4515 618 4530 577.5Q4545 537 4545 488Q4545 437 4530 397Q4515 357 4486 329Q4457 301 4416 286.5Q4375 272 4324 272H4188V119H4315Q4414 119 4488 148Q4562 177 4612 227Q4662 277 4686.5 341.5Q4711 406 4711 477V499Q4711 565 4686.5 629.5Q4662 694 4612 745.5Q4562 797 4488 828Q4414 859 4315 859ZM4044 859V119H4208V859ZM4846 855 5087 125H5352L5602 855H5432L5230 238L5282 259H5153L5207 238L5010 855ZM5029 674 5079 538H5365L5416 674ZM5817 855V125H6086L6361 722H6395L6375 740V125H6529V855H6258L5983 258H5949L5969 240V855ZM6958 855V248H7122V855ZM6753 268V125H7328V268Z"/> </svg></a>
       <span class="sep"></span>
       <small>Under the hood · <span id="net">testnet</span></small>
     </div>
     <nav class="nav">
-      <a href="/" target="_blank" rel="noopener">Open the app</a>
       <a href="how-it-works.html" target="_blank" rel="noopener">How it works</a>
       <a href="balances.html" target="_blank" rel="noopener">Balances</a>
+      <a class="btn primary small" href="/" target="_blank" rel="noopener">Open the app →</a>
     </nav>
     <button class="theme" id="theme-toggle" type="button" aria-label="Switch theme" title="Switch theme"><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
   </header>
