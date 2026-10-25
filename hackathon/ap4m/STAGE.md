@@ -135,3 +135,32 @@ Evidence links:
 Footer 1: *the metered payment is public, the settlement is private; the proof of funds is demo-grade*
 
 Footer 2: `node verify-receipt.mjs agent-state/receipts/<bundleHash>.json` — re-checks both signatures, `VoucherRedeemed`, the anchor memo and the credential from public data only
+
+## 5. What to record (the Mastercard beat on video)
+
+The sponsor judges the live flow; a recording is for the submission form and the fallback. One take, ≈ 2 minutes, a
+single screen split in two: the agent's terminal on the left, a browser on the right. Record with the OS screen
+recorder (or `asciinema` for the terminal alone); no voice-over needed if the captions below are typed as the title of
+each segment.
+
+1. 0:00 — terminal: `node agent.mjs` with the stage `.env`. Caption: *"an agent with shielded funds on XRPL buys the
+   relay of a private transfer; it pays RLUSD through Mastercard's AP4M"*.
+2. 0:05–0:35 — the three proof-of-funds lines appear (built → quorum wrote the credential → accepted). Right side: the
+   XRPL explorer on the agent's account, refresh, the new `Credential` object (type `ConfidantPoF`, issuer = the pool).
+   Caption: *"before it may pay, it proves ≥ X XRP of shielded funds to the quorum; the credential is on the ledger"*.
+3. 0:35–0:40 — `402 received` and the `policy: … — paying` line. Caption: *"it reads the price, checks its channel,
+   decides — no human"*.
+4. 0:40–1:00 — `paid: claim …, VoucherRedeemed …`. Right side: that EVM explorer link, the `VoucherRedeemed` event at the
+   PaymentLedger. Caption: *"the metered payment is public"*.
+5. 1:00–1:20 — `relayed: anchored on XRPL L1 …`. Right side: the XRPL explorer link, the pool account's Payment with the
+   `confidant/anchor` memo. Caption: *"the settlement is private: no sender, receiver or amount"*.
+6. 1:20–1:30 — `receipt: … signed by the merchant payout and by this agent` and `settled: payout …`. Right side: the
+   payout transaction. Caption: *"RLUSD reached the merchant; the receipt binds claim, bundle and credential"*.
+7. 1:30–1:55 — terminal: `node verify-receipt.mjs agent-state/receipts/<bundleHash>.json`, the ten ✓ lines. Caption:
+   *"anyone re-checks it from public data — no key, no log, no trust in us"*.
+8. 1:55–2:10 (optional) — `OVER_CAP_DEMO=1 CHANNEL_ID=<0.15-cap channel> node agent.mjs` → `policy: … NOT paying`
+   (exit 3). Caption: *"the funded limit is enforced; the agent only decides inside it"*.
+
+Keep the terminal font large (≥ 18 pt), the window ≤ 100 columns so the links wrap, and the two explorer tabs opened
+in advance (`STAGE.md` §1 step 9). Do not record the `.env` or `agent-state/` contents.
+
