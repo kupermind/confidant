@@ -17,7 +17,7 @@
 //   to open one), MAX_PRICE_RLUSD (default 0.25), CLI (path to confidant's cli), WALLET_FILE, LOG_FILE (log.json synced
 //   from the coordinator), SUPPLIER (Orchard address hex), AMOUNT (drops), COORDINATOR_URL, STATE_DIRECTORY, AP4M_RPC_URL
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ethers } from "ethers";
 import hackathonSdk from "./ap4m-hackathon-sdk.cjs";
@@ -38,14 +38,28 @@ for (const k of ["AGENT_PRIVATE_KEY", "TEAM_NAME", "SUPPLIER", "AMOUNT"]) if (!e
 mkdirSync(STATE, { recursive: true });
 const t0 = Date.now(); const say = (m) => console.log(`[${String(Date.now() - t0).padStart(6)} ms] ${m}`);
 const cli = (args) => execFileSync(CLI, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-const post = async (url, body) => { const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); const j = await r.json().catch(() => ({})); return { status: r.status, body: j }; };
+const post = async (url, body, tries = 1) => {
+  for (let i = 1; ; i++) {
+    try { const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(170_000) }); const j = await r.json().catch(() => ({})); return { status: r.status, body: j }; }
+    catch (e) { if (i >= tries) throw e; say(`relay unreachable (${e.cause?.code ?? e.message}) — retrying in 3 s`); await new Promise((ok) => setTimeout(ok, 3000)); }
+  }
+};
+// A run that paid but did not get relayed resumes here: the same bundle and the same purchase (the kit returns the
+// earlier claim for the same operation name, nothing is paid twice) are presented to the relay again.
+const PENDING = join(STATE, "pending.json");
+const pending = existsSync(PENDING) ? JSON.parse(readFileSync(PENDING, "utf8")) : null;
 
-// 1. The private transfer, built locally by the native wallet (keys never leave this machine).
-const { records } = await (await fetch(`${COORDINATOR_URL}/log?from=0`)).json();
-writeFileSync(LOG_FILE, JSON.stringify(records));
-const built = JSON.parse(cli(["wallet", "--file", WALLET_FILE, "build-transfer", env.SUPPLIER, env.AMOUNT, join(STATE, "transfer.json"), LOG_FILE]));
+// 1. The private transfer, built locally by the native wallet (keys never leave this machine) — or the pending one.
+let built;
+if (pending) { built = { bundleHash: pending.bundleHash }; say(`resuming the pending run: bundle ${pending.bundleHash.slice(0, 12)}… (paid: ${pending.claimId ? "yes" : "not yet"})`); }
+else {
+  const { records } = await (await fetch(`${COORDINATOR_URL}/log?from=0`)).json();
+  writeFileSync(LOG_FILE, JSON.stringify(records));
+  built = JSON.parse(cli(["wallet", "--file", WALLET_FILE, "build-transfer", env.SUPPLIER, env.AMOUNT, join(STATE, "transfer.json"), LOG_FILE]));
+  writeFileSync(PENDING, JSON.stringify({ bundleHash: built.bundleHash, operation: `relay-${built.bundleHash.slice(0, 24)}` }, null, 1));
+  say(`bundle built: ${built.bundleHash.slice(0, 12)}… — a private transfer of ${Number(env.AMOUNT) / 1e6} XRP inside the pool`);
+}
 const record = JSON.parse(readFileSync(join(STATE, "transfer.json"), "utf8"));
-say(`bundle built: ${built.bundleHash.slice(0, 12)}… — a private transfer of ${Number(env.AMOUNT) / 1e6} XRP inside the pool`);
 
 // 2. Ask the relay without paying: expect a 402 with the price.
 let r = await post(`${RELAY_URL}/relay/transfer`, { record });
@@ -59,7 +73,7 @@ const provider = new ethers.JsonRpcProvider(env.AP4M_RPC_URL ?? config.network.r
 const agent = new ethers.Wallet(env.AGENT_PRIVATE_KEY, provider);
 const context = await loadX402Context(AP4M_API_URL);
 const { token } = await signIn(AP4M_API_URL, env.TEAM_NAME, agent);
-let channelId = env.CHANNEL_ID;
+let channelId = pending?.channelId || env.CHANNEL_ID;
 if (!channelId) { const ch = await requestChannel(AP4M_API_URL, token, agent, { capRlusd: env.CHANNEL_CAP ?? "2" }); channelId = ch.channel_id; say(`opened channel ${channelId.slice(0, 10)}… with a ${env.CHANNEL_CAP ?? "2"} RLUSD cap`); }
 const state = await getChannelState(provider, config.contracts.paymentLedger, channelId);
 const remaining = BigInt(state.cap ?? state.limit ?? 0n) - BigInt(state.redeemed ?? 0n);
@@ -68,13 +82,20 @@ if (remaining > 0n && remaining < price) { say(`policy: channel has ${ethers.for
 say(`policy: price ${ethers.formatUnits(price, 18)} ≤ max ${ethers.formatUnits(MAX_PRICE, 18)} RLUSD, channel redeemed so far ${ethers.formatUnits(state.redeemed ?? 0n, 18)} — paying`);
 
 // 4. Pay over x402: one purchase per bundle (the operation name is the bundle hash).
-const purchase = await buyResource({ context, provider, wallet: agent, stateDirectory: STATE, resourceUrl: RESOURCE_URL, channelId, maximumAmount: MAX_PRICE.toString(), operation: `relay-${built.bundleHash.slice(0, 24)}` });
+const purchase = await buyResource({ context, provider, wallet: agent, stateDirectory: STATE, resourceUrl: RESOURCE_URL, channelId, maximumAmount: MAX_PRICE.toString(), operation: pending?.operation ?? `relay-${built.bundleHash.slice(0, 24)}` });
+writeFileSync(PENDING, JSON.stringify({ ...(pending ?? { bundleHash: built.bundleHash, operation: `relay-${built.bundleHash.slice(0, 24)}` }), channelId, claimId: purchase.claimId }, null, 1));
 say(`paid: claim ${purchase.claimId.slice(0, 12)}…, VoucherRedeemed ${config.network.explorerUrl}/tx/${purchase.transactionHash}`);
 await fetch(`${AP4M_API_URL}/public/participant/record-redemption`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ tx_hash: purchase.transactionHash }) }).catch(() => {});
 
 // 5. Now the relay forwards the bundle to the quorum.
-r = await post(`${RELAY_URL}/relay/transfer`, { record, channelId, claimId: purchase.claimId });
-if (r.status !== 200) { console.error(`relay refused after payment: ${r.status} ${JSON.stringify(r.body).slice(0, 300)}`); process.exit(1); }
+for (let i = 1; ; i++) {
+  r = await post(`${RELAY_URL}/relay/transfer`, { record, channelId, claimId: purchase.claimId }, 6);
+  if (r.status === 200) break;
+  // A 5xx with the claim kept is the relay's own upstream (the public RPC or the quorum) having a moment: retry.
+  if (r.status >= 500 && r.body?.claimKept && i < 6) { say(`relay ${r.status} (${String(r.body.error).slice(0, 80)}…) — claim kept, retrying in 5 s`); await new Promise((ok) => setTimeout(ok, 5000)); continue; }
+  console.error(`relay refused after payment: ${r.status} ${JSON.stringify(r.body).slice(0, 300)} — the claim is kept; rerun to retry`); process.exit(1);
+}
+try { unlinkSync(PENDING); } catch {}
 say(`relayed: anchored on XRPL L1 — https://testnet.xrpl.org/transactions/${r.body.anchorTx} (no sender, receiver or amount in the memo)`);
 
 // 6. Settlement: RLUSD reaches the merchant payout; the receipt is verifiable by anyone.
