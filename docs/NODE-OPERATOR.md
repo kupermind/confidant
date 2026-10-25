@@ -137,9 +137,10 @@ ISSUER_KEY=/srv/confidant/data/quorum/issuer.key.json
 COORDINATOR_URL=http://127.0.0.1:7900
 ISSUER_PORT=7960
 # unit: node issuer.mjs in backend/quorum, Restart=always, NoNewPrivileges
-# nginx — the internal cap bounds WRITES only (an idempotent answer is a free ledger read): limit REQUESTS per IP in front
-#   limit_req_zone $binary_remote_addr zone=issuer:1m rate=10r/m;
-#   location /issuer/ { limit_req zone=issuer burst=5 nodelay; proxy_pass http://127.0.0.1:7960/; }
+# nginx — the internal cap bounds WRITES only (an idempotent answer is a free ledger read): limit REQUESTS per IP in front.
+# The demo host runs this zone (set 2026-10-25; a 30-request burst answers 17 × 200 and 13 × 429):
+#   limit_req_zone $binary_remote_addr zone=issuer:1m rate=60r/m;
+#   location /issuer/ { limit_req zone=issuer burst=20 nodelay; limit_req_status 429; proxy_pass http://127.0.0.1:7960/; }
 ```
 
 `GET /issuer/health` shows the issuer, the policy and how many credentials were written this hour; `POST /issuer/issue
