@@ -57,10 +57,14 @@ Rust core (`confidant-core`): Orchard/Halo 2 circuit reused unchanged; a `Wallet
 
 ## Logo
 
-`docs/assets/logo.svg` (source) and `docs/assets/logo.png` (1024 × 1024, rendered from it): a shield — the pool — holding a
-transfer graph drawn as fading dashed edges, only the endpoints visible; the stylized wordmark `C0nf!d@nt` (logo only, per
-the branding rule) and the line "SHIELDED POOL · XRP LEDGER". Violet `#7919FF` on deep ink, the UI's accent. Upload the
-PNG to the form (the SVG loads Google Fonts for the wordmark; the PNG has them baked in).
+`docs/assets/logo.svg` (source) and `docs/assets/logo.png` (1024 × 1024, rendered from it in Chrome with the real font):
+a shield — the pool — holding a transfer graph drawn as fading dashed edges, only the endpoints visible; the stylized
+wordmark `C0nf!d@nt` (logo only, per the branding rule; the second glyph is a zero and carries a slash through its
+counter so it does not read as an O) and the line "SHIELDED POOL · CREDENTIAL GATE · PROOF OF FUNDS" — the pool and the
+two hackathon features, named as features. Violet `#7919FF` on deep ink, the UI's accent. Upload the PNG to the form (the
+SVG loads Google Fonts for the wordmark and positions the slash for that font; the PNG has it all baked in).
+`docs/assets/icon.svg` is the shield alone — the website icon, served as `frontend/favicon.svg` with PNG fallbacks on
+every page.
 
 ## Change log
 
@@ -69,3 +73,4 @@ PNG to the form (the SVG loads Google Fonts for the wordmark; the PNG has them b
 - 2026-10-25 — the proof-of-funds ruling (demo-grade, privacy cost stated) and the Mastercard-track run folded in; counts updated.
 - 2026-10-25 (later) — the one-button Prove funds / one-field lender page (`docs/UI-RULE.md`) reflected in the description; counts updated.
 - 2026-10-25 (evening) — the entry credential issued under the hood; the issuer page became the under-the-hood page; counts updated.
+- 2026-10-25 (night) — logo: slashed zero, the tagline names the two features, the shield becomes the site icon.
