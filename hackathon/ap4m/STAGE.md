@@ -54,7 +54,7 @@ fields so that no seed or key ever reaches the terminal; `node -p` does the same
    ```
 
 6. **The agent's XRPL account holds the accepted entry credential** (issuer and type from `/config.credential`;
-   accepted = `Flags` has bit `0x00010000`). After a run the same list shows the `ConfidantPoF` credential
+   accepted = `Flags` has bit `0x00010000`). If asked what the credential is: KYC in demo mode: the gate the nodes enforce is the real, working system; the issuer's admission policy in the demo is open registration (any account that asks, rate-limited — as an exchange opens an account first and KYC lifts its limits); a real deployment applies its own issuer policy to the same gate. After a run the same list shows the `ConfidantPoF` credential
    (type hex `436F6E666964616E74506F46`, issuer = the pool). The quorum issues **one** proof-of-funds credential
    per borrower; a rehearsal's one is removed by the agent itself (`CredentialDelete` by the subject, one more
    XRPL transaction) before it proves again — nothing to clear by hand, but a few seconds more on stage.

@@ -193,7 +193,7 @@ header → `302`); agents always send the header and reach the kit's merchant.
 
 ## Honest labels
 
-Hackathon SDK on a testnet with testnet RLUSD. The proof of funds is **demo-grade** (the project's ruling of 2026-10-25):
+Hackathon SDK on a testnet with testnet RLUSD. The agent's entry credential comes from the pool's demo issuer — KYC in demo mode: the gate the nodes enforce is the real, working system; the issuer's admission policy in the demo is open registration (any account that asks, rate-limited — as an exchange opens an account first and KYC lifts its limits); a real deployment applies its own issuer policy to the same gate. The proof of funds is **demo-grade** (the project's ruling of 2026-10-25):
 the proof reveals the proven notes' nullifiers to the signers' nodes, so the agent's later spend of those notes is
 linkable by the quorum — here the paid transfer spends them right away; the credential says "controlled ≥ X as of ledger
 L", never "controls it now". The receipt binds the relay's own forwarding to the payment and the credential; the quorum's

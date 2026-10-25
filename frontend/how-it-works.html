@@ -411,7 +411,11 @@
           trusts (an issuer account, or a permissioned domain's issuer set), confirmed by the holder's own signature.
           Every verifier node reads it from the ledger before it signs — a native XRPL object, not a promise, and nothing
           about anyone's notes. One fact is checked — that the depositing account holds the credential — for every
-          depositor alike; it is a per-pool switch, and an operator who does not need it runs the pool open.</p>
+          depositor alike; it is a per-pool switch, and an operator who does not need it runs the pool open. On this testnet
+          it is <b>KYC in demo mode</b>: the gate the nodes enforce is the real, working system; the issuer's admission
+          policy is open registration — a demo issuer service writes the credential to any account that asks, rate-limited,
+          as an exchange opens an account first and KYC lifts its limits — and a real deployment applies its own issuer
+          policy to the same gate.</p>
       </div>
       <div class="step">
         <span class="n">02 · Proof of shielded funds</span>
