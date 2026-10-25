@@ -315,6 +315,8 @@
     $("btn-forget").addEventListener("click", () => { store.del("issuer"); msg("key-msg", "", ""); render(); });
     $("btn-issue").addEventListener("click", issue);
     render();
+    // The app's wallet and the key may change in another tab: re-render when storage changes or this tab comes back.
+    window.addEventListener("storage", render); window.addEventListener("focus", render);
     if (location.hash === "#team") { $("team").open = true; $("team").scrollIntoView(); }
   })();
 </script>

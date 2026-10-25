@@ -134,7 +134,7 @@ for (const name of ["index.html", "how-it-works.html", "balances.html", "lender.
   check("under the hood: key saved as the pool's issuer, credential issued to this browser's wallet", /^rDEMOissuer/.test(r.key ?? "") && /rJASAbKaKY7LybEdFwkgpv5gCc2YA9VYbF/.test(r.to ?? "") && /^Issued ✓ to rJASAbKaKY7LybEdFwkgpv5gCc2YA9VYbF/.test(r.msg ?? "") && /ConfidantKYC/.test(r.trusted ?? ""), r);
   // A key that is not the pool's issuer (an old test issuer, a wrong paste): said loudly, the seed field stays, Issue is off.
   const wrong = probe("issuer.html",
-    `localStorage.setItem("confidant.xrpl",JSON.stringify({address:"rJASAbKaKY7LybEdFwkgpv5gCc2YA9VYbF",seed:"x"}));localStorage.setItem("confidant.issuer",JSON.stringify({seed:"s",address:"rWRONGissuerxxxxxxxxxxxxxxxxxxxxxx"}))`,
+    `localStorage.setItem("confidant.xrpl",JSON.stringify({address:"rJASAbKaKY7LybEdFwkgpv5gCc2YA9VYbF",seed:"x"}));localStorage.setItem("confidant.issuer",JSON.stringify({seed:"s",address:"rWRONGissuerxxxxxxxxxxxxxxxxxxxxxx"}));setTimeout(()=>window.dispatchEvent(new Event("focus")),300)`,
     `{match:${text("key-match")},none:document.getElementById("key-none").hidden,text:${text("key-none-text")},issue:document.getElementById("btn-issue").disabled,open:document.getElementById("team").open}`);
   const w = sample(wrong, 390, 1500);
   check("under the hood: a key that is not the pool's issuer — warned, seed field shown to replace it, Issue disabled, fold open", /✗ not the issuer/.test(w.match ?? "") && w.none === false && /not the issuer the pool trusts/.test(w.text ?? "") && w.issue === true && w.open === true, w);
