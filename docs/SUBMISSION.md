@@ -9,7 +9,7 @@ and the credential gate are checks at the public boundary, not proofs about any 
 Formal name everywhere in this text: **Confidant**. The stylized wordmark `C0nf!d@nt` is for the logo only.
 
 Limits (from the form): short description ≤ 200 characters · description ≤ 5000 · technical description ≤ 1000.
-Markdown is accepted in all three. Counts are of the text between the fences (`wc -m` on each block): 177 / 4787 / 1058 on 2026-10-25.
+Markdown is accepted in all three. Counts are of the text between the fences (`wc -m` on each block): 177 / 4787 / 989 on 2026-10-25.
 
 **Status (2026-10-25, day 2):** everything below is **live on the XRPL testnet** at `https://confidant.im` — the
 pre-existing pool (baseline tag `pre-hackathon`), plus, built on-site and audited: the credential gate (A), proof of
@@ -52,7 +52,7 @@ FYI, our crypto/ZK lead was unable to join the hackathon in person and is attend
 ## Technical description (≤ 1000 characters)
 
 ```markdown
-Rust core (`confidant-core`): Orchard/Halo 2 circuit reused unchanged; a `Wallet` builds, proves and signs bundles; a `Verifier` re-verifies proofs, nullifiers and the note commitment tree and emits anchor memos; `rebuild_checked` reconstructs state from the ledger. Rust verifier nodes (axum) read XRPL by JSON-RPC only and hold no keys; Node.js signer sidecars (xrpl.js) each hold one SignerList key and sign only what their own node endorsed; a coordinator multisigns and submits. Browser wallet = the core compiled to WebAssembly (multithreaded proving under COOP/COEP, ~3 s per proof). Hackathon additions: XLS-70 credential gate (ledger-read, fail-closed, expiry by the ledger's clock), proof of funds (own op tag refused by every apply path, read-only verify, canonical challenge bytes recomputed by each node, bounded ingress; demo-grade until a nullifier-free circuit), quorum-signed `CredentialCreate` with node-derived fields, an x402 relay paid in RLUSD on XRPL EVM. 100% core / 95% node coverage gates, mutation tables, audit REQ/RESP per slice.
+Rust core (`confidant-core`): Orchard/Halo 2 circuit reused unchanged; a `Wallet` builds, proves and signs bundles; a `Verifier` re-verifies proofs, nullifiers and the commitment tree, emits anchor memos and rebuilds state from the ledger. Rust verifier nodes (axum) read XRPL by JSON-RPC only, hold no keys; Node.js signer sidecars (xrpl.js) each hold one SignerList key and sign only what their own node endorsed; a coordinator multisigns and submits. Browser wallet = the core as WebAssembly (multithreaded proving, ~3 s per proof). Hackathon additions: XLS-70 credential gate (ledger-read, fail-closed, expiry by the ledger's clock); proof of funds (own op tag refused by every apply path, read-only verify, challenge bytes recomputed per node, bounded ingress; demo-grade until a nullifier-free circuit); quorum-signed `CredentialCreate` with node-derived fields; an x402 relay paid in RLUSD on XRPL EVM. 100% core / 95% node coverage gates, mutation tables, audit REQ/RESP per slice.
 ```
 
 ## Logo
