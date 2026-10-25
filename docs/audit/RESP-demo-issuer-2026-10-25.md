@@ -62,3 +62,20 @@ Honesty still holds both ways: do NOT say "not KYC", and do NOT claim the demo v
 
 F1 (blocker, fuller fix), F2 (match the code), F3, the nginx request-limit note, and artifact-identity-on-merge are all unchanged. Record this Q1 label in place of anything I sent earlier.
 ```
+
+## 4. IMPL-PASS on the fixes (PR #101, head `8ce47ae`), verbatim
+
+```text
+IMPL-PASS on the #100 fixes, verified firsthand at 8ce47ae (binds to the merged head — artifact-identity check on merge below).
+
+- **F1 fuller — correct.** `makeIssuer` (issuer-lib.mjs:81–101): read → judge → `limiter.check` → (delete if replace) → create → `note`, the WHOLE flow inside one `serialized` queue. Because `submit` uses `submitAndWait`, request-2's serialized `read` at `validated` sees request-1's already-validated credential → judges "none" → no duplicate; the cap `check` is serialized so it holds under a burst; the tecDUPLICATE belt counts the refused attempt (:94, so a dup burst still consumes the cap, no fee-burn amplification) and re-reads to answer idempotently; tecNO_ENTRY on the delete is tolerated. `submit` throws with `.code` = the tec (issuer.mjs:66), so the belts' `e.code` checks key correctly. Still only the issuer key signs (issuer.address). 
+- **F2 — correct.** `rippledCode(e) = e.data.error` (code, not prose), 404 only on `actNotFound`, with the #62-lesson comment. 
+- **F3 — correct.** `xrpl_()` disconnects a stale client before reconnecting (:52) and logs client errors; `uncaughtException` → `exit(1)` for Restart=always. 
+Your 23/23 mutations + the concurrency tests (2-concurrent→1 write/1 attempt; 10-burst/perHour 3→3+7×429; expired→1 delete+1 create; out-of-band dup→answered) are confirmatory of what I read.
+
+**Label + the lead's frame: carried, and it is honest — I checked every clause against the code.** The gate / issuer attestation / fail-closed node check / on-ledger accept ARE the real working system (verified). Admission IS allow-by-default (verified: any requester, rate-limited). And "a demo credential attests the request, not a vetting" is the honest caveat that keeps the label from overclaiming — exactly right, keep it verbatim. The lead's frame (gate real; admission allow-by-default = a normal business model, not a shortcut/defect; KYC's limit-tiering is out of the hackathon's scope) is sound and I carry it: open registration with KYC-tiered limits is a real model, so "allow-by-default, standard practice" is accurate, not apologetic. No "not KYC", no "stub/placeholder", no apology — agreed and recorded on my side.
+
+On your noun question: **"policy" is the right noun** — allow-by-default IS a genuine admission policy (a chosen default), not the absence of one. That actually reinforces the lead's point, so keep "admission policy: allow-by-default." No change wanted.
+
+**Artifact identity on merge:** the owner merges #101 + #100 and redeploys. On that I do one check — `git diff <merged head> 8ce47ae -- backend/quorum` is empty (the merge didn't alter issuer*.mjs) and the deployed issuer is from the merged head. Then #100 is fully closed. Everything here is sound.
+```
