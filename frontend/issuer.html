@@ -196,8 +196,8 @@
     <p><b>1 · Entry credential</b> (only when your account lacks it). The pool's issuer writes an XLS-70 Credential of type
       <code>ConfidantKYC</code> to your XRPL account (<code>CredentialCreate</code>), and your account accepts it with its
       own signature (<code>CredentialAccept</code>). The pool's verifiers refuse a deposit — and the quorum refuses to write
-      a proof-of-funds credential — for an account without it. In this demo the issuer's key sits in the same browser, so
-      the app issues the credential to itself; in a real deployment a third party writes it.</p>
+      a proof-of-funds credential — for an account without it. In this demo the app asks the team's issuer service, which
+      writes it to any account that asks; in a real deployment a third party with its own policy writes it.</p>
     <p><b>2 · Prove.</b> Your browser builds a zero-knowledge proof (the Orchard circuit, Halo 2) that unspent notes worth
       at least your whole private balance are yours — bound to your account, a request id, the current ledger and a 24-hour
       expiry. Nothing moves. The proof goes to the quorum for the next step and nowhere else.</p>
@@ -216,9 +216,14 @@
 
   <h2>What the gate is, mechanically</h2>
   <div class="card">
-    <p>On this testnet the issuer is an account operated by the Confidant team — the issuer is a demo; the gate on the
-      ledger is real. The pool trusts one issuer: <span class="mono" id="trusted">reading the pool's configuration…</span>.
-      Only credentials issued by that account count; a credential from any other account is ignored by the pool.</p>
+    <p>On this testnet the issuer is a <b>demo service operated by the Confidant team</b>: it writes the entry credential to
+      any account that asks, rate-limited, so that anyone can try the pool. <b>This is KYC in demo mode.</b> The credential
+      gate, the issuer's attestation, the fail-closed check by every node and your on-ledger accept are the real, working
+      system and graduate to production as they are; the issuer's admission <em>policy</em> in this demo is open
+      registration — it registers any account that asks, rate-limited, the model an exchange uses: an account is opened
+      first, and KYC raises its limits. A production deployment runs its own issuer policy against the same gate. The pool trusts one issuer: <span class="mono" id="trusted">reading the pool's
+      configuration…</span>. Only credentials issued by that account count; a credential from any other account is ignored
+      by the pool. <span id="svc"></span></p>
     <p><b>What is checked.</b> One on-ledger fact: that the depositing XRPL account holds an accepted XLS-70 Credential of
       the configured type from the configured issuer, and that it has not expired. Nothing inside the pool is examined —
       not notes, not balances, not transfers.</p>
@@ -234,11 +239,11 @@
   </div>
 
   <details id="team">
-    <summary>Team: the issuer key in this browser</summary>
+    <summary>Team fallback: the issuer key in this browser (only if the issuer service is down)</summary>
     <div>
       <div id="key-none">
-        <p id="key-none-text">This browser holds no issuer key. The app issues the entry credential by itself only when the key of the issuer
-          the pool trusts is in this browser; without it, the Prove and Shield buttons say what is missing.</p>
+        <p id="key-none-text">This browser holds no issuer key — normally none is needed: the app asks the issuer service. With the key of
+          the issuer the pool trusts saved here, the app issues the entry credential itself when the service is down.</p>
         <div class="row"><input type="password" id="seed" placeholder="issuer account seed (s…)" autocomplete="off"><button class="btn primary" id="btn-save-key" type="button">Save in this browser</button></div>
         <div class="src">The seed stays in this browser's storage and is sent nowhere. Testnet only.</div>
       </div>
@@ -281,8 +286,8 @@
     $("key-has").hidden = !key; $("key-none").hidden = ok;
     $("key-none-text").innerHTML = key
       ? `<b>This key is not the issuer the pool trusts.</b> The pool's nodes accept credentials only from <span class="mono">${esc(t ?? "— gate off —")}</span>; the key saved here belongs to <span class="mono">${esc(key.address)}</span>, so the app cannot issue with it. Paste the trusted issuer's seed to replace it.`
-      : "This browser holds no issuer key. The app issues the entry credential by itself only when the key of the issuer the pool trusts is in this browser; without it, the Prove and Shield buttons say what is missing.";
-    if (!key) { $("team").open = !!t; return; }
+      : "This browser holds no issuer key — normally none is needed: the app asks the issuer service. With the key of the issuer the pool trusts saved here, the app issues the entry credential itself when the service is down.";
+    if (!key) { $("team").open = false; return; }
     $("team").open = $("team").open || !ok;
     $("key-addr").textContent = key.address;
     $("key-match").innerHTML = ok ? "✓ the issuer this pool trusts" : `<b>✗ not the issuer this pool trusts</b>`;
@@ -310,6 +315,8 @@
   (async () => {
     if (DEMO) { cfg = { ...cfg, network: "testnet (demo data)", credential: { issuer: "rDEMOissuerKYCxxxxxxxxxxxxxxxxxxxx", type: "436F6E666964616E744B5943", typeText: "ConfidantKYC" } }; $("net").textContent = cfg.network; }
     else { try { const c = await (await fetch("/api/config")).json(); cfg = { ...cfg, ...c }; $("net").textContent = c.network ?? "testnet"; } catch { msg("key-msg", "Coordinator unreachable: the pool's issuer is unknown right now.", "err"); } }
+    try { const h = DEMO ? { ok: true, issuedThisHour: 3, perHour: 60 } : await (await fetch("/issuer/health")).json(); $("svc").textContent = h.ok ? `The issuer service is answering (${h.issuedThisHour} of at most ${h.perHour} credentials written this hour).` : "The issuer service is not answering right now."; }
+    catch { $("svc").textContent = "The issuer service is not answering right now — the team's key fold below is the fallback."; }
     $("btn-save-key").addEventListener("click", () => {
       const seed = $("seed").value.trim();
       try { const w = xrpl.Wallet.fromSeed(seed); store.set("issuer", { seed, address: DEMO ? cfg.credential.issuer : w.address }); $("seed").value = ""; msg("key-msg", "", ""); render(); }

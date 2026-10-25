@@ -121,3 +121,37 @@ public mirrors: `docs/DATA-AVAILABILITY.md`.
 What a sidecar refuses, by construction: an anchor whose memo differs from the one its node endorsed, an anchor not paid pool → sink for 1 drop, a payout whose destination or amount differs from its node's `payout` (the net amount), a fee sweep to anything but the treasury or above the fees its own node has available, any transaction from another account, a Fee above the ceiling, a Sequence that is not the pool's next (or a payout not directly after its anchor), a missing or too-distant LastLedgerSequence, anything when its node refuses. The coordinator's claims never reach a signature — not even "this root is anchored": a node marks a root anchored only after reading the anchor transaction from the ledger itself.
 
 **If a payout fails after its anchor landed** (the note is spent, the user unpaid): the coordinator's answer carries `payoutBlob`, the multisigned payout; resubmit it (`submit` with `tx_blob`) from any machine until its LastLedgerSequence. Nothing else can be paid in its place. **If the coordinator itself is gone:** start another one (it holds nothing) and submit the same `{record, destination}` again — every node's `/endorse` is idempotent for that exact submission, the payout is prepared at the pool's current next sequence, the sidecars re-sign, and it lands.
+
+### The demo issuer service (`backend/quorum/issuer.mjs`) — optional, demo only
+
+When the pool runs with the credential gate on, someone has to write the entry credential before an account can
+shield. For a public demo that someone is a small service: it holds the **demo issuer's key only** (never a pool key)
+and writes the credential to any classic XRPL account that asks — idempotent (a live credential is answered, an
+expired one replaced), rate-limited (`ISSUER_PER_HOUR`, default 60; `ISSUER_PER_SUBJECT_MINUTES`, default 10), 30-day
+expiry (`ISSUER_DAYS`), one signing at a time. It refuses to start unless `ISSUER_KEY` is the issuer named in the
+coordinator's `/config.credential`, so a wrong key cannot write credentials nobody trusts.
+
+```
+# /srv/confidant/env/issuer.env (mode 600, owner = the service user)
+ISSUER_KEY=/srv/confidant/data/quorum/issuer.key.json
+COORDINATOR_URL=http://127.0.0.1:7900
+ISSUER_PORT=7960
+# unit: node issuer.mjs in backend/quorum, Restart=always, NoNewPrivileges
+# nginx — the internal cap bounds WRITES only (an idempotent answer is a free ledger read): limit REQUESTS per IP in front
+#   limit_req_zone $binary_remote_addr zone=issuer:1m rate=10r/m;
+#   location /issuer/ { limit_req zone=issuer burst=5 nodelay; proxy_pass http://127.0.0.1:7960/; }
+```
+
+`GET /issuer/health` shows the issuer, the policy and how many credentials were written this hour; `POST /issuer/issue
+{ subject }` writes one. **Label it as what it is, on every surface:** this is **KYC in demo mode**. The credential gate, the issuer attestation,
+the fail-closed check by every node before it signs and the holder's on-ledger accept are the real, working system and
+graduate to production as they are. The issuer's admission **policy in the demo is open registration**: this service
+registers any account that asks, rate-limited — the model an exchange uses, where an account is opened first and KYC
+raises its limits. A production pool runs its own decision logic (approve/deny by policy) through the same issuer;
+nothing on the nodes or in the gate changes (audit ruling 2026-10-25, `docs/audit/RESP-demo-issuer-2026-10-25.md`). Say
+neither "not KYC" nor that the demo vetted anyone (project lead, 2026-10-25). The issuer account pays the reserve
+for each unaccepted credential and the fee for each write; fund it so that the capped spend (60 unaccepted credentials an
+hour × the owner reserve, plus fees) cannot hit `tecINSUF_RESERVE` mid-demo, and watch its XRP balance on a busy day. To turn it off: stop the
+unit; the app then says what is missing before any payment, and the team's key saved in the browser (the under-the-hood
+page's fold) can still issue.
+

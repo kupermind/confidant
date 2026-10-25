@@ -686,7 +686,7 @@
             <h4>XRPL account<span class="pub">public</span></h4>
             <div class="kv"><span class="k">Address</span><span class="v" id="xrpl-addr"></span><button class="small ghost copy" data-copy="xrpl-addr">Copy</button></div>
             <div class="kv"><span class="k">Balance</span><span class="v" id="xrpl-balance">—</span><button class="small" id="btn-fund">Fund from faucet</button></div>
-            <div class="kv" id="cred-row" hidden title="Credential-gated pool: a deposit is accepted only from an XRPL account that holds an XLS-70 Credential from the issuer the pool trusts, confirmed by the account's own signature. Every verifier node reads the credential from the ledger itself before it signs; the credential says nothing about anyone's notes. It is a per-pool switch the operator sets, applied to every depositor alike. Details on the issuer page."><span class="k">Credential</span><span class="v" id="cred-status">—</span><button class="small" id="btn-accept-cred" hidden>Confirm</button></div>
+            <div class="kv" id="cred-row" hidden title="Credential-gated pool: a deposit is accepted only from an XRPL account that holds an XLS-70 Credential from the issuer the pool trusts, confirmed by the account's own signature. Every verifier node reads the credential from the ledger itself before it signs; the credential says nothing about anyone's notes. It is a per-pool switch the operator sets, applied to every depositor alike. KYC in demo mode: the gate is the real system; the demo issuer registers anyone who asks (rate-limited) — open registration, the exchange model where an account is opened first and KYC raises its limits. Details on the under-the-hood page."><span class="k">Credential</span><span class="v" id="cred-status">—</span><button class="small" id="btn-accept-cred" hidden>Confirm</button></div>
           </div>
           <div class="col-kv">
             <h4>Pool wallet<span class="pub">off ledger</span></h4>
@@ -730,7 +730,7 @@
         <div class="out" id="msg-unshield" aria-live="polite"></div>
       </div>
       <div class="op" id="tab-prove" role="tabpanel" aria-labelledby="tabbtn-prove" hidden>
-        <div class="head"><p class="note">Show a lender you hold at least your private balance in the pool. Nothing moves and nothing is unshielded: each of the pool's signers re-checks the proof on its own node, and the quorum writes the result on your XRPL account as a credential that expires in 24 hours — a lender reads it from the ledger by your address. <b>Demo-grade:</b> the proof names the notes it proves, so the node operators can see when those notes are next spent; the app spends them to yourself right after, so your later payments are not linked to this proof. <span class="how" tabindex="0">How it works<span class="tipbox">Your wallet proves, in your browser, that unspent notes worth at least your balance are yours — bound to your account, a fresh request id, the current ledger and a 24-hour expiry. Each signer's node re-verifies that proof read-only against its own state; k of N signers then sign a CredentialCreate from the pool account to your account, and your account's own signature accepts it. The credential says "controlled at least X as of ledger L", not "controls it now": a snapshot, not a lock. The signers' nodes see your account, the amount and the ledger window; a lender sees only the credential.</span></span></p></div>
+        <div class="head"><p class="note">Show a lender you hold at least your private balance in the pool. Nothing moves and nothing is unshielded: each of the pool's signers re-checks the proof on its own node, and the quorum writes the result on your XRPL account as a credential that expires in 24 hours — a lender reads it from the ledger by your address. If your account lacks the pool's entry credential, the app has the demo issuer write it first and confirms it with your signature. <b>Demo-grade:</b> the proof names the notes it proves, so the node operators can see when those notes are next spent; the app spends them to yourself right after, so your later payments are not linked to this proof. <span class="how" tabindex="0">How it works<span class="tipbox">Your wallet proves, in your browser, that unspent notes worth at least your balance are yours — bound to your account, a fresh request id, the current ledger and a 24-hour expiry. Each signer's node re-verifies that proof read-only against its own state; k of N signers then sign a CredentialCreate from the pool account to your account, and your account's own signature accepts it. The credential says "controlled at least X as of ledger L", not "controls it now": a snapshot, not a lock. The signers' nodes see your account, the amount and the ledger window; a lender sees only the credential.</span></span></p></div>
         <div class="out" id="prove-gate" aria-live="polite"></div>
         <div class="steps" id="steps-prove"><div class="step"><span class="node"></span><b>Prove</b><span class="d">In your browser</span></div><div class="step"><span class="node"></span><b>Record</b><span class="d">The signers re-check, the quorum writes the credential</span></div><div class="step"><span class="node"></span><b>Confirm</b><span class="d">Your account's signature</span></div></div>
         <div class="action"><button class="primary" id="btn-prove">Prove funds</button></div>
@@ -770,7 +770,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const DEMO = new URLSearchParams(location.search).has("demo") || /claude\.ai$/.test(location.hostname);
-  const API = "/api", WALLET = "/wallet";
+  const API = "/api", WALLET = "/wallet", ISSUER = "/issuer"; // the demo issuer service (backend/quorum/issuer.mjs), behind the site
   const DROPS = 1_000_000;
   const store = {
     get(k, d) { try { const v = localStorage.getItem("confidant." + k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -972,7 +972,7 @@
     if (!$("cred-status").textContent.trim() || $("cred-status").textContent === "—") $("cred-status").textContent = "checking…";
     let state; try { state = await credentialState(c, x.address); } catch (e) { $("cred-status").textContent = "ledger not readable"; return; }
     const issuerHref = `issuer.html#team`;
-    const gate = proveGateText(c, x, state); setMsg("prove-gate", gate, "warn"); // the Prove tab says it before the press, not after
+    const gate = proveGateText(c, x, state, await issuerAvailable()); setMsg("prove-gate", gate, "warn"); // the Prove tab says it before the press, not after
     if (!gate && /^Not yet/.test($("msg-prove").textContent.trim())) setMsg("msg-prove", "");
     // Short on purpose: the cell is narrow; the tooltip and the issuer page carry the explanation.
     if (state === "accepted") $("cred-status").textContent = `accepted ✓ (${c.typeText ?? "credential"})`;
@@ -987,13 +987,21 @@
   // the demo issuer; a real deployment has a third party write it) and confirms it with the account's own signature.
   // An issued-not-confirmed credential needs no key: the account confirms it by itself.
   const issuerKey = () => { const i = store.get("issuer"), c = credentialCfg(); return i && c && i.address === c.issuer ? i : null; };
+  // The demo issuer as a service (the issuer the nodes trust, operated by the team): it writes the entry credential to
+  // any account that asks, rate-limited — so a judge on a phone needs no key. Its admission policy is open registration for the demo; the gate is real.
+  let issuerSvc = null;
+  async function issuerAvailable() {
+    if (DEMO) return !new URLSearchParams(location.search).has("noissuer");
+    if (issuerSvc === null) { try { issuerSvc = !!(await http("GET", `${ISSUER}/health`)).ok; } catch { issuerSvc = false; } }
+    return issuerSvc;
+  }
   /** The one thing to do first when the app cannot act by itself; "" when it can (or nothing is needed). */
-  function proveGateText(c, x, state) {
-    if (!c || !x || state === "accepted" || state === "issued" || issuerKey()) return "";
+  function proveGateText(c, x, state, svc) {
+    if (!c || !x || state === "accepted" || state === "issued" || issuerKey() || svc) return "";
     const t = esc(c.typeText ?? "credential"), saved = store.get("issuer"), page = `<a href="issuer.html#team" target="_blank" rel="noopener">the under-the-hood page</a>`;
     const key = saved
       ? `The issuer key saved in this browser is for <span class="mono">${esc(saved.address)}</span>, <b>not the pool's issuer</b> <span class="mono">${esc(c.issuer)}</span> — replace it in the fold at the bottom of ${page}, then come back here.`
-      : `The pool's issuer writes it: on this testnet that is the team, by saving the issuer's key once in the fold at the bottom of ${page} — after that the app issues and confirms it by itself when you shield or prove.`;
+      : `Normally the pool's issuer service writes it when you press Shield or Prove, but it is not answering right now — retry in a minute. (Team: the issuer key saved in the fold at the bottom of ${page} also works.)`;
     return `One step first: the pool's verifiers accept a deposit — and the quorum writes a proof-of-funds credential — only for an account that holds the pool's entry credential (${t}), and your account ${esc(short(x.address))} has ${state === "expired" ? "an expired one" : "none"}. ${key}`;
   }
   /** Null when nothing was needed; { issued, accepted } hashes when it did the work; { blocked } when it cannot act. */
@@ -1001,15 +1009,20 @@
     const c = credentialCfg(); if (!c) return null;
     const state = await credentialState(c, x.address).catch(() => "unknown");
     if (state === "accepted" || state === "unknown") return null; // an unreadable ledger is left to the quorum's own answer
-    const blocked = proveGateText(c, x, state); if (blocked) return { blocked };
+    const svc = await issuerAvailable();
+    const blocked = proveGateText(c, x, state, svc); if (blocked) return { blocked };
     const t = esc(c.typeText ?? "credential"), out = { issued: null, accepted: null };
     if (state !== "issued") {
-      const key = issuerKey();
-      if (state === "expired") { say("Removing your expired entry credential…"); if (!DEMO) await signAndSubmit({ TransactionType: "CredentialDelete", Subject: x.address, Issuer: c.issuer, CredentialType: c.type }); }
       say(`Issuing the entry credential (${t}) for your address…`);
       if (DEMO) { await sleep(900); demoCred = "issued"; out.issued = fakeHex(64).toUpperCase(); }
-      else {
-        const cl = await xrpl_(); const iw = xrpl.Wallet.fromSeed(key.seed);
+      else if (svc) {
+        // The service judges the ledger itself (idempotent: a live credential is answered, an expired one replaced).
+        const r = await http("POST", `${ISSUER}/issue`, { subject: x.address });
+        out.issued = r.tx ?? null;
+        if (r.status === "accepted") { refreshCredential().catch(() => {}); return out; }
+      } else {
+        const key = issuerKey(); const cl = await xrpl_(); const iw = xrpl.Wallet.fromSeed(key.seed);
+        if (state === "expired") { say("Removing your expired entry credential…"); await signAndSubmit({ TransactionType: "CredentialDelete", Subject: x.address, Issuer: c.issuer, CredentialType: c.type }); }
         const tx = await cl.autofill({ TransactionType: "CredentialCreate", Account: iw.address, Subject: x.address, CredentialType: c.type, Expiration: Math.floor(Date.now() / 1000) - RIPPLE_EPOCH + 30 * 86400 });
         const signed = iw.sign(tx); const res = await cl.submitAndWait(signed.tx_blob);
         const code = res.result.meta?.TransactionResult; if (code !== "tesSUCCESS") throw new Error(`The issuer's CredentialCreate was refused: ${code}`);
@@ -1318,7 +1331,7 @@
   $("btn-prove").addEventListener("click", doProve);
   // The issuer key is saved on another page: re-read the gate when storage changes or this tab comes back.
   window.addEventListener("storage", (e) => { if (!e.key || /^confidant\.(issuer|xrpl)$/.test(e.key)) refreshCredential().catch(() => {}); });
-  window.addEventListener("focus", () => { if (wallet()) refreshCredential().catch(() => {}); });
+  window.addEventListener("focus", () => { issuerSvc = null; if (wallet()) refreshCredential().catch(() => {}); });
   $("btn-reveal").addEventListener("click", doReveal);
   $("btn-fresh").addEventListener("click", () => { $("unshield-to").value = xrpl.Wallet.generate().classicAddress; });
   $("btn-own").addEventListener("click", () => { const x = store.get("xrpl"); $("unshield-to").value = x ? x.address : ""; });

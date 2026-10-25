@@ -1,8 +1,9 @@
 // One-time preparation of the agent's Confidant side (pool on XRPL L1 testnet), so agent.mjs has notes to spend:
 //   1. two native wallet files via the CLI (agent, supplier) — keys stay in STATE_DIRECTORY, never leave this machine;
 //   2. a faucet-funded XRPL account for the deposit, kept in STATE_DIRECTORY/xrpl.json;
-//   3. when the pool's credential gate is on: waits until the gate's issuer has written the account's credential
-//      (the issuer's operator does that from the issuer page or the host), then accepts it from here;
+//   3. when the pool's credential gate is on: asks the pool's demo issuer service (ISSUER_URL, default: the coordinator's
+//      origin + /issuer) to write the account's entry credential, then accepts it from here; if the service is not
+//      there, waits for the issuer's operator to write it (the under-the-hood page's fold or the host);
 //   4. a shield of DEPOSIT_XRP through the coordinator (deposit Payment with the bundle-hash memo, then submit);
 //   5. prints the SUPPLIER (the supplier wallet's Orchard address) and the agent's private balance.
 //
@@ -14,6 +15,7 @@ import { Client, Wallet, xrpToDrops } from "xrpl";
 
 const env = process.env;
 const C = (env.COORDINATOR_URL ?? "https://confidant.im/api").replace(/\/$/, "");
+const ISSUER = (env.ISSUER_URL ?? C.replace(/\/api$/, "") + "/issuer").replace(/\/$/, ""); // the demo issuer service
 const CLI = env.CLI ?? "../../target/release/examples/cli";
 const STATE = env.STATE_DIRECTORY ?? "./agent-state";
 const DROPS = xrpToDrops(Number(env.DEPOSIT_XRP ?? "20"));
@@ -43,14 +45,22 @@ try {
 
   // 3. The credential gate: wait for the issuer, then accept from here.
   if (cfg.credential?.issuer) {
-    say(`gate is on: issuer ${cfg.credential.issuer}, type ${cfg.credential.typeText ?? cfg.credential.type} — waiting for the issuer to write ${x.address}'s credential (issuer page: /issuer.html?subject=${x.address})`);
+    say(`gate is on: issuer ${cfg.credential.issuer}, type ${cfg.credential.typeText ?? cfg.credential.type}`);
+    // The demo issuer service writes the credential to any account that asks (idempotent, rate-limited).
+    let asked = null;
+    try {
+      const r = await fetch(`${ISSUER}/issue`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ subject: x.address }), signal: AbortSignal.timeout(60_000) });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok) { asked = j; say(`issuer service: ${j.status}${j.tx ? ` — CredentialCreate https://testnet.xrpl.org/transactions/${j.tx}` : " (already on the ledger)"}`); }
+      else say(`issuer service answered ${r.status} (${j.error ?? ""}) — waiting for the issuer's operator instead`);
+    } catch (e) { say(`issuer service not reachable at ${ISSUER} (${e.message}) — waiting for the issuer's operator to write ${x.address}'s credential (the under-the-hood page's fold, or the host)`); }
     let hit = null;
-    for (let i = 0; i < 120 && !hit; i++) {
+    for (let i = 0; i < (asked ? 24 : 120) && !hit; i++) {
       const r = await client.request({ command: "account_objects", account: x.address, type: "credential", ledger_index: "validated" });
       hit = (r.result.account_objects ?? []).find((o) => o.Issuer === cfg.credential.issuer && String(o.CredentialType).toUpperCase() === String(cfg.credential.type).toUpperCase());
       if (!hit) await sleep(5000);
     }
-    if (!hit) throw new Error("no credential appeared within 10 minutes");
+    if (!hit) throw new Error(asked ? "the issuer service answered but the credential did not appear on the ledger within 2 minutes" : "no credential appeared within 10 minutes");
     if (!(hit.Flags & LSF_ACCEPTED)) {
       const r = await client.submitAndWait(w.sign(await client.autofill({ TransactionType: "CredentialAccept", Account: x.address, Issuer: cfg.credential.issuer, CredentialType: cfg.credential.type })).tx_blob);
       if (r.result.meta?.TransactionResult !== "tesSUCCESS") throw new Error(`CredentialAccept: ${r.result.meta?.TransactionResult}`);

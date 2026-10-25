@@ -141,24 +141,29 @@ for (const name of ["index.html", "how-it-works.html", "balances.html", "lender.
 }
 
 // 7b. The entry gate under the hood (demo, ?nocred: the account holds no entry credential at all).
-//     Without the issuer key: Shield says the one step first and pays nothing; the Prove tab says it before any press.
-//     With the key in this browser: Shield issues and confirms the credential, then shields; the Credential row ends "accepted ✓".
+//     Default: the issuer service writes it — Shield issues and confirms the credential, then shields, no key anywhere.
+//     ?noissuer (the service down) without a key: Shield says the one step first and pays nothing; the Prove tab says it too.
+//     ?noissuer with a key in this browser: the key is the fallback and the flow completes.
 {
   const report = `{msg:${text("msg-shield")},gate:${text("prove-gate")},cred:${text("cred-status")},steps:[...document.getElementById("steps-shield").children].map(e=>e.classList.contains("on")||e.classList.contains("done")?"x":"").join("|"),acts:[...document.querySelectorAll("#activity .type")].map(e=>e.textContent).join(",")}`;
   const noKey = probe("index.html",
     `setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("shield-amount").value="25";document.getElementById("btn-shield").click()},3200)`, report);
-  const n = sample(noKey, 390, 4500, "?demo=1&nocred");
-  check("gate, no key: shield refused before any payment with the one step first; the Prove tab says it too", /^One step first: .*under-the-hood page/.test(n.msg ?? "") && /^One step first/.test(n.gate ?? "") && n.steps === "||", n);
+  const svc = sample(noKey, 390, 4000, "?demo=1&nocred");
+  check("gate, no key, service up: shield first has the issuer service write the entry credential", /Issuing the entry credential/.test(svc.msg ?? "") && svc.steps === "||" && (svc.gate ?? "") === "", svc);
+  const svcEnd = sample(noKey, 390, 9400, "?demo=1&nocred");
+  check("gate, no key, service up: credential confirmed, shield completed, Credential row accepted", /^Shielded 25 XRP/.test(svcEnd.msg ?? "") && /^accepted ✓/.test(svcEnd.cred ?? ""), svcEnd);
+  const n = sample(noKey, 390, 4500, "?demo=1&nocred&noissuer");
+  check("gate, no key, service down: shield refused before any payment with the one step first; the Prove tab says it too", /^One step first: .*issuer service.*not answering/.test(n.msg ?? "") && /^One step first/.test(n.gate ?? "") && n.steps === "||", n);
   const wrongKey = probe("index.html",
     `localStorage.setItem("confidant.issuer",JSON.stringify({seed:"s",address:"rWRONGissuerxxxxxxxxxxxxxxxxxxxxxx"}));setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("shield-amount").value="25";document.getElementById("btn-shield").click()},3200)`, report);
-  const wk = sample(wrongKey, 390, 4500, "?demo=1&nocred");
-  check("gate, wrong key: the gate line names the saved key and the pool's issuer; shield refused before any payment", /not the pool's issuer/.test(wk.gate ?? "") && /rWRONGissuer/.test(wk.gate ?? "") && /rDEMOissuerKYC/.test(wk.gate ?? "") && /^One step first/.test(wk.msg ?? "") && wk.steps === "||", wk);
+  const wk = sample(wrongKey, 390, 4500, "?demo=1&nocred&noissuer");
+  check("gate, wrong key, service down: the gate line names the saved key and the pool's issuer; shield refused before any payment", /not the pool's issuer/.test(wk.gate ?? "") && /rWRONGissuer/.test(wk.gate ?? "") && /rDEMOissuerKYC/.test(wk.gate ?? "") && /^One step first/.test(wk.msg ?? "") && wk.steps === "||", wk);
   const withKey = probe("index.html",
     `localStorage.setItem("confidant.issuer",JSON.stringify({seed:"s",address:"rDEMOissuerKYCxxxxxxxxxxxxxxxxxxxx"}));setTimeout(()=>document.getElementById("btn-create").click(),300);setTimeout(()=>{document.getElementById("shield-amount").value="25";document.getElementById("btn-shield").click()},3200)`, report);
-  const mid = sample(withKey, 390, 4000, "?demo=1&nocred");
-  check("gate, with key: shield first issues the entry credential under the hood", /Issuing the entry credential/.test(mid.msg ?? "") && mid.steps === "||", mid);
-  const end = sample(withKey, 390, 9400, "?demo=1&nocred");
-  check("gate, with key: credential confirmed, shield completed, Credential row accepted, Activity has the credential line", /^Shielded 25 XRP/.test(end.msg ?? "") && /^accepted ✓/.test(end.cred ?? "") && (end.acts ?? "").split(",").includes("credential") && (end.gate ?? "") === "", end);
+  const mid = sample(withKey, 390, 4000, "?demo=1&nocred&noissuer");
+  check("gate, with key, service down: shield first issues the entry credential from the key", /Issuing the entry credential/.test(mid.msg ?? "") && mid.steps === "||", mid);
+  const end = sample(withKey, 390, 9400, "?demo=1&nocred&noissuer");
+  check("gate, with key, service down: credential confirmed, shield completed, Credential row accepted, Activity has the credential line", /^Shielded 25 XRP/.test(end.msg ?? "") && /^accepted ✓/.test(end.cred ?? "") && (end.acts ?? "").split(",").includes("credential") && (end.gate ?? "") === "", end);
 }
 
 // 8. Credential gate, holder side (demo config carries a gate; the holder arrives with a credential issued):
