@@ -1,8 +1,12 @@
 # Confidant × AP4M — "pay for privacy" relay (Mastercard track, hackathon only)
 
 A scripted **agent** pays **RLUSD on XRPL EVM Testnet** (chain 1449000) through Mastercard's AP4M for the **relay** of a
-zero-knowledge transfer that Confidant's k-of-N quorum then anchors **on XRPL L1 testnet**. Two ledgers, two receipts:
-the metered payment is public, the settlement of the transfer is private.
+zero-knowledge transfer that Confidant's k-of-N quorum then anchors **on XRPL L1 testnet**. Before it pays, the agent
+**proves its shielded funds**: the quorum writes an expiring XLS-70 `ConfidantPoF` credential on the agent's XRPL account
+and the relay serves only an account that carries one — machine-to-machine underwriting read from the ledger. After the
+anchor, a **receipt** signed by the merchant payout key and countersigned by the agent binds the paid claim, the bundle
+hash, the anchor and the credential; `verify-receipt.mjs` re-checks it from public data only. Two ledgers, three facts:
+the agent proved funds, the metered payment is public, the settlement of the transfer is private.
 
 **What is and is not touched.** The relay is a fail-closed paywall *in front of* the coordinator's existing
 `POST /submit/transfer`. Core, verifier nodes, signer sidecars and the coordinator's trust path are unchanged; the relay
@@ -20,6 +24,9 @@ path). The relay fee is a **metering fee**, separate from the pool's protocol fe
 | `agent.mjs` | Builds a private transfer with the native Confidant wallet (CLI), meets the `402`, applies the **payment policy** (price ≤ `MAX_PRICE_RLUSD`, channel cap remaining), pays with `buyResource` on its Channel, retries with the `claimId`, calls `settle`, prints both explorer links. The operation name is derived from the bundle hash: a rerun resumes, never pays twice. |
 | `setup.sh` | `npm install` + download of `ap4m-hackathon-sdk.cjs` and `ap4m-x402.mjs` from the service. |
 | `prepare-wallet.mjs` | One-time pool side for the agent: two native wallet files (agent, supplier — keys stay in the state directory), a faucet XRPL account, waits for the gate's issuer to write its credential and accepts it, shields `DEPOSIT_XRP` through the live coordinator, prints `SUPPLIER` / `WALLET_FILE` / `LOG_FILE` for `.env`. |
+| `receipt.mjs` | Shared by the three scripts: the receipt statement's canonical JSON (keys sorted; both signatures are over it), the anchor-memo layout (`bundleHash` at bytes 34–66), the `ConfidantPoF` credential's URI and how it is judged. |
+| `verify-receipt.mjs` | `node verify-receipt.mjs <receipt.json>`: re-checks a receipt from public data — both signatures recover to the channel's parties, `VoucherRedeemed` for (channel, claim), the anchor sent by the pool with the bundle hash in its memo, the credential on the agent's account. Exit 0 only when all of it holds. |
+| `STAGE.md` | The stage sheet: the blind checklist, what a judge can verify and how, the sponsor submission text, the one slide. |
 | `env.example` | Every variable; copy to `.env` (gitignored) and fill from the portal. **Never commit keys.** |
 
 ## Live run (2026-10-25, testnet, our wallets, the organizers' 20 RLUSD budget)
@@ -41,6 +48,36 @@ A second full run the same morning (fresh bundle, a 0.15-cap channel) anchored `
 `0x326f3830…`; the platform caps the number of open channels per team (`ActivePayoutLimitExceeded`), so close the
 spares with `closeChannel` and reuse one open channel on stage.
 
+### Run 3 (2026-10-25, 03:57 UTC): proof of funds, payment, relay, receipt, settlement — 92 s
+
+```
+[ 11493 ms] proof of funds built: ≥ 16.95 XRP in the pool as of ledger 21803835 (24 h window)
+[ 21832 ms] quorum wrote the credential: 2 signers, CredentialCreate https://testnet.xrpl.org/transactions/5D1CAD44377710A4168BEF030CF56A4774DB3948E57C6F85AE989A5D1B3CB684
+[ 27835 ms] credential accepted by the agent's account rAMxdUQz71EzKwJVy5QpsvVBUFQAyxiti — CredentialAccept https://testnet.xrpl.org/transactions/166E12584C6F05C338FFB4127396148A2029EE2B7B4CF2A8E5F93E2C8E9ECE9A
+[ 34316 ms] bundle built: c08f0db709ea… — a private transfer of 1 XRP inside the pool
+[ 34323 ms] 402 received: the relay costs 0.1 RLUSD (chain 1449000, ledger 0xcAB42800…)
+[ 35015 ms] policy: price 0.1 ≤ max 0.25 RLUSD, channel redeemed so far 0.1 — paying
+[ 47266 ms] merchant not ready (purchase outcome unavailable (HTTP 503); resume the same ope…) — resuming in 5 s
+[ 54395 ms] paid: claim 0x8d6d8d5873…, VoucherRedeemed https://explorer.testnet.xrplevm.org/tx/0x50e4d4d0b9ee4fc714f0f6871b97b7894e95b040fab927a7728d1251f1632c99
+[ 77746 ms] relayed: anchored on XRPL L1 — https://testnet.xrpl.org/transactions/DC312AEEDAE6947DE09F213C4EE537E8E18119A28A30266D0DC2BE841FD50109 (no sender, receiver or amount in the memo)
+[ 77872 ms] receipt: agent-state/receipts/c08f0db7….json — signed by the merchant payout and by this agent (EVM + XRPL); verify: node verify-receipt.mjs …
+[ 92420 ms] settled: payout https://explorer.testnet.xrplevm.org/tx/0x20cb8502f9f14ade592bfa878cf8490c11a9f40dfa342704bcf0ed86b67c192f; receipt https://hackathon.ap4m.build/public/evidence/claims/0x8d6d8d58…
+```
+
+The proof-of-funds beat costs ≈ 28 s before the 402 (≈ 11 s sync + proof natively, ≈ 10 s for the quorum's
+`CredentialCreate`, ≈ 6 s for the agent's `CredentialAccept`); the kit's merchant paused 12 s on a stale chain head
+(resumed, nothing paid twice); the quorum's anchor ≈ 23 s; settlement ≈ 15 s. The agent's credential is on
+`rAMxdUQz71EzKwJVy5QpsvVBUFQAyxiti` (`account_objects`, type credential, issuer = the pool); the relay's policy was
+`MIN_POF_XRP=1`, the agent proved its whole balance.
+
+**Run 4 (2026-10-25, 04:07 UTC) — the stage configuration:** the relay as a service on the demo host behind TLS, the agent
+on the laptop (`RELAY_URL=https://confidant.im`, `RESOURCE_URL=https://confidant.im/resource`, an open channel). 80 s wall:
+proof of funds ≈ 28 s, voucher ≈ 18 s, relay + anchor ≈ 19 s, settlement ≈ 8 s. VoucherRedeemed
+`https://explorer.testnet.xrplevm.org/tx/0x565e3c2adbc6265200ffb25eb8f728e994114f6b50f8f057796bf047342816a1`, anchor
+`https://testnet.xrpl.org/transactions/302AB16D2A61C6F221A885C1B13C99B00C9841718805EA5078AC0C56F5FB2554`, payout
+`https://explorer.testnet.xrplevm.org/tx/0x6a06e4104258359c40928a85faded20499852968fdc0f975b44ff1639bce437a`;
+`verify-receipt` 10/10 ✓ on `receipts/cf18bf64….json`.
+
 What the first attempt taught (all fixed here): the relay's forward to the coordinator can hit a reset connection while
 the quorum anchors — the relay must never die on it (guarded handler, retried forward, the claim kept unused on any
 failure); a rerun of the agent must **resume** (`pending.json`: same bundle, same purchase name — the kit replays the
@@ -57,8 +94,15 @@ cd hackathon/ap4m && ./setup.sh && cp env.example .env   # fill AGENT_PRIVATE_KE
 set -a; . ./.env; set +a
 npm run prepare-wallet   # once: the agent's shielded notes on XRPL L1 (needs the gate's issuer to write one credential)
 node relay.mjs            # :4308 ticket merchant, :4309 relay → COORDINATOR_URL
-node agent.mjs            # one run = one 402 → pay → relay → settle, both receipts printed
+node agent.mjs            # one run = prove funds → 402 → pay → relay → receipt → settle
+node verify-receipt.mjs agent-state/receipts/<bundleHash>.json   # anyone: re-check the receipt from public data
 ```
+
+**On stage the relay runs on the demo host** as a systemd service behind the site's TLS (`confidant-ap4m-relay`;
+its env file holds the merchant keys, its state under the host's data directory; nginx maps `/resource` to the ticket
+merchant and `/relay/` to the relay). The agent on the laptop then runs with `RELAY_URL=https://confidant.im`
+`RESOURCE_URL=https://confidant.im/resource` (`https://confidant.im/relay/health` is the liveness check). The kit's
+merchant requires the resource URL to be exactly `/resource` on an HTTPS origin, which is why it sits at the site root.
 
 Prerequisites: Node ≥ 22.13; the team onboarded (below); `target/release/examples/cli` built; a Confidant wallet file
 with shielded notes (`WALLET_FILE`, created with `cli wallet --file … init` and funded by a shield — the e2e harness
@@ -81,6 +125,10 @@ Walk-in sign-up (no form answered) needs a connected browser wallet that signs t
 
 ## Demo (a 5-minute slot; the flow itself in under 3 — the deck's "what a strong demo proves": control, payment, proof)
 
+0. **Prove.** Terminal: "proof of funds built: ≥ X XRP in the pool", "quorum wrote the credential: 2 signers",
+   "credential accepted by the agent's account". Say: "before it may pay, the agent proves it controls shielded funds —
+   not to us, to the quorum; the credential sits on its XRPL account and the relay reads it from the ledger. A snapshot,
+   not a lock; demo-grade, because the proof names the proven notes to the signers' nodes."
 1. **Control.** "Two verified parties: the agent is registered in AP4M's registry (KYA), the merchant is our relay; the
    channel has a funded cap." Terminal: wallet synced, bundle built. "This agent holds shielded funds on the XRP Ledger
    and needs to pay a supplier without publishing it. Privacy is a metered service: it pays per relay, in RLUSD."
@@ -88,7 +136,10 @@ Walk-in sign-up (no form answered) needs a connected browser wallet that signs t
    Voucher signed; the relay releases the resource at once.
 3. **Proof.** EVM explorer: `VoucherRedeemed` at the PaymentLedger; then XRPL testnet explorer: the pool account's new
    anchor Payment — no sender, no receiver, no amount. "Two ledgers, two receipts."
-4. **Settlement.** `settle` → RLUSD to the merchant payout (`ClaimPaid` + `SettlementRecorded`), the receipt URL.
+4. **Settlement and the receipt.** `settle` → RLUSD to the merchant payout (`ClaimPaid` + `SettlementRecorded`), the
+   receipt URL; then `node verify-receipt.mjs agent-state/receipts/<bundleHash>.json` — every line ✓ from public data:
+   both signatures, the redeemed voucher, the pool's anchor naming the bundle hash, the credential on the agent's
+   account. Say: "you do not have to believe the relay; the receipt is checkable by anyone."
 5. **Over-cap attempt rejected.** Run the agent once more with `CHANNEL_ID` set to the 0.15-cap channel that already
    paid once: it meets the 402, reads the channel and stops — rehearsed 2026-10-25: *"policy: channel has 0.05 RLUSD
    left < price — NOT paying"* (exit code 3, nothing signed). The ledger would refuse the voucher anyway
@@ -111,7 +162,11 @@ the pre-funded rehearsal wallets; channel exhausted → the second channel opene
 
 ## Honest labels
 
-Hackathon SDK on a testnet with testnet RLUSD. The pool account is federated (k-of-N): collusion of k signers can drain the
+Hackathon SDK on a testnet with testnet RLUSD. The proof of funds is **demo-grade** (the project's ruling of 2026-10-25):
+the proof reveals the proven notes' nullifiers to the signers' nodes, so the agent's later spend of those notes is
+linkable by the quorum — here the paid transfer spends them right away; the credential says "controlled ≥ X as of ledger
+L", never "controls it now". The receipt binds the relay's own forwarding to the payment and the credential; the quorum's
+acceptance is attested by the anchor's k signatures, not by the receipt. The pool account is federated (k-of-N): collusion of k signers can drain the
 pool account, never spend a note; shield/unshield endpoints are public; an empty pool has no privacy. RLUSD **inside** the
 pool is roadmap — the core is token-agnostic, the deposit/payout surface for issued tokens is not built; never say "RLUSD
 support". On the AP4M side the Agent key stays with the team; the RLUSD budget sits in AP4M's escrow vault and the AP4M
