@@ -74,7 +74,12 @@ const agent = new ethers.Wallet(env.AGENT_PRIVATE_KEY, provider);
 const context = await loadX402Context(AP4M_API_URL);
 const { token } = await signIn(AP4M_API_URL, env.TEAM_NAME, agent);
 let channelId = pending?.channelId || env.CHANNEL_ID;
-if (!channelId) { const ch = await requestChannel(AP4M_API_URL, token, agent, { capRlusd: env.CHANNEL_CAP ?? "2" }); channelId = ch.channel_id; say(`opened channel ${channelId.slice(0, 10)}… with a ${env.CHANNEL_CAP ?? "2"} RLUSD cap`); }
+if (!channelId) {
+  const ch = await requestChannel(AP4M_API_URL, token, agent, { capRlusd: env.CHANNEL_CAP ?? "2" }); channelId = ch.channel_id;
+  // Remember the channel at once: a resume must reuse it (the platform caps the number of open channels per team).
+  writeFileSync(PENDING, JSON.stringify({ ...(pending ?? { bundleHash: built.bundleHash, operation: `relay-${built.bundleHash.slice(0, 24)}` }), channelId }, null, 1));
+  say(`opened channel ${channelId.slice(0, 10)}… with a ${env.CHANNEL_CAP ?? "2"} RLUSD cap`);
+}
 const state = await getChannelState(provider, config.contracts.paymentLedger, channelId);
 const remaining = BigInt(state.cap ?? state.limit ?? 0n) - BigInt(state.redeemed ?? 0n);
 if (price > MAX_PRICE) { say(`policy: price ${ethers.formatUnits(price, 18)} > max ${ethers.formatUnits(MAX_PRICE, 18)} RLUSD — NOT paying`); process.exit(3); }
@@ -82,7 +87,13 @@ if (remaining > 0n && remaining < price) { say(`policy: channel has ${ethers.for
 say(`policy: price ${ethers.formatUnits(price, 18)} ≤ max ${ethers.formatUnits(MAX_PRICE, 18)} RLUSD, channel redeemed so far ${ethers.formatUnits(state.redeemed ?? 0n, 18)} — paying`);
 
 // 4. Pay over x402: one purchase per bundle (the operation name is the bundle hash).
-const purchase = await buyResource({ context, provider, wallet: agent, stateDirectory: STATE, resourceUrl: RESOURCE_URL, channelId, maximumAmount: MAX_PRICE.toString(), operation: pending?.operation ?? `relay-${built.bundleHash.slice(0, 24)}` });
+// The kit's merchant answers 503 while its chain head is stale and asks to "resume the same operation": the signed
+// payment is retained on disk, so a retry re-presents it — never a second payment.
+let purchase;
+for (let i = 1; ; i++) {
+  try { purchase = await buyResource({ context, provider, wallet: agent, stateDirectory: STATE, resourceUrl: RESOURCE_URL, channelId, maximumAmount: MAX_PRICE.toString(), operation: pending?.operation ?? `relay-${built.bundleHash.slice(0, 24)}` }); break; }
+  catch (e) { if (i < 5 && /resume the same operation|retry the same operation/.test(e.message)) { say(`merchant not ready (${String(e.message).slice(0, 60)}…) — resuming in 5 s`); await new Promise((ok) => setTimeout(ok, 5000)); continue; } throw e; }
+}
 writeFileSync(PENDING, JSON.stringify({ ...(pending ?? { bundleHash: built.bundleHash, operation: `relay-${built.bundleHash.slice(0, 24)}` }), channelId, claimId: purchase.claimId }, null, 1));
 say(`paid: claim ${purchase.claimId.slice(0, 12)}…, VoucherRedeemed ${config.network.explorerUrl}/tx/${purchase.transactionHash}`);
 await fetch(`${AP4M_API_URL}/public/participant/record-redemption`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ tx_hash: purchase.transactionHash }) }).catch(() => {});
