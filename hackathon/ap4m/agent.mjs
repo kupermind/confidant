@@ -110,8 +110,12 @@ try { unlinkSync(PENDING); } catch {}
 say(`relayed: anchored on XRPL L1 — https://testnet.xrpl.org/transactions/${r.body.anchorTx} (no sender, receiver or amount in the memo)`);
 
 // 6. Settlement: RLUSD reaches the merchant payout; the receipt is verifiable by anyone.
-const settled = await settle(AP4M_API_URL, token, channelId);
-say(`settled: payout ${settled.payout_tx ? `${config.network.explorerUrl}/tx/${settled.payout_tx}` : "pending"}; receipt ${settled.receipt_url ? AP4M_API_URL + settled.receipt_url : "pending"}`);
+// Settlement is automatic on the service; `settle` only waits for it and returns the receipt. A hiccup there (an
+// HTML error page instead of JSON, a timeout) must not hide the two receipts already printed above.
+try {
+  const settled = await settle(AP4M_API_URL, token, channelId);
+  say(`settled: payout ${settled.payout_tx ? `${config.network.explorerUrl}/tx/${settled.payout_tx}` : "pending"}; receipt ${settled.receipt_url ? AP4M_API_URL + settled.receipt_url : "pending"}`);
+} catch (e) { say(`settlement pending: the service did not answer settle() cleanly (${String(e.message).slice(0, 60)}…) — it settles automatically; the receipt appears on the portal`); }
 
 // 8. The funded limit, shown: a second relay only if the cap still covers it.
 if (env.OVER_CAP_DEMO === "1") {
