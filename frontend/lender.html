@@ -231,8 +231,8 @@
     <p><b>Told.</b> That whoever answered the challenge controlled unspent notes worth at least the amount, as of the ledger
       each node judged against; that the challenge named this borrower account, your id, a recent ledger and an expiry;
       which nodes agree, and on which state root.</p>
-    <p><b>Not told.</b> Which notes, the balance beyond the threshold, the borrower's history, or anything about other
-      holders. The nodes keep no copy of the proof and log nothing; you hold the only record. The proof could have been
+    <p><b>Not told.</b> The balance beyond the threshold, the borrower's history, or anything about other
+      holders. The nodes keep no copy of the proof and log nothing; you hold the only record. <b>Told, and worth knowing:</b> the package carries the nullifiers of the proven notes. A nullifier does not say which note or how much, but it reappears in the public log when that note is spent, so you can tell when the borrower next spends them — not to whom or how much. Treat the package as the borrower's private data and do not pass it on. The proof could have been
       produced by anyone who controls the notes — binding it to the borrower's account is the challenge's job, and the
       borrower's signature on an XRPL Credential (the next step of this design) would tighten it.</p>
     <p><b>Not a lock.</b> The holder can spend right after proving. Treat an older verdict as older. For a lock you need
