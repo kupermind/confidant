@@ -170,7 +170,7 @@ loopback to the services; add the browser's proof time from the table above for 
 | A: issue + accept the gate credential (two XRPL transactions) | ≈ 12 s |
 | A: shield refused 403 without it / anchored with it, same record | refusal < 1 s; anchor ≈ 10 s |
 | C: proof of funds built natively (CLI, 2 notes) | ≈ 5 s (browser: the shield-proof column) |
-| C: `POST /pof/verify`, one node, read-only | ≈ 200 ms (4 nodes in parallel ≈ 1 s) |
+| C: `POST /pof/verify`, one node, read-only | ≈ 200 ms per node (the pool's nodes in parallel ≈ 1 s) |
 | C: `POST /pof/credential` → `CredentialCreate` validated (3 sidecars re-verify, 2-of-3 multisign) | ≈ 9 s |
 | C: the holder's `CredentialAccept` validated | ≈ 7 s |
 | C: lender page, **Check** (`account_objects`) | < 1 s |
