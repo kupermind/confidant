@@ -217,8 +217,12 @@
   <h2>What the gate is, mechanically</h2>
   <div class="card">
     <p>On this testnet the issuer is a <b>demo service operated by the Confidant team</b>: it writes the entry credential to
-      any account that asks, rate-limited, so that anyone can try the pool — the issuer's <em>policy</em> is a stub; the
-      gate on the ledger is real. The pool trusts one issuer: <span class="mono" id="trusted">reading the pool's
+      any account that asks, rate-limited, so that anyone can try the pool. <b>This is KYC in demo mode.</b> The credential
+      gate, the issuer's attestation, the fail-closed check by every node and your on-ledger accept are the real, working
+      system; the issuer's admission <em>policy</em> in this demo is allow-by-default — it issues to any account that asks,
+      rate-limited, the standard practice for a demo (a full KYC decision pipeline is outside the hackathon's scope), so a
+      demo credential attests that the account asked, not a vetting. A real deployment drops its own approve/deny logic
+      into the same issuer; the gate does not change. The pool trusts one issuer: <span class="mono" id="trusted">reading the pool's
       configuration…</span>. Only credentials issued by that account count; a credential from any other account is ignored
       by the pool. <span id="svc"></span></p>
     <p><b>What is checked.</b> One on-ledger fact: that the depositing XRPL account holds an accepted XLS-70 Credential of

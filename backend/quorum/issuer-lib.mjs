@@ -47,3 +47,56 @@ export function parseIssueRequest(text) {
   if (!body || typeof body !== "object" || !isClassicAddress(body.subject)) throw Object.assign(new Error("send { subject: <classic XRPL address> }"), { status: 400 });
   return { subject: body.subject };
 }
+
+/** The rippled error CODE of an xrpl.js RippledError. xrpl.js puts the prose (`error_message`, "Account not found.") in
+ *  `message` and the code (`actNotFound`) in `data.error`: match the code, never the prose — the same lesson as the node's
+ *  `entryNotFound` hotfix (#62). */
+export const rippledCode = (e) => (e && e.data && typeof e.data.error === "string" ? e.data.error : "");
+export const withStatus = (message, status) => Object.assign(new Error(message), { status });
+
+/**
+ * The issuer's core with its I/O injected, so the whole decision is unit-tested:
+ *   readCredentials(subject) → the subject's credential objects on the validated ledger (throws a RippledError on failure);
+ *   submit(tx)               → the validated transaction's hash, or throws with `.code` = the ledger's tec code;
+ *   limiter                  → a RateLimiter; now() → ripple seconds.
+ * EVERYTHING runs inside one queue — read, judge, limit, write, note — one request at a time (the issuer account has one
+ * sequence number anyway). So a second request for the same subject reads AFTER the first one's write validated and gets
+ * the idempotent answer instead of a tecDUPLICATE, two "replace" requests do not churn Delete/Create, and the hourly cap
+ * holds under a burst (every request passes `check` only after the previous one's `note`). Audit ruling F1, 2026-10-25.
+ * Belt for writes that happen out of band (another operator, a later account_objects page): a tecDUPLICATE on the create
+ * is answered idempotently after a re-read, and a tecNO_ENTRY on the replace's delete means there is nothing to replace.
+ * Both count under the cap — a refused transaction still costs the issuer its fee.
+ */
+export function makeIssuer({ issuer, typeHex, typeText, days, readCredentials, submit, limiter, now = rippleNow, log = () => {} }) {
+  let queue = Promise.resolve();
+  const serialized = (fn) => { const p = queue.then(fn, fn); queue = p.catch(() => {}); return p; };
+  const answer = (status, expiration, tx) => ({ status, issuer, credentialType: typeHex, typeText, expiration, tx });
+  const read = async (subject) => {
+    try { return (await readCredentials(subject)) ?? []; }
+    catch (e) {
+      if (rippledCode(e) === "actNotFound") throw withStatus("this account does not exist on the ledger yet — fund it first", 404);
+      throw withStatus(`ledger unreadable: ${e.message}`, 502);
+    }
+  };
+  return (subject) => serialized(async () => {
+    const j = judgeExisting(await read(subject), issuer, typeHex, now());
+    if (j.action === "none") return answer(j.status, j.expiration, null);
+    const why = limiter.check(subject); if (why) throw withStatus(why, 429);
+    if (j.action === "replace") {
+      try { await submit({ TransactionType: "CredentialDelete", Subject: subject, CredentialType: typeHex }); }
+      catch (e) { if (e.code !== "tecNO_ENTRY") throw e; } // deleted out of band: nothing to replace, write the new one
+    }
+    const expiration = now() + days * 86400;
+    let tx;
+    try { tx = await submit({ TransactionType: "CredentialCreate", Subject: subject, CredentialType: typeHex, Expiration: expiration }); }
+    catch (e) {
+      if (e.code !== "tecDUPLICATE") throw e;
+      limiter.note(subject); // the refused attempt cost a fee: it counts
+      const again = judgeExisting(await read(subject).catch(() => []), issuer, typeHex, now());
+      return answer(again.action === "none" ? again.status : "issued", again.expiration ?? null, null);
+    }
+    limiter.note(subject);
+    log(subject, expiration, tx);
+    return answer("issued", expiration, tx);
+  });
+}
