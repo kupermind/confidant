@@ -182,10 +182,10 @@ signing, never persisted or logged) and the Credential's meaning ("controlled �
 | `credential-pof` operations: anyone-deletes-expired cleanup (pool reserve); bound `POST /pof/verify` cost per node | open — in the Tier 1 design |
 | Confirm Credentials and Permissioned Domains on testnet | ✅ enabled on testnet and devnet (same check, 2026-10-14) |
 | A design written (no code) | superseded 2026-10-24: the node ↔ holder contract (API-BOUNDARY) and the audit REQ were written with the code on event day |
-| Pitch length, rubric, submission format from the organizers | open |
+| Pitch length, rubric, submission format from the organizers | ✅ submitted 2026-10-25: both forms (texts in `docs/SUBMISSION.md`), two demo videos (YouTube, unlisted; upload sheets `docs/YOUTUBE.md`, `hackathon/ap4m/YOUTUBE.md`, captions beside them), two decks |
 | Where the public repo lives | ✅ this repository (`kupermind/confidant`), flipped to public on the evening of 2026-10-23 after the baseline tag — the PR and audit history is part of the story |
-| FE team: design and deck structure | open (FE team) |
-| Rehearse on the demo laptop | open |
+| FE team: design and deck structure | ✅ 2026-10-25: the lending-track and Mastercard-track decks and the logo (site identity B); the decks live outside this repo |
+| Rehearse on the demo laptop | closed: the event ended 2026-10-25 |
 
 ---
 

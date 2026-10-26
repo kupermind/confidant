@@ -1,0 +1,89 @@
+1
+00:00:00,300 --> 00:00:06,000
+Confidant × Mastercard AP4M: an AI agent with shielded XRP
+pays for the relay of a private transfer. Live, on both testnets.
+
+2
+00:00:06,000 --> 00:00:21,000
+The agent starts. Nothing is pre-recorded:
+every line in the terminal is the live run.
+
+3
+00:00:21,000 --> 00:00:28,000
+Step 0: before it may pay, the agent proves it holds at least 12.95 XRP in the pool.
+The proof goes to the pool's quorum, not to the merchant.
+
+4
+00:00:28,000 --> 00:00:38,000
+Its previous proof-of-funds credential is removed.
+Each signer re-verifies the new proof on its own node.
+
+5
+00:00:38,000 --> 00:00:43,000
+The quorum writes an expiring ConfidantPoF credential (XLS-70)
+on the agent's XRPL account.
+
+6
+00:00:43,000 --> 00:00:51,000
+The agent accepts it with its own signature.
+Right: the explorer on the agent's account.
+
+7
+00:00:51,000 --> 00:00:55,000
+A private transfer of 1 XRP is built locally.
+The relay answers HTTP 402: 0.1 RLUSD.
+
+8
+00:00:55,000 --> 00:01:05,000
+Decision, no human: price 0.1 ≤ max 0.25 RLUSD,
+and the channel has budget left. The agent pays.
+
+9
+00:01:05,000 --> 00:01:19,000
+It signs an EIP-712 voucher with its channel key;
+Mastercard's AP4M redeems it on XRPL EVM testnet.
+
+10
+00:01:19,000 --> 00:01:30,000
+Paid: VoucherRedeemed on the PaymentLedger.
+The metered payment is public. Right: the EVM explorer.
+
+11
+00:01:30,000 --> 00:01:47,000
+The relay checks the claim on the EVM and the credential on XRPL,
+then forwards the bundle once to the quorum.
+
+12
+00:01:47,000 --> 00:01:55,000
+Anchored on XRPL: the pool account's memo names the bundle.
+No sender, receiver or amount. Right: the pool's transaction.
+
+13
+00:01:55,000 --> 00:02:05,000
+The receipt: signed by the merchant payout key the 402 named,
+countersigned by the agent with its EVM and XRPL keys.
+
+14
+00:02:05,000 --> 00:02:18,000
+The RLUSD payout to the merchant runs on AP4M's side.
+In this take its settle call answered an error page, so no payout line.
+
+15
+00:02:18,000 --> 00:02:23,000
+Two ledgers, three facts: funds proved, the payment public,
+the transfer private. One receipt binds them.
+
+16
+00:02:23,000 --> 00:02:40,000
+Anyone re-checks the receipt from public data:
+no key, no log, no trust in us.
+
+17
+00:02:40,000 --> 00:02:49,000
+All checks pass: both signatures, the channel's parties,
+the redeemed voucher, the pool's anchor, the credential.
+
+18
+00:02:49,000 --> 00:02:59,900
+Testnet only. The proof of funds is demo-grade: the signers' nodes see which notes were proven.
+confidant.im · github.com/kupermind/confidant

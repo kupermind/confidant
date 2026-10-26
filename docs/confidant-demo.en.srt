@@ -1,0 +1,163 @@
+1
+00:00:00,300 --> 00:00:05,000
+Confidant: a compliant shielded pool on the XRP Ledger.
+Live on confidant.im, XRPL testnet.
+
+2
+00:00:05,000 --> 00:00:09,000
+On a public ledger every payment is a disclosure.
+Confidant hides the graph: who paid whom, and how much.
+
+3
+00:00:09,000 --> 00:00:13,000
+Shield into the pool, transfer privately inside it, unshield to any address.
+On the ledger you see only an anchor, never a link.
+
+4
+00:00:13,000 --> 00:00:19,000
+Built at the hackathon: lending on shielded capital.
+A credential gate, and a proof of funds a lender reads from the ledger.
+
+5
+00:00:19,000 --> 00:00:28,000
+The Mastercard track: an agent with shielded funds
+pays RLUSD through AP4M for the relay of a private transfer.
+
+6
+00:00:28,000 --> 00:00:40,000
+Balances: what the notes are worth,
+and what the pool account holds on the ledger.
+
+7
+00:00:40,000 --> 00:00:55,000
+Every drop of the difference is accounted for,
+live from the ledger.
+
+8
+00:00:55,000 --> 00:01:05,000
+The app. Left: the public XRPL account, with its entry credential.
+Right: the private pool wallet. Keys never leave the browser.
+
+9
+00:01:05,000 --> 00:01:12,000
+Shield: move 10 XRP from the account into the pool.
+
+10
+00:01:12,000 --> 00:01:24,000
+Prove: the zero-knowledge proof is built here, in the browser.
+
+11
+00:01:24,000 --> 00:01:29,000
+Deposit: a public Payment to the pool, with a memo.
+
+12
+00:01:29,000 --> 00:01:47,000
+Anchor: the verifiers wait until the deposit is 2 ledgers old,
+then 2 of 3 signers re-check the proof and anchor it.
+
+13
+00:01:47,000 --> 00:01:53,000
+Done: a private note of 9.975 XRP (10 less the 0.25% fee).
+Proved in 5.5 s on 8 threads.
+
+14
+00:01:53,000 --> 00:02:01,000
+On the explorer: the deposit, a public Payment to the pool account.
+
+15
+00:02:01,000 --> 00:02:08,000
+And the anchor: the pool account's transaction
+that records the new state in its memo.
+
+16
+00:02:08,000 --> 00:02:18,000
+Transfer: pay any address inside the pool.
+Nothing reaches the ledger but the anchor.
+
+17
+00:02:18,000 --> 00:02:28,000
+Unshield: a note becomes a payout to any XRPL address,
+here back to the user's own account.
+
+18
+00:02:28,000 --> 00:02:36,000
+Prove funds: one button.
+"Prove I hold 59.85 XRP", the whole private balance.
+
+19
+00:02:36,000 --> 00:02:48,000
+The previous proof-of-funds credential is removed first,
+then the browser proves afresh.
+
+20
+00:02:48,000 --> 00:02:58,000
+Record: every signer re-checks the proof on its own node;
+the quorum writes the credential on the XRPL account.
+
+21
+00:02:58,000 --> 00:03:03,000
+Confirm: the account accepts it with its own signature.
+
+22
+00:03:03,000 --> 00:03:09,000
+Refresh: fresh notes, so this proof cannot be linked
+to the next payment.
+
+23
+00:03:09,000 --> 00:03:20,000
+The lender's page: one address, Check.
+"Controlled at least 59.85 XRP as of that ledger", signed by 2 of 3.
+
+24
+00:03:20,000 --> 00:03:28,000
+On the explorer: the ConfidantPoF credential (XLS-70).
+Issuer: the pool. Expires in 24 hours.
+
+25
+00:03:28,000 --> 00:03:36,000
+CredentialAccept: signed by the holder's own account.
+
+26
+00:03:36,000 --> 00:03:43,000
+The refresh's anchor: the pool account's transaction
+with the new state in its memo.
+
+27
+00:03:43,000 --> 00:03:55,000
+Notes refreshed: 59.85 XRP now sits in fresh notes.
+The receipt can be downloaded; nothing secret in it.
+
+28
+00:03:55,000 --> 00:04:07,000
+Audit: hand an auditor the viewing key.
+Full history of this wallet, nothing about others, read-only.
+
+29
+00:04:07,000 --> 00:04:15,000
+From here the screen is blank: the walkthrough moved to a private window,
+which this window recording did not capture.
+
+30
+00:04:15,000 --> 00:04:28,000
+Off screen: a fresh browser, as a first-time visitor.
+Create wallet: the spending key is generated in the browser.
+
+31
+00:04:28,000 --> 00:04:42,000
+The new XRPL testnet account is funded from the faucet,
+about 10 to 30 seconds, nothing to press.
+
+32
+00:04:42,000 --> 00:04:56,000
+First shield: the app asks the demo issuer for the entry credential (ConfidantKYC),
+and the account confirms it with its own signature.
+
+33
+00:04:56,000 --> 00:05:04,000
+KYC in demo mode: the gate is the real system;
+the demo issuer's admission policy is open registration.
+
+34
+00:05:04,000 --> 00:05:09,800
+Then the shield runs as above.
+Try it yourself: confidant.im, in a private window.
