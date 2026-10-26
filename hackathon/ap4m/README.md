@@ -80,6 +80,16 @@ proof of funds ≈ 28 s, voucher ≈ 18 s, relay + anchor ≈ 19 s, settlement �
 `https://explorer.testnet.xrplevm.org/tx/0x6a06e4104258359c40928a85faded20499852968fdc0f975b44ff1639bce437a`;
 `verify-receipt` 10/10 ✓ on `receipts/cf18bf64….json`.
 
+**Runs 5–7 (2026-10-25, 15:46–15:58 UTC) — the recorded takes:** the same stage configuration, driven by
+`npm run record` (`record-demo.sh`) for the Mastercard demo video; each paid 0.1 RLUSD on the stage channel and ended
+with a receipt signed by the merchant payout key and countersigned by the agent (`receipts/f8207320….json`,
+`receipts/6b431c2f….json`, `receipts/a9f2edcc….json`). Run 7 is the published video: VoucherRedeemed
+`https://explorer.testnet.xrplevm.org/tx/0x387bc29ceb0ca112abca4936d4a331d635f7811e9568737e5cdb585cb68c21b3`, anchor
+`https://testnet.xrpl.org/transactions/D8BD290733B04E6F1BE2535D46D6B8175D6786E5E0F57D816C27CDB3FEDD9533`; the
+verifier's "all checks passed" is on camera. On all three takes the AP4M service's `settle()` answered an HTML error
+page; the agent reports the settlement as pending (the service settles on its own schedule), so there is no payout
+link for these runs. Upload sheet and captions: `YOUTUBE.md`, `demo-mc.en.srt`.
+
 What the first attempt taught (all fixed here): the relay's forward to the coordinator can hit a reset connection while
 the quorum anchors — the relay must never die on it (guarded handler, retried forward, the claim kept unused on any
 failure); a rerun of the agent must **resume** (`pending.json`: same bundle, same purchase name — the kit replays the

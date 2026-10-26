@@ -15,8 +15,8 @@ Markdown is accepted in all three. Counts are of the text between the fences (`w
 pre-existing pool (baseline tag `pre-hackathon`), plus, built on-site and audited: the credential gate (A) with a demo
 issuer service so anyone can enter from a phone; proof of funds with the quorum-signed on-ledger Credential (C), one
 button for the holder and one address for the lender; the under-the-hood page; the Mastercard-track relay and agent
-with proof-of-funds underwriting and signed receipts anyone can re-check (four live runs, the last two with the
-receipt). **Ruling of 2026-10-25 (lead, audit concurring):** the proof of funds as built reveals the proven notes'
+with proof-of-funds underwriting and signed receipts anyone can re-check (seven paid live runs, the last five with a
+signed receipt; the last one is the Mastercard demo video). **Ruling of 2026-10-25 (lead, audit concurring):** the proof of funds as built reveals the proven notes'
 nullifiers to the signers' nodes, so it is a **demo of the flow, labelled as degrading the holder's privacy — not the
 product feature**; the accepted design (`docs/design/TIER4-PROOF-OF-FUNDS-REWRITE.md`) is a circuit that proves
 control of unspent notes ≥ X without revealing nullifiers, the committed next step; the demo nodes run the revealing
@@ -101,6 +101,18 @@ Evidence (2026-10-25): run 4, the relay on the demo host behind TLS, 80 s wall �
 Against the criteria: autonomy — the agent reads the 402 and decides inside a policy; use case — the payment is load-bearing (no payment, no relay, no private settlement); on-chain proof — VoucherRedeemed at the PaymentLedger; RLUSD settlement — the payout address received it; live demo — the whole flow in under two minutes; creativity — a privacy service metered per use, underwritten by a zero-knowledge proof of funds, with receipts across two ledgers. Honest line: the metered payment is public, the settlement is private, the proof of funds is demo-grade.
 ```
 
+## Videos
+
+Both are on YouTube as unlisted videos, linked from the forms. Upload sheets (title, description, chapters, settings)
+and English caption tracks sit next to each other:
+
+- **Product walkthrough** (the hackathon form's demo video): `docs/YOUTUBE.md`, captions `docs/confidant-demo.en.srt`.
+  The take is a screen recording of one browser window; from 4:07 the walkthrough moved to a private window the
+  recording did not capture (a first-time visitor: new wallet, faucet, entry credential on the first shield), and the
+  captions say so.
+- **Mastercard AP4M demo** (the sponsor form's field 6): `hackathon/ap4m/YOUTUBE.md`, captions
+  `hackathon/ap4m/demo-mc.en.srt`. One live run recorded by `npm run record` in `hackathon/ap4m`, cut to 3:00.
+
 ## Logo
 
 `docs/assets/logo.svg` (source) and `docs/assets/logo.png` (1024 × 1024, rendered from it in Chrome with the real font):
@@ -128,3 +140,4 @@ is the shield alone, kept for the decks.
 - 2026-10-25 (morning) — the audit's label for the demo issuer on every surface: KYC in demo mode — the gate is the real system, the issuer's admission policy allow-by-default for the demo; counts updated.
 - 2026-10-25 (day 2) — demo-issuer label reframed per the project lead: open registration (the exchange model — an account is opened first, KYC raises its limits); the "placeholder / standard-practice / not-a-vetting / outside-scope" phrasing dropped; the gate stays the real system, the honest fact (registers anyone who asks, rate-limited) kept.
 - 2026-10-25 (afternoon) — status: the nginx request limit on `/issuer/` first stated as the operator's remaining step (ten rapid requests answered without a 429 — the zone's burst is 20 and nginx refused with its default 503), then the status code set to 429 and the real parameters recorded with a 30-request probe (17 answered, 13 refused).
+- 2026-10-25 (submitted) — both forms filled from this file; the two videos uploaded with captions (section "Videos"); the status line counts the seven paid Mastercard-track runs.

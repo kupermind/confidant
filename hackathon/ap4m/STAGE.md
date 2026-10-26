@@ -115,11 +115,16 @@ Confidant is a compliant shielded pool on the XRP Ledger. An autonomous agent pa
 
 Evidence links:
 
-- `<VoucherRedeemed tx>` — XRPL EVM Testnet, the PaymentLedger event for the stage run
-- `<anchor tx>` — XRPL testnet, the pool account's anchor memo for the stage run
-- `<payout tx>` — XRPL EVM Testnet, the RLUSD settlement for the stage run
-- `<PoF credential account>` — XRPL testnet, the agent's account holding the `ConfidantPoF` credential
-- The receipt file of the stage run (`receipts/<bundleHash>.json`), attached; re-check: `node verify-receipt.mjs <file>`
+- Run 7, the recorded take (2026-10-25, 15:58 UTC; the Mastercard demo video):
+  VoucherRedeemed `https://explorer.testnet.xrplevm.org/tx/0x387bc29ceb0ca112abca4936d4a331d635f7811e9568737e5cdb585cb68c21b3`
+  · anchor `https://testnet.xrpl.org/transactions/D8BD290733B04E6F1BE2535D46D6B8175D6786E5E0F57D816C27CDB3FEDD9533`
+  · CredentialCreate `https://testnet.xrpl.org/transactions/D5EABFB6DD72E13E861A30770C4BE97801EC90AFA19C6640CA31709A19D35BC6`
+  · CredentialAccept `https://testnet.xrpl.org/transactions/D49CE9E65DA14290E609367FE17F05E21E96A71B4552320FEC3740E207518173`
+  · the agent's account `https://testnet.xrpl.org/accounts/rAMxdUQz71EzKwJVy5QpsvVBUFQAyxiti`
+  · receipt `receipts/a9f2edccb1ff….json`, verified on camera (all checks passed). No payout link: on the recorded takes
+  the AP4M service's settle call answered an error page, so the agent reports the settlement as pending.
+- Run 4, the last run with a payout link: see `README.md` (VoucherRedeemed `0x565e3c2a…`, anchor `302AB16D…`, payout
+  `0x6a06e410…`).
 - Earlier run 1 (2026-10-25): VoucherRedeemed `https://explorer.testnet.xrplevm.org/tx/0xb9aaa78632e07d33c9c66b3f0a28be92ef160234c515787f2357b9eb30cad7df` · anchor `https://testnet.xrpl.org/transactions/533B62011D10B35C6B6DB92F0B4AD50888372DBBBB880D4638F3CA76652B0100` · payout `https://explorer.testnet.xrplevm.org/tx/0x3af20d2ae569bb7ab816d9c75a49df44fae5dc8bfac8d2631088cf9b01f84671`
 - Earlier run 2 (2026-10-25, 0.15-cap channel): anchor `2104CB64…` · payout `0x326f3830…` (truncated in the README; full hashes in the run log)
 - Repository: `hackathon/ap4m/README.md` (flow, live runs, honest labels), `docs/DEMO.md`, `docs/SUBMISSION.md`
