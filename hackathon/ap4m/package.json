@@ -1,6 +1,7 @@
 {
   "name": "confidant-ap4m",
   "private": true,
+  "license": "MIT OR Apache-2.0",
   "type": "module",
   "description": "Confidant x AP4M relay and agent (Mastercard track, hackathon use only): pay RLUSD on XRPL EVM testnet for the relay of a shielded transfer anchored on XRPL L1",
   "engines": {
