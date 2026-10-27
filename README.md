@@ -57,6 +57,9 @@ bundle bytes, re-verifying every proof, signature and deposit (`docs/NODE-OPERAT
   `/how-it-works.html` and linked from the app's header — explains the pool, the quorum, the hackathon
   lending features and the honest limits. `frontend/balances.html` (`/balances.html`) reconciles the
   shielded total with the pool account's balance live from the ledger and answers the usual questions.
+  `frontend/trust.html` and `frontend/trust-technical.html` (served at `/trust` and `/trust-technical`) describe
+  TRUST, the platform this pool is planned to run on in production — linked from the overview's "Where it goes
+  next" section; none of it is part of the demo.
   `frontend/issuer.html` is the **under-the-hood** page: what one press of the app's button does step by step
   (entry credential, proof, the quorum's credential, confirmation, refresh), what the Credential gate (hackathon
   feature A) is mechanically, and — at the bottom — the team's issuer-key fold (the fallback). The demo issuer is a
