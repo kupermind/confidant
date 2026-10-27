@@ -1,6 +1,7 @@
 {
   "name": "confidant-e2e-testnet",
   "private": true,
+  "license": "MIT OR Apache-2.0",
   "type": "module",
   "description": "End-to-end harness: the Confidant demo script on XRPL testnet, driving the core through its CLI. Uses a local Node 22 (devDependency `node`) because xrpl 5.x's dependency tree is ESM-only and needs require(esm).",
   "scripts": {

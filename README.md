@@ -151,3 +151,19 @@ cargo run --release --example demo           # offline walk-through of the v2 fl
 cargo build --release --example cli && cd e2e/testnet && npm install && \
   CLI=../../target/release/examples/cli npm run e2e    # the demo on XRPL testnet, 2-of-3 quorum
 ```
+
+## License
+
+Licensed under either of
+
+- Apache License, Version 2.0 ([`LICENSE-APACHE`](./LICENSE-APACHE) or https://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([`LICENSE-MIT`](./LICENSE-MIT) or https://opensource.org/licenses/MIT)
+
+at your option — the same terms as the Zcash crates the core is built on (`orchard`, `halo2`, `reddsa`).
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this work by you, as
+defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
+
+Not covered: the licenses grant no right to use the name **Confidant** or its logos as a mark (Apache-2.0 §6 says so
+explicitly). Dependencies keep their own licenses. `hackathon/ap4m` imports the Mastercard AP4M hackathon SDK from the
+sponsor's server; it is not part of this repository and declares no license of its own.
