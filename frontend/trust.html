@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>TRUST Platform</title>
+<meta name="description" content="TRUST is the technology — verified hardware, a group-held key, native-chain settlement. Prediction markets, perp futures and a private bridge are applications of it; more can be added.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#0B0C0E; --bg-2:#141519; --bg-3:#1A1C20;
+    --line:#2A2C31; --line-2:#3A3D44;
+    --ink:#E9E6DF; --dim:#9A978F; --faint:#64656A;
+    --accent:#E8603C; --accent-2:#F17A52; --accent-deep:#B24A2C;
+    --green:#58CF96; --blue:#3E9BD6;
+    --maxw:1080px;
+    --f-display:"Space Grotesk","Segoe UI",system-ui,sans-serif;
+    --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+    --f-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+  body{
+    background:radial-gradient(1200px 560px at 50% -12%, rgba(232,96,60,.13), transparent 60%), var(--bg);
+    color:var(--ink); font-family:var(--f-body); font-size:16px; line-height:1.62; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:var(--maxw);margin:0 auto;padding-inline:22px}
+
+  header.bar{position:sticky; top:env(safe-area-inset-top,0px); z-index:20;
+    background:rgba(11,12,14,.84); backdrop-filter:blur(10px); border-bottom:1px solid var(--line)}
+  .bar-in{display:flex;align-items:center;justify-content:space-between;gap:16px;max-width:var(--maxw);margin:0 auto;padding:13px 22px}
+  .brand{display:flex;align-items:center;gap:11px;min-width:0}
+  .wm{font-family:var(--f-display);font-weight:700;letter-spacing:.02em;font-size:1.12rem;color:var(--ink)}
+  .wm b{color:var(--accent);font-weight:700}
+  .brand .sep{width:1px;height:18px;background:var(--line-2)}
+  .brand small{font-family:var(--f-mono);font-size:.64rem;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);white-space:nowrap}
+  @media(max-width:600px){ .brand .sep,.brand small{display:none} }
+  .tag{font-family:var(--f-mono);font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line-2);border-radius:999px;padding:5px 11px;flex:none;text-decoration:none;white-space:nowrap}
+  a.tag:hover{color:var(--accent);border-color:var(--accent)}
+
+  .hero{position:relative;padding-block:60px 34px}
+  .hero::before,.hero::after{content:"";position:absolute;width:26px;height:26px;border:1px solid var(--line-2)}
+  .hero::before{top:30px;left:0;border-right:0;border-bottom:0}
+  .hero::after{top:30px;right:0;border-left:0;border-bottom:0}
+  .eyebrow{font-family:var(--f-mono);font-size:.7rem;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);margin:0 0 20px;display:flex;align-items:center;gap:10px}
+  .eyebrow::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--accent)}
+  .bigmark{font-family:var(--f-display);font-weight:700;font-size:clamp(3.4rem,11vw,6.5rem);line-height:.92;letter-spacing:-.01em;margin:0 0 14px;color:var(--ink)}
+  .bigmark b{color:var(--accent)}
+  .acro{font-family:var(--f-mono);font-size:.8rem;letter-spacing:.06em;color:var(--dim);margin:0 0 26px}
+  .acro b{color:var(--accent-2)}
+  h1{font-family:var(--f-display);font-weight:600;font-size:clamp(1.5rem,3.4vw,2.25rem);line-height:1.18;letter-spacing:-.01em;text-wrap:balance;margin:0 0 16px;max-width:24ch}
+  h1 .hl{color:var(--accent)}
+  .lede{font-size:clamp(1.02rem,2.1vw,1.18rem);color:var(--dim);max-width:67ch;margin:0}
+  .lede b{color:var(--ink);font-weight:500}
+
+  section{padding-block:30px}
+  .kicker{font-family:var(--f-mono);font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);margin:0 0 15px;display:flex;align-items:center;gap:12px}
+  .kicker .ix{color:var(--accent)}
+  .kicker::after{content:"";height:1px;flex:1;background:var(--line)}
+  h2{font-family:var(--f-display);font-weight:600;font-size:clamp(1.45rem,3vw,2rem);letter-spacing:-.01em;margin:0 0 8px;text-wrap:balance;max-width:26ch}
+  h2 .hl{color:var(--accent)}
+  .sech{color:var(--dim);margin:0 0 22px;max-width:66ch}
+
+  .umb{border:1px solid var(--line);border-radius:18px;background:linear-gradient(180deg,var(--bg-3),var(--bg-2));padding:26px}
+  .apps{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  @media(max-width:760px){ .apps{grid-template-columns:1fr 1fr} }
+  @media(max-width:460px){ .apps{grid-template-columns:1fr} }
+  .app{border:1px solid var(--line-2);border-radius:12px;padding:15px;background:var(--bg);display:flex;flex-direction:column;gap:3px}
+  .app .nm{font-family:var(--f-display);font-weight:600;font-size:1.02rem}
+  .app .nm.ph{color:var(--accent)} .app .nm.xp{color:var(--blue)} .app .nm.br{color:var(--green)} .app .nm.nx{color:var(--dim)}
+  .app.next{border-style:dashed}
+  .app .ds{font-size:.82rem;color:var(--dim)}
+  .conn{display:flex;flex-direction:column;align-items:center;gap:6px;margin:14px 0}
+  .conn .lbl{font-family:var(--f-mono);font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  .conn .bar{width:1px;height:16px;background:var(--line-2)}
+  .found{border:1px solid var(--accent-deep);border-radius:12px;background:rgba(232,96,60,.07);padding:18px 20px}
+  .found .ft{font-family:var(--f-mono);font-size:.64rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 6px}
+  .found .fh{font-family:var(--f-display);font-weight:600;font-size:1.06rem;margin:0 0 6px}
+  .found p{margin:0;color:var(--dim);font-size:.9rem}
+  .found .prims{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+  .found .prims span{font-family:var(--f-mono);font-size:.66rem;color:var(--dim);border:1px solid var(--line-2);border-radius:999px;padding:4px 10px}
+
+  .pillars{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  @media(max-width:860px){ .pillars{grid-template-columns:1fr 1fr} }
+  @media(max-width:520px){ .pillars{grid-template-columns:1fr} }
+  .pillar{background:var(--bg-2);border:1px solid var(--line);border-radius:13px;padding:18px}
+  .pillar h3{font-family:var(--f-display);font-weight:600;font-size:1rem;margin:0 0 7px;letter-spacing:-.005em;text-wrap:balance}
+  .pillar p{margin:0;color:var(--dim);font-size:.88rem}
+
+  .prod{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+  @media(max-width:860px){ .prod{grid-template-columns:1fr} }
+  .pcard{background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:22px;border-top:3px solid var(--line-2)}
+  .pcard.ph{border-top-color:var(--accent)} .pcard.xp{border-top-color:var(--blue)} .pcard.br{border-top-color:var(--green)}
+  .pcard .pk{font-family:var(--f-mono);font-size:.64rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:0 0 4px}
+  .pcard h3{font-family:var(--f-display);font-weight:600;font-size:1.3rem;margin:0 0 4px;letter-spacing:-.01em}
+  .pcard .one{color:var(--dim);font-size:.92rem;margin:0 0 14px}
+  .pcard ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
+  .pcard li{position:relative;padding-left:18px;color:var(--dim);font-size:.87rem}
+  .pcard li::before{content:"\25C6";position:absolute;left:0;top:.08em;font-size:.6em;color:var(--accent)}
+  .pcard.xp li::before{color:var(--blue)} .pcard.br li::before{color:var(--green)}
+  .pcard .cta{display:inline-flex;align-items:center;gap:7px;margin-top:14px;font-family:var(--f-mono);font-size:.76rem;letter-spacing:.03em;color:var(--green);text-decoration:none;border:1px solid var(--green);border-radius:999px;padding:7px 13px;opacity:.9}
+  .pcard .cta:hover{opacity:1;background:rgba(88,207,150,.08)}
+  .pcard.ph .cta{color:var(--accent);border-color:var(--accent)} .pcard.ph .cta:hover{background:color-mix(in srgb,var(--accent) 9%,transparent)}
+  .pcard.xp .cta{color:var(--blue);border-color:var(--blue)} .pcard.xp .cta:hover{background:color-mix(in srgb,var(--blue) 9%,transparent)}
+  .pcard .pk a{color:inherit;text-decoration:none} .pcard .pk a:hover{color:var(--ink)}
+  .pcard .stat{margin-top:14px;font-family:var(--f-mono);font-size:.66rem;letter-spacing:.04em;color:var(--faint);border-top:1px solid var(--line);padding-top:11px}
+
+  .ext{background:var(--bg-2);border:1px solid var(--line);border-radius:16px;padding:26px}
+  .ext .big{margin:0 0 6px;color:var(--ink);font-family:var(--f-display);font-weight:600;font-size:1.25rem;text-wrap:balance}
+  .ext .big .hl{color:var(--accent)}
+  .ext .sub{margin:0 0 20px;color:var(--dim);font-size:.98rem;max-width:68ch}
+  .ext .sub b{color:var(--ink)}
+  .ideas{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  @media(max-width:860px){ .ideas{grid-template-columns:1fr 1fr} }
+  @media(max-width:460px){ .ideas{grid-template-columns:1fr} }
+  .idea{border:1px dashed var(--line-2);border-radius:12px;padding:15px}
+  .idea.lead{border-style:solid;border-color:var(--blue);background:rgba(62,155,214,.06)}
+  .idea .t{font-family:var(--f-display);font-weight:600;font-size:.98rem;margin:0 0 4px}
+  .idea.lead .t{color:var(--blue)}
+  .idea .d{margin:0;color:var(--dim);font-size:.83rem}
+
+  .crown{background:linear-gradient(180deg,var(--bg-3),var(--bg-2));border:1px solid var(--accent-deep);border-radius:16px;padding:26px;box-shadow:0 24px 60px -44px rgba(232,96,60,.5)}
+  .crown .ch{font-family:var(--f-display);font-weight:600;font-size:1.22rem;margin:0 0 10px;text-wrap:balance}
+  .crown .ch .hl{color:var(--accent)}
+  .crown p{margin:0 0 16px;color:var(--ink);font-size:.98rem;max-width:70ch}
+  .crown p b{color:var(--accent)}
+  .tt{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:4px}
+  @media(max-width:620px){ .tt{grid-template-columns:1fr} }
+  .tbox{border:1px solid var(--line);border-radius:11px;padding:15px 17px}
+  .tbox .l{font-family:var(--f-mono);font-size:.63rem;letter-spacing:.12em;text-transform:uppercase;margin:0 0 9px}
+  .tbox ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;font-size:.88rem}
+  .tbox.y .l{color:var(--green)} .tbox.y li{color:var(--dim)} .tbox.y li b{color:var(--ink)}
+  .tbox.n{background:rgba(232,96,60,.04);border-color:var(--accent-deep)}
+  .tbox.n .l{color:var(--accent)} .tbox.n li{color:var(--ink)} .tbox.n li b{color:var(--ink)}
+  .tbox li .mk{font-family:var(--f-mono)} .tbox.y li .mk{color:var(--green)} .tbox.n li .mk{color:var(--accent)}
+
+  .note{color:var(--faint);font-size:.83rem;margin-top:18px;max-width:72ch}
+  .note em{color:var(--dim);font-style:normal}
+
+  .closing{text-align:center;padding-block:52px 30px}
+  .closing p.big{font-family:var(--f-display);font-weight:600;font-size:clamp(1.5rem,3.6vw,2.2rem);letter-spacing:-.01em;text-wrap:balance;margin:0 auto 14px;max-width:24ch}
+  .closing p.big .hl{color:var(--accent)}
+  .contact{display:flex;flex-wrap:wrap;gap:8px 22px;justify-content:center;font-family:var(--f-mono);font-size:.76rem;letter-spacing:.04em;color:var(--dim)}
+  .contact a{color:var(--dim);text-decoration:none;border-bottom:1px solid var(--line-2)}
+  .contact a:hover{color:var(--ink)}
+  .contact .site{color:var(--accent)}
+  .contact svg{width:13px;height:13px;fill:currentColor;vertical-align:-2px;margin-right:7px;opacity:.85}
+
+  footer{border-top:1px solid var(--line);padding-block:22px 40px}
+  footer p{margin:0;color:var(--faint);font-size:.77rem;max-width:76ch}
+  a{color:var(--accent)} :focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  
+  #bridge{display:none}
+  #bridge:target{display:block}
+  body:has(#bridge:target) #platform{display:none}
+</style>
+</head>
+<body>
+<div id="platform">
+
+<header class="bar">
+  <div class="bar-in">
+    <div class="brand"><span class="wm"><b>TRUS</b>T</span><span class="sep"></span><small>Settlement-execution layer</small></div>
+    <a class="tag" href="trust-technical.html" title="Technical overview">Platform overview · technical &rarr;</a>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="hero">
+    <p class="eyebrow">A technology — not an app</p>
+    <p class="bigmark">TRUS<b>T</b></p>
+    <p class="acro"><b>TR</b>usted &nbsp;·&nbsp; <b>U</b>nchained &nbsp;·&nbsp; <b>S</b>ettlemen<b>T</b></p>
+    <h1>The trust technology — <span class="hl">and everything you can build on it.</span></h1>
+    <p class="lede">TRUST is the engine: the work a smart contract would do, run inside <b>verified hardware</b>, signed
+      by a <b>group</b> that no single party controls, settling on <b>each chain’s own rails</b>. The products are
+      applications <em>of</em> that engine — prediction markets, perpetual futures, and a cross-chain bridge run on it
+      today, and the next idea plugs into the same engine tomorrow. <b>Each application inherits the security for free.</b></p>
+  </section>
+
+  <section>
+    <p class="kicker"><span class="ix">//</span> The technology</p>
+    <h2>One engine. The applications sit on top.</h2>
+    <p class="sech">The hard, dangerous work lives in the engine, not in each app. Build it once; every application
+      above inherits the same guarantees — and more applications can be added at any time.</p>
+
+    <div class="umb">
+      <div class="apps">
+        <div class="app"><span class="nm ph">Phoenix</span><span class="ds">Prediction markets</span></div>
+        <div class="app"><span class="nm xp">XPerp</span><span class="ds">Perpetual futures</span></div>
+        <div class="app"><span class="nm br">TRUST Bridge</span><span class="ds">Shielded cross-chain · privacy in dev</span></div>
+        <div class="app next"><span class="nm nx">+ your app</span><span class="ds">shielded XRPL, options, lending…</span></div>
+      </div>
+      <div class="conn"><span class="lbl">all run on ↓</span><span class="bar"></span></div>
+      <div class="found">
+        <p class="ft">The TRUST engine · hardware-attested</p>
+        <p class="fh">Smart-contract-equivalent execution, settling on each chain’s native rails</p>
+        <p>Matching, settlement math and vaults run inside secure, independently-verified hardware; the group signs
+          with a shared key no one holds alone; value settles on the chain’s <em>native</em> multisig — no wrapped
+          tokens, no single custodian — and no code update ships unless the whole group agrees.</p>
+        <div class="prims">
+          <span>Bitcoin</span><span>XRPL</span><span>next chains</span><span>no bridges for settlement</span><span>no single key</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="kicker"><span class="ix">//</span> What the engine guarantees</p>
+    <div class="pillars">
+      <div class="pillar"><h3>No single key or person</h3><p>Control is split across independent machines. A group must act together; a hacked node or a runaway insider holds one useless piece.</p></div>
+      <div class="pillar"><h3>Verified hardware</h3><p>The software runs sealed in secure hardware. Every machine proves it runs the exact, unaltered code — and no one, not even the operator, sees the keys.</p></div>
+      <div class="pillar"><h3>Proof, not promises</h3><p>Money moves only when the chain itself proves what happened, and the amount out is tied to the amount that really went in.</p></div>
+      <div class="pillar"><h3>Updates by group ceremony</h3><p>Every change — even a tiny test — goes live only after the group of independent machines checks and agrees. No master key, no quiet push.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="kicker"><span class="ix">//</span> Running today — three flagships</p>
+    <h2>Same engine, <span class="hl">three products running today</span></h2>
+    <div class="prod">
+      <article class="pcard ph">
+        <p class="pk"><a href="https://ph18.io" target="_blank" rel="noopener">Phoenix</a></p>
+        <h3>Prediction markets</h3>
+        <p class="one">Native-coin prediction markets, settled on each chain’s own primitives.</p>
+        <ul>
+          <li>6,700+ markets on XRPL testnet; full Bitcoin end-to-end on testnet</li>
+          <li>Settled in the native coin — no wrapped tokens, no IOUs</li>
+          <li>Markets resolved inside the hardware; a 7-source oracle</li>
+          <li>Snapshot commitments anchored on-chain — a public audit trail</li>
+        </ul>
+        <a class="cta" href="https://ph18.io" target="_blank" rel="noopener">ph18.io →</a>
+        <p class="stat">Status · testnet MVP</p>
+      </article>
+      <article class="pcard xp">
+        <p class="pk"><a href="https://xperp.fi" target="_blank" rel="noopener">XPerp</a></p>
+        <h3>Perpetual futures</h3>
+        <p class="one">Perp futures with native collateral and fast on-chain settlement.</p>
+        <ul>
+          <li>Native XRP collateral, settled on-chain in 3–5s — no bridges, no L2 delays</li>
+          <li>Margin engine inside the hardware — operators can’t see positions or front-run</li>
+          <li>Every payout is group-signed — no single party can move funds</li>
+          <li>Demoed on XRPL Mainnet at Hack the Block Paris; 20+ internal adversarial security-review rounds</li>
+        </ul>
+        <a class="cta" href="https://xperp.fi" target="_blank" rel="noopener">xperp.fi →</a>
+        <p class="stat">Status · testnet, public relaunch next</p>
+      </article>
+      <article class="pcard br">
+        <p class="pk">TRUST Bridge</p>
+        <h3>Shielded cross-chain</h3>
+        <p class="one">A shielded Bitcoin ↔ Zcash bridge — cross-chain and private at once.</p>
+        <ul>
+          <li>Every payout released only when the source chain proves the funds really locked</li>
+          <li>Group-signed, keys sealed in hardware — no single custodian, no wrapped BTC</li>
+          <li>The amount out is bound to the amount proven locked — nothing minted unbacked</li>
+          <li>Privacy via Zcash’s shielded pool (in development)</li>
+        </ul>
+        <a class="cta" href="#bridge">Bridge overview →</a>
+        <p class="stat">Status · testnet · privacy in development</p>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <p class="kicker"><span class="ix">//</span> Why it’s a platform</p>
+    <div class="ext">
+      <p class="big">The technology is the product. <span class="hl">Applications are interchangeable.</span></p>
+      <p class="sub">Point the engine at a new idea and it inherits everything — the hardware attestation, the
+        group-held key, the native-chain settlement, the update ceremony. <b>Nobody re-earns trust per app.</b>
+        Three products already run on the same engine; here’s a sample of what plugs in next.</p>
+      <div class="ideas">
+        <div class="idea lead"><p class="t"><a href="https://confidant.im" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;border-bottom:1px solid currentColor">Confidant</a> → shielded XRPL</p><p class="d">Confidant is our compliant shielded pool for XRPL — private transfers with selective disclosure (hackathon build, testnet). Run its pool inside the enclave for shielded XRPL on attested hardware.</p></div>
+        <div class="idea"><p class="t">Options DEX</p><p class="d">Same group-signed settlement on BTC / XRPL, different payoff math.</p></div>
+        <div class="idea"><p class="t">Lending vaults</p><p class="d">Native-coin collateral and lending, margined inside the enclave.</p></div>
+        <div class="idea"><p class="t">Attested oracles</p><p class="d">A hardware-attested oracle network — signed data anyone can verify.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="kicker"><span class="ix">//</span> What makes it different</p>
+    <div class="crown">
+      <p class="ch">Decentralized from day one — <span class="hl">not “later.”</span></p>
+      <p>Most projects run on “trust us now, we’ll decentralize later.” That “later” is where keys get stolen and
+        teams disappear. TRUST has no “later”: <b>no master key, and every update — even a test — needs the group of
+        physical machines to agree before it runs.</b> So “the signers ran off” has nothing to grab — no single
+        party, not an attacker, not an operator, not the founders, can move the funds or change the code.</p>
+      <div class="tt">
+        <div class="tbox y">
+          <p class="l">What you trust</p>
+          <ul>
+            <li><span class="mk">+</span> The chip maker — the same trust as your own CPU</li>
+            <li><span class="mk">+</span> A <b>reproducible build</b> anyone can independently check</li>
+            <li><span class="mk">+</span> The <b>operator group</b> — agrees on every update and payout</li>
+          </ul>
+        </div>
+        <div class="tbox n">
+          <p class="l">What you don’t</p>
+          <ul>
+            <li><span class="mk">&minus;</span> The dev team — can’t ship code the group didn’t sign</li>
+            <li><span class="mk">&minus;</span> Any single operator — no one moves funds alone</li>
+            <li><span class="mk">&minus;</span> Bridges, wrapped tokens, off-chain custody</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <p class="note">All applications run on testnet today; mainnet and full privacy are in development. “Trustless” is
+      the wrong word — the trust is specific and small, declared above. The hard security lives in the engine; every
+      application inherits it.</p>
+  </section>
+
+  <section class="closing">
+    <p class="big">One engine. Any application. <span class="hl">No one who can betray it.</span></p>
+    <div class="contact">
+      <span><svg viewBox="0 0 16 16" role="img" aria-label="GitHub"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg><a href="https://github.com/77ph" target="_blank" rel="noopener">77ph</a> · <a href="https://github.com/kupermind" target="_blank" rel="noopener">kupermind</a></span>
+      <span><svg viewBox="0 0 24 24" role="img" aria-label="X"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg><a href="https://x.com/ph8n1x" target="_blank" rel="noopener">@ph8n1x</a> · <a href="https://x.com/xperpfi" target="_blank" rel="noopener">@xperpfi</a></span>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap">
+  <p>Conceptual platform overview for discussion — not investment advice and not a guarantee of security. All
+    applications described run on testnet; mainnet and shielded transfers are in development. Named building blocks
+    are industry-standard; the composition is the contribution. Last updated October 2026.</p>
+</footer>
+</div>
+
+<div id="bridge" aria-label="TRUST Bridge — security overview">
+<template shadowrootmode="open">
+<style>
+  :host{
+    display:block; min-height:100vh;
+    color-scheme: dark;
+    --bg:#0C111C; --bg-2:#121A28; --bg-3:#17202F;
+    --line:#263248; --line-2:#31405A;
+    --ink:#EAF0F8; --ink-dim:#9DACC6; --ink-faint:#6C7B96;
+    --accent:#5BC4DC; --accent-deep:#3E93A8;
+    --live:#4FD08A; --dev:#E3A54E; --loss:#DB8A8A;
+    --maxw:1080px;
+    --f-display:"Sora","Segoe UI",system-ui,sans-serif;
+    --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+    --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  }
+
+  *{box-sizing:border-box}
+  code,.mono{overflow-wrap:anywhere}
+  :host{
+    background:
+      radial-gradient(1100px 520px at 50% -8%, rgba(91,196,220,.14), transparent 60%),
+      var(--bg);
+    color:var(--ink);
+    font-family:var(--f-body);
+    font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  img{max-width:100%}
+
+  .wrap{max-width:var(--maxw);margin:0 auto;padding-inline:20px}
+
+  header.bar{
+    position:sticky; top:env(safe-area-inset-top,0px); z-index:20;
+    background:rgba(12,17,28,.82); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .bar-in{display:flex;align-items:center;justify-content:space-between;gap:16px;
+    max-width:var(--maxw);margin:0 auto;padding:14px 20px}
+  .brand{display:flex;align-items:center;gap:11px;min-width:0}
+  .mark{font-family:var(--f-display);font-weight:700;letter-spacing:.14em;font-size:1.06rem;color:var(--ink)}
+  .mark b{color:var(--accent)}
+  .brand .sep{width:1px;height:20px;background:var(--line-2)}
+  .brand small{font-family:var(--f-mono);font-size:.66rem;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--ink-faint);white-space:nowrap}
+  @media(max-width:560px){ .brand .sep,.brand small{display:none} }
+
+  .hero{padding-block:58px 34px;max-width:760px}
+  .eyebrow{font-family:var(--f-mono);font-size:.72rem;letter-spacing:.24em;text-transform:uppercase;
+    color:var(--accent);margin:0 0 18px}
+  h1{font-family:var(--f-display);font-weight:700;font-size:clamp(2.05rem,5.6vw,3.35rem);
+    line-height:1.08;letter-spacing:-.015em;text-wrap:balance;margin:0 0 20px;max-width:17ch}
+  h1 .hl{color:var(--accent)}
+  .lede{font-size:clamp(1.02rem,2.1vw,1.2rem);color:var(--ink-dim);max-width:58ch;margin:0}
+  .fade{opacity:0;transform:translateY(10px);animation:rise .7s ease forwards}
+  @keyframes rise{to{opacity:1;transform:none}}
+  @media(prefers-reduced-motion:reduce){ .fade{animation:none;opacity:1;transform:none} }
+
+  section{padding-block:30px}
+  .kicker{font-family:var(--f-mono);font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--ink-faint);margin:0 0 16px;display:flex;align-items:center;gap:12px}
+  .kicker::after{content:"";height:1px;flex:1;background:var(--line)}
+  h2{font-family:var(--f-display);font-weight:600;font-size:clamp(1.4rem,3vw,1.85rem);
+    letter-spacing:-.01em;margin:0 0 6px;text-wrap:balance}
+  .sech{color:var(--ink-dim);margin:0 0 22px;max-width:60ch}
+
+  .hacks{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:900px){ .hacks{grid-template-columns:1fr} }
+  .hcard{background:var(--bg-2);border:1px solid var(--line);border-left:3px solid var(--loss);
+    border-radius:12px;padding:18px 20px}
+  .hcard .amt{font-family:var(--f-display);font-weight:700;font-size:1.5rem;color:var(--ink);
+    letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+  .hcard .who{font-family:var(--f-mono);font-size:.72rem;letter-spacing:.08em;color:var(--loss);
+    text-transform:uppercase;margin-left:8px}
+  .hcard p{margin:10px 0 0;color:var(--ink-dim);font-size:.93rem}
+  .hcard .cls{display:inline-block;margin-top:12px;font-family:var(--f-mono);font-size:.68rem;
+    letter-spacing:.04em;color:var(--ink-faint)}
+  .also{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 0;margin-top:14px;padding:12px 16px;
+    border:1px dashed var(--line-2);border-radius:12px;font-family:var(--f-mono);font-size:.7rem;
+    letter-spacing:.03em;color:var(--ink-dim)}
+  .also .k{color:var(--loss);letter-spacing:.14em;text-transform:uppercase;margin-right:14px}
+  .also span:not(.k)+span::before{content:"·";margin:0 10px;color:var(--ink-faint)}
+  .also b{color:var(--ink);font-weight:500}
+  .hnote{margin:18px 0 0;color:var(--ink);font-size:1rem;max-width:64ch}
+  .hnote b{color:var(--accent);font-weight:600}
+
+  .core{background:linear-gradient(180deg,var(--bg-3),var(--bg-2));border:1px solid var(--line);
+    border-radius:18px;padding:28px;display:grid;grid-template-columns:1fr 1fr;gap:34px;align-items:center}
+  @media(max-width:760px){ .core{grid-template-columns:1fr;gap:24px;padding:22px} }
+  .core svg{display:block;width:100%;height:auto;max-width:380px;margin:0 auto}
+  .core .cap{font-family:var(--f-mono);font-size:.75rem;color:var(--ink-dim);text-align:center;
+    margin-top:12px;letter-spacing:.02em}
+  .core .cap b{color:var(--accent);font-weight:500}
+  .core .lead{margin:0 0 18px;color:var(--ink-dim);font-size:.97rem}
+  .core .lead b{color:var(--ink)}
+  .steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}
+  .steps li{display:flex;gap:13px;align-items:flex-start}
+  .steps .num{flex:none;width:24px;height:24px;border-radius:50%;border:1px solid var(--accent-deep);
+    color:var(--accent);font-family:var(--f-mono);font-size:.78rem;display:flex;align-items:center;
+    justify-content:center;margin-top:1px}
+  .steps li.key .num{background:var(--accent);color:#05222a;border-color:var(--accent)}
+  .steps li p{margin:0;font-size:.93rem;color:var(--ink-dim)}
+  .steps li.key p{color:var(--ink)}
+  .steps li.key p b{color:var(--accent)}
+
+  .pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:760px){ .pillars{grid-template-columns:1fr} }
+  .pillar{background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:22px 20px}
+  .pillar .n{font-family:var(--f-mono);font-size:.72rem;color:var(--accent);letter-spacing:.08em}
+  .pillar h3{font-family:var(--f-display);font-weight:600;font-size:1.12rem;margin:9px 0 8px;
+    letter-spacing:-.005em;text-wrap:balance}
+  .pillar p{margin:0;color:var(--ink-dim);font-size:.92rem}
+  .pillar p b{color:var(--ink);font-weight:600}
+  .tag-dev{display:inline-block;font-family:var(--f-mono);font-size:.6rem;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--dev);border:1px solid color-mix(in srgb,var(--dev) 45%,transparent);
+    border-radius:999px;padding:3px 8px;margin-left:6px;vertical-align:middle}
+  ul.items li .tag-dev{margin-left:8px;text-transform:none;letter-spacing:.06em;font-size:.64rem}
+
+  .aside{background:var(--bg-2);border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:12px;padding:18px 22px}
+  .aside .lbl{font-family:var(--f-mono);font-size:.68rem;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--accent);margin:0 0 8px}
+  .aside p{margin:0;color:var(--ink-dim);font-size:.95rem;max-width:68ch}
+  .aside p b{color:var(--ink);font-weight:600}
+  .aside .chains{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:14px;
+    font-family:var(--f-mono);font-size:.68rem;letter-spacing:.06em}
+  .aside .chains .k{color:var(--ink-faint);text-transform:uppercase;letter-spacing:.14em;margin-right:4px}
+  .aside .chains span:not(.k){color:var(--ink-dim);border:1px solid var(--line-2);border-radius:999px;padding:4px 10px}
+  .aside .chains .more{border-style:dashed;color:var(--ink-faint)}
+  .aside .chains .first{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
+
+  .compare{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg-2)}
+  .chead{display:grid;grid-template-columns:1fr 1fr;background:var(--bg-3)}
+  .chead div{padding:13px 20px;font-family:var(--f-mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase}
+  .chead .a{color:var(--ink-faint)}
+  .chead .b{color:var(--accent);border-left:1px solid var(--line)}
+  .crow{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
+  .cell{padding:15px 20px;font-size:.92rem}
+  .cell.old{color:var(--ink-faint)}
+  .cell.old b{color:var(--ink-dim);font-weight:600}
+  .cell.new{color:var(--ink);border-left:1px solid var(--line);background:rgba(91,196,220,.04)}
+  .cell.new::before{content:"→ ";color:var(--accent)}
+  @media(max-width:640px){
+    .chead{grid-template-columns:1fr} .chead .b{border-left:0;border-top:1px solid var(--line)}
+    .crow{grid-template-columns:1fr}
+    .cell.new{border-left:0;border-top:1px dashed var(--line)}
+  }
+
+  .status{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:720px){ .status{grid-template-columns:1fr} }
+  .col{border:1px solid var(--line);border-radius:14px;padding:20px;background:var(--bg-2)}
+  .col h3{font-family:var(--f-display);font-weight:600;font-size:1.02rem;margin:0 0 3px;
+    display:flex;align-items:center;gap:10px}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .col.live .dot{background:var(--live);box-shadow:0 0 0 4px color-mix(in srgb,var(--live) 22%,transparent)}
+  .col.dev .dot{background:var(--dev);box-shadow:0 0 0 4px color-mix(in srgb,var(--dev) 22%,transparent)}
+  .col .sub{font-family:var(--f-mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-faint);margin:0 0 13px}
+  ul.items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+  ul.items li{position:relative;padding-left:22px;color:var(--ink-dim);font-size:.9rem}
+  ul.items li::before{position:absolute;left:0;top:.05em;font-family:var(--f-mono);font-size:.9em}
+  .col.live ul.items li::before{content:"✓";color:var(--live)}
+  .col.dev ul.items li::before{content:"›";color:var(--dev);font-weight:700}
+  .note{color:var(--ink-faint);font-size:.84rem;margin-top:18px;max-width:66ch}
+  .note em{color:var(--ink-dim);font-style:normal}
+
+  .closing{text-align:center;padding-block:52px 36px}
+  .closing p.big{font-family:var(--f-display);font-weight:600;font-size:clamp(1.5rem,3.6vw,2.1rem);
+    letter-spacing:-.01em;text-wrap:balance;margin:0 auto 14px;max-width:20ch}
+  .closing p.big .hl{color:var(--accent)}
+  .closing .sig{font-family:var(--f-mono);font-size:.78rem;letter-spacing:.1em;color:var(--ink-dim)}
+  .contact{display:flex;flex-wrap:wrap;gap:8px 22px;justify-content:center;margin-top:22px;
+    font-family:var(--f-mono);font-size:.76rem;letter-spacing:.04em;color:var(--ink-dim)}
+  .contact a{color:var(--ink-dim);text-decoration:none;border-bottom:1px solid var(--line-2)}
+  .contact a:hover{color:var(--ink)}
+  .contact .site{color:var(--accent)}
+  .contact svg{width:13px;height:13px;fill:currentColor;vertical-align:-2px;margin-right:7px;opacity:.85}
+
+  footer{border-top:1px solid var(--line);padding-block:24px 40px}
+  footer p{margin:0;color:var(--ink-faint);font-size:.79rem;max-width:72ch}
+
+  a{color:var(--accent)}
+  .back{font-family:var(--f-mono);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--ink-dim);text-decoration:none;white-space:nowrap;flex:none}
+  .back:hover{color:var(--accent)}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+</style>
+<header class="bar">
+  <div class="bar-in">
+    <div class="brand">
+      <span class="mark"><b>TRUST</b> BRIDGE</span>
+      <span class="sep"></span>
+      <small>Security Overview</small>
+    </div>
+    <a class="back" href="#platform">&larr; TRUST platform</a>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="hero fade">
+    <p class="eyebrow">Cross-chain bridge · Security by construction</p>
+    <h1>Most bridges fail at the same point: <span class="hl">concentrated trust.</span></h1>
+    <p class="lede">The TRUST Bridge — an application of the <a href="#platform">TRUST engine</a> — is a
+      cross-chain bridge built so that no single key, server, or operator can move funds — because that single
+      point is exactly what attackers have taken, again and again.</p>
+  </section>
+
+  <section>
+    <p class="kicker">Why this matters</p>
+    <h2>The biggest bridge hacks share one root</h2>
+
+    <div class="hacks">
+      <div class="hcard">
+        <div><span class="amt">~$600M</span><span class="who">Ronin · 2022</span></div>
+        <p>Attackers obtained a majority of the validator keys. The bridge required a threshold of
+          signers, but too few independent parties actually held them — so one intruder reached the majority alone.</p>
+        <span class="cls">class: a threshold on paper, not in independent hands</span>
+      </div>
+      <div class="hcard">
+        <div><span class="amt">~$125M</span><span class="who">Multichain · 2023</span></div>
+        <p>“Multi-party” in name, one party in fact: every signing key of the bridge sat with its CEO. When he
+          was arrested, the keys went with him — funds moved without authorization, nobody could stop it, and
+          the bridge shut down.</p>
+        <span class="cls">class: a custodian, not a protocol</span>
+      </div>
+      <div class="hcard">
+        <div><span class="amt">~$320M</span><span class="who">Liquid · 2026</span></div>
+        <p>A consensus bug minted wrapped bitcoin that nothing backed. The federation's threshold signed the
+          ~4,000 BTC peg-out exactly as designed — no key was stolen; the signers released funds against a
+          claim that was never proven locked.</p>
+        <span class="cls">class: the threshold signed what consensus said, not what was proven</span>
+      </div>
+    </div>
+
+    <div class="also">
+      <span class="k">Also</span>
+      <span>Wormhole · 2022 · <b>~$320M</b></span>
+      <span>BNB Bridge · 2022 · <b>~$570M</b> minted</span>
+      <span>Nomad · 2022 · <b>~$190M</b></span>
+      <span>Orbit Chain · 2024 · <b>~$81M</b></span>
+      <span>Shibarium · 2025 · <b>~$4M</b></span>
+      <span>Kelp DAO / LayerZero · 2026 · <b>~$292M</b></span>
+    </div>
+
+    <p class="hnote">Different bugs, one root: trust concentrated in a few keys, in one custodian, in a single check,
+      or in a claim nobody proved. <b>TRUST is designed to remove that root</b> — in three ways.</p>
+  </section>
+
+  <section>
+    <p class="kicker">The core — threshold everywhere</p>
+    <h2>No single point of trust</h2>
+
+    <div class="core">
+      <div>
+        <svg viewBox="0 0 320 150" role="img" aria-label="threshold diagram">
+          <g stroke="#5BC4DC" stroke-width="1.4" opacity=".55" fill="none">
+            <path d="M40 44 L160 118"/><path d="M160 44 L160 118"/><path d="M280 44 L160 118"/>
+          </g>
+          <g stroke="#31405A" stroke-width="1.4" stroke-dasharray="3 4" fill="none">
+            <path d="M100 44 L160 118"/><path d="M220 44 L160 118"/>
+          </g>
+          <g>
+            <circle cx="40" cy="44" r="12" fill="#5BC4DC"/>
+            <circle cx="100" cy="44" r="12" fill="none" stroke="#31405A" stroke-width="1.6"/>
+            <circle cx="160" cy="44" r="12" fill="#5BC4DC"/>
+            <circle cx="220" cy="44" r="12" fill="none" stroke="#31405A" stroke-width="1.6"/>
+            <circle cx="280" cy="44" r="12" fill="#5BC4DC"/>
+          </g>
+          <circle cx="160" cy="118" r="16" fill="#0C111C" stroke="#5BC4DC" stroke-width="1.8"/>
+          <path d="M153 118 l4 5 l10 -11" fill="none" stroke="#5BC4DC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="cap">any <b>t</b> of <b>n</b> shares &nbsp;→&nbsp; one authorized signature</div>
+      </div>
+
+      <div>
+        <p class="lead">Authority over funds is split into <b>n</b> shares held by separate, independent
+          nodes. Any <b>t</b> can jointly authorize a transfer; fewer than <b>t</b> cannot — and learn nothing about
+          the key.</p>
+
+        <ul class="steps">
+          <li><span class="num">1</span><p>An attacker breaks into one node. It holds a single share — which signs nothing and reveals nothing.</p></li>
+          <li><span class="num">2</span><p>To move any funds they need <b>t</b> independent parties at the same moment. No single breach, bribe, or bug reaches that line.</p></li>
+          <li class="key"><span class="num">★</span><p>That line is what <b>Ronin crossed</b>: the threshold existed, but too few independent hands held the keys. TRUST's rule is that the parties must be genuinely independent.</p></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="kicker">Two more defenses</p>
+    <div class="pillars">
+      <article class="pillar">
+        <span class="n">01</span>
+        <h3>Verify the machine, not the operator</h3>
+        <p>The software guarding the key shares runs inside hardware-secured enclaves. Each
+          node's exact code is cryptographically measured and checked before it is trusted; keys are never exposed
+          in plaintext — not even to the operator.</p>
+      </article>
+      <article class="pillar">
+        <span class="n">02</span>
+        <h3>Proofs, not promises</h3>
+        <p>A transfer is accepted only when proven by the origin chain's own consensus (a light-client /
+          SPV proof), and the amount released is tied to what was proven locked at the source. This is the check
+          Wormhole was missing — nothing can be minted without real backing.</p>
+      </article>
+      <article class="pillar">
+        <span class="n">03</span>
+        <h3>Private by design <span class="tag-dev">In dev</span></h3>
+        <p>Built on Zcash's shielded (Orchard) technology so value can move through the bridge — between
+          <b>any two chains</b> the engine connects — without exposing amounts and counterparties. The cryptography
+          is well established; the capability is in development, with <b>BTC ↔ Zcash</b> as the first shielded
+          direction.</p>
+      </article>
+    </div>
+
+    <div class="aside" style="margin-top:16px">
+      <p class="lbl">A note on direction</p>
+      <p><b>A shielded bridge is any-to-any. BTC ↔ Zcash is one direction — the first in development.</b>
+        Privacy is a property of the bridge, not of one pair of chains: the same shielded path can be constructed
+        between any two chains the engine connects. BTC ↔ Zcash comes first because it shows a move no conventional
+        bridge can make — across chains with no native VM to verify each other, with amounts and parties kept private
+        <em>(shielded path in development)</em>. The technology earns its place where a chain can't verify the other
+        itself — not an EVM-to-EVM hop, where on-chain contracts already do that.</p>
+      <div class="chains">
+        <span class="k">Connected today</span>
+        <span>BTC</span><span>XRPL</span><span>Zcash</span>
+        <span class="more">+ more as light clients are added</span>
+        <span class="first">Shielded first: BTC ↔ Zcash</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="kicker">The contrast</p>
+    <h2>Where other designs concentrate trust</h2>
+    <p class="sech">Every common bridge design keeps a single point that must be trusted. TRUST replaces each with something you verify.</p>
+
+    <div class="compare">
+      <div class="chead">
+        <div class="a">Common bridge design</div>
+        <div class="b">TRUST</div>
+      </div>
+      <div class="crow">
+        <div class="cell old"><b>External multisig</b> — a fixed set of known signers holds the keys (Ronin's model).</div>
+        <div class="cell new">Threshold shares across independent nodes; the key is never assembled in one place.</div>
+      </div>
+      <div class="crow">
+        <div class="cell old"><b>Trusted relayers</b> — off-chain reporters attest what happened on the other chain.</div>
+        <div class="cell new">The origin chain's own proof is checked, and the release amount is bound to it.</div>
+      </div>
+      <div class="crow">
+        <div class="cell old"><b>External custodian</b> — funds sit with a company or a single server (Multichain's model).</div>
+        <div class="cell new">Keys live inside attested enclaves; not even the operator sees them in the clear.</div>
+      </div>
+      <div class="crow">
+        <div class="cell old"><b>Public amounts</b> — every transfer is exposed on-chain.</div>
+        <div class="cell new">Shielded transfers keep amounts and parties private — between any two connected chains <em>(in development; BTC ↔ Zcash first).</em></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="kicker">Honest status</p>
+    <h2>Live today, and what comes next</h2>
+
+    <div class="status" style="margin-top:6px">
+      <div class="col live">
+        <h3><span class="dot"></span><span>Live on testnet</span></h3>
+        <p class="sub">Running and measured</p>
+        <ul class="items">
+          <li>Threshold Schnorr signing across the cluster (Bitcoin Taproot)</li>
+          <li>Attested multi-node enclave cluster — today's testnet cluster runs a t-of-n threshold across three independent nodes</li>
+          <li>Light-client / SPV proof checking of source-chain events</li>
+          <li>Key shares sealed inside the enclaves</li>
+        </ul>
+      </div>
+      <div class="col dev">
+        <h3><span class="dot"></span><span>In development</span></h3>
+        <p class="sub">Designed, mathematically grounded, not yet live</p>
+        <ul class="items">
+          <li>Mainnet launch and hardening of operator independence</li>
+          <li>Shielded (Orchard) private transfers — any chain ↔ any chain <span class="tag-dev">BTC ↔ Zcash first</span></li>
+          <li>Additional side-channel hardening for production</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="note">TRUST currently runs on testnet; the parameters above describe the current design and
+      testnet deployment. Threshold cryptography protects the <em>integrity</em> of funds — who can move them; the
+      shielded-transfer work adds <em>privacy</em>, and it is still in development.</p>
+  </section>
+
+  <section class="closing">
+    <p class="big">Replace <span class="hl">&ldquo;trust the operator&rdquo;</span> with <span class="hl">&ldquo;verify the mathematics.&rdquo;</span></p>
+    <p class="sig">TRUST — threshold-secured · attested · proof-checked</p>
+    <div class="contact">
+      <span><svg viewBox="0 0 16 16" role="img" aria-label="GitHub"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg><a href="https://github.com/77ph" target="_blank" rel="noopener">77ph</a> · <a href="https://github.com/kupermind" target="_blank" rel="noopener">kupermind</a></span>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap">
+  <p>Conceptual security overview for discussion — not investment advice and not a guarantee of security.
+    Ronin (2022), Multichain (2023), Liquid (2026) and the incidents listed beside them are publicly documented, cited to illustrate a class of failure; figures are approximate, as reported at the time. Named
+    technologies (attested hardware enclaves, threshold Schnorr signatures, SPV / light-client proofs, Zcash Orchard) are
+    industry-standard building blocks; specifics are current as of the testnet stage. Last updated October 2026.</p>
+</footer>
+</template>
+</div>
+
+</body>
+</html>

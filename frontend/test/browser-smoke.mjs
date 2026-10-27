@@ -56,7 +56,7 @@ let pass = 0, fail = 0;
 const check = (name, ok, detail) => { if (ok) pass++; else fail++; console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : `  →  ${JSON.stringify(detail)}`}`); };
 
 // 1. Static layout: nothing wider than the viewport on any page at 320 and 390 px.
-for (const name of ["index.html", "how-it-works.html", "balances.html", "lender.html"]) {
+for (const name of ["index.html", "how-it-works.html", "balances.html", "lender.html", "trust.html", "trust-technical.html"]) {
   const file = probe(name, "", "{}");
   for (const w of [320, 390]) {
     const r = sample(file, w, 2500);
