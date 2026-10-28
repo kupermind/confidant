@@ -1,5 +1,11 @@
 # Confidant × AP4M — "pay for privacy" relay (Mastercard track, hackathon only)
 
+> **Status (2026-10-27): the hosted relay is off.** The event is over: the relay service on the demo host is stopped
+> and disabled, and the site no longer routes `/resource` or `/relay/`. Confidant itself stays live at
+> `https://confidant.im` — the pool, its coordinator, the demo issuer and the app. The code here, the live runs below
+> and the recorded demo (`YOUTUBE.md`) stay as the record; the flow still runs against a local relay
+> (`node relay.mjs`, `RELAY_URL=http://127.0.0.1:4309`) as long as the sponsor's AP4M testnet service answers.
+
 A scripted **agent** pays **RLUSD on XRPL EVM Testnet** (chain 1449000) through Mastercard's AP4M for the **relay** of a
 zero-knowledge transfer that Confidant's k-of-N quorum then anchors **on XRPL L1 testnet**. Before it pays, the agent
 **proves its shielded funds**: the quorum writes an expiring XLS-70 `ConfidantPoF` credential on the agent's XRPL account
@@ -111,11 +117,12 @@ node verify-receipt.mjs agent-state/receipts/<bundleHash>.json   # anyone: re-ch
 npm run record            # the demo video in one command: captions, explorer tabs, screen recording (STAGE.md §5)
 ```
 
-**On stage the relay runs on the demo host** as a systemd service behind the site's TLS (`confidant-ap4m-relay`;
-its env file holds the merchant keys, its state under the host's data directory; nginx maps `/resource` to the ticket
-merchant and `/relay/` to the relay). The agent on the laptop then runs with `RELAY_URL=https://confidant.im`
-`RESOURCE_URL=https://confidant.im/resource` (`https://confidant.im/relay/health` is the liveness check). The kit's
-merchant requires the resource URL to be exactly `/resource` on an HTTPS origin, which is why it sits at the site root.
+**On stage (2026-10-25) the relay ran on the demo host** as a systemd service behind the site's TLS
+(`confidant-ap4m-relay`; its env file held the merchant keys, its state the host's data directory; nginx mapped
+`/resource` to the ticket merchant and `/relay/` to the relay). The agent on the laptop ran with
+`RELAY_URL=https://confidant.im` `RESOURCE_URL=https://confidant.im/resource`. The kit's merchant requires the resource
+URL to be exactly `/resource` on an HTTPS origin, which is why it sat at the site root. **Retired 2026-10-27:** the unit
+is stopped and disabled and both nginx locations are removed; the state directory is kept.
 
 Prerequisites: Node ≥ 22.13; the team onboarded (below); `target/release/examples/cli` built; a Confidant wallet file
 with shielded notes (`WALLET_FILE`, created with `cli wallet --file … init` and funded by a shield — the e2e harness

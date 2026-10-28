@@ -88,8 +88,11 @@ proxies, served over TLS, so every visitor's browser is a secure context and get
    sudo certbot certonly --nginx -d <domain> -d www.<domain> -m <ops e-mail> --agree-tos -n
    ```
    `certonly` leaves the nginx config untouched; the cert lands in `/etc/letsencrypt/live/<domain>/`.
-4. **Site:** render the TLS config and swap it in for the HTTP one:
+4. **Site:** install the demo issuer's rate-limit zone (the site's `location /issuer/` needs it), then render the
+   TLS config and swap it in for the HTTP one. The template is the record of the live config: change a location
+   here and re-render; never hand-edit the host's copy, or the next render drops the edit:
    ```bash
+   sudo install -m 644 /srv/confidant/repo/backend/deploy/nginx/confidant-issuer-limit.conf /etc/nginx/conf.d/
    sed 's/__DOMAIN__/<domain>/g' /srv/confidant/repo/backend/deploy/nginx/confidant-ui-tls.conf \
      | sudo tee /etc/nginx/sites-available/confidant-ui >/dev/null
    sudo ln -sf /etc/nginx/sites-available/confidant-ui /etc/nginx/sites-enabled/confidant-ui
