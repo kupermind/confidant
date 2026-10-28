@@ -1,5 +1,8 @@
 # Stage sheet — Confidant × AP4M "pay for privacy" (Mastercard track)
 
+> **Historical (the event ended 2026-10-25).** The hosted relay this sheet points at (`https://confidant.im/relay/`,
+> `/resource`) was retired on 2026-10-27; see the status note in `README.md`.
+
 Companion to `README.md` (the flow, the live runs, the fallbacks) and `docs/DEMO.md` (the 5-minute script). Measured
 facts come from the 2026-10-25 live runs: 68 s wall from the 402 to the settlement receipt, ≈ 44 s with an open
 channel; price 0.1 RLUSD under a policy max of 0.25; the over-cap refusal exits with code 3 and signs nothing. Run 3

@@ -138,7 +138,8 @@ COORDINATOR_URL=http://127.0.0.1:7900
 ISSUER_PORT=7960
 # unit: node issuer.mjs in backend/quorum, Restart=always, NoNewPrivileges
 # nginx — the internal cap bounds WRITES only (an idempotent answer is a free ledger read): limit REQUESTS per IP in front.
-# The demo host runs this zone (set 2026-10-25; a 30-request burst answers 17 × 200 and 13 × 429):
+# The demo host runs this zone (set 2026-10-25; a 30-request burst answers 17 × 200 and 13 × 429). Both lines are in
+# backend/deploy/nginx/: the zone in confidant-issuer-limit.conf (conf.d), the location in confidant-ui-tls.conf:
 #   limit_req_zone $binary_remote_addr zone=issuer:1m rate=60r/m;
 #   location /issuer/ { limit_req zone=issuer burst=20 nodelay; limit_req_status 429; proxy_pass http://127.0.0.1:7960/; }
 ```

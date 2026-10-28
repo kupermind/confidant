@@ -11,6 +11,9 @@ Formal name everywhere in this text: **Confidant**. The stylized wordmark `C0nf!
 Limits (from the form): short description ≤ 200 characters · description ≤ 5000 · technical description ≤ 1000.
 Markdown is accepted in all three. Counts are of the text between the fences (`wc -m` on each block): 177 / 4999 / 989 on 2026-10-25; the Mastercard form's two answers: 2933 / 2972.
 
+**After the event (2026-10-27):** the Mastercard-track relay is retired (service stopped, its nginx routes removed);
+the pool, its coordinator, the demo issuer and the pages stay live at `https://confidant.im`.
+
 **Status (2026-10-25, day 2, night):** everything below is **live on the XRPL testnet** at `https://confidant.im` — the
 pre-existing pool (baseline tag `pre-hackathon`), plus, built on-site and audited: the credential gate (A) with a demo
 issuer service so anyone can enter from a phone; proof of funds with the quorum-signed on-ledger Credential (C), one
@@ -141,3 +144,4 @@ is the shield alone, kept for the decks.
 - 2026-10-25 (day 2) — demo-issuer label reframed per the project lead: open registration (the exchange model — an account is opened first, KYC raises its limits); the "placeholder / standard-practice / not-a-vetting / outside-scope" phrasing dropped; the gate stays the real system, the honest fact (registers anyone who asks, rate-limited) kept.
 - 2026-10-25 (afternoon) — status: the nginx request limit on `/issuer/` first stated as the operator's remaining step (ten rapid requests answered without a 429 — the zone's burst is 20 and nginx refused with its default 503), then the status code set to 429 and the real parameters recorded with a 30-request probe (17 answered, 13 refused).
 - 2026-10-25 (submitted) — both forms filled from this file; the two videos uploaded with captions (section "Videos"); the status line counts the seven paid Mastercard-track runs.
+- 2026-10-27 — post-event note: the Mastercard-track relay retired; Confidant stays live.
