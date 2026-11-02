@@ -184,7 +184,7 @@
     <p class="eyebrow">A technology · applications are built on it</p>
     <h1>A TEE co-processor — <span class="hl">not an L2, not a chain.</span></h1>
     <p class="lede">TRUST runs the work a smart contract would do inside <b>attested enclaves</b>, signs with an
-      <b>M-of-N threshold</b> (<code>FROST / MuSig2</code>) that assembles no key in one place, and settles on the
+      <b>M-of-N threshold</b> (<code>threshold Schnorr</code>) that assembles no key in one place, and settles on the
       chain’s <b>own native primitives</b> — multisig, atomic tx, on-chain data. Code updates activate only when the
       operator quorum signs a new measurement. Phoenix, XPerp and the bridge are <b>applications of this engine</b>;
       the next one plugs into the same stack.</p>
@@ -194,7 +194,7 @@
     <p class="kicker"><span class="ix">// 01</span> &nbsp;The wedge</p>
     <h2>Chains <span class="hl">without native VMs</span></h2>
     <p class="sech">Every chain whose settlement layer carries no Turing-complete VM — a meaningful, structurally
-      underserved slice of market cap. Not an EVM/SVM play.</p>
+      underserved slice of market cap. Not an EVM/SVM play. On XRPL, TRUST is the intermediate layer: enclave logic today for what the ledger doesn’t do natively — shielded transfers, lending logic, agent-payment policy — and a path to an amendment once it does.</p>
     <div class="scroller"><div class="tbl wedge">
       <div class="tr h"><div>Chain</div><div>Native VM</div><div>Contracts</div><div>TRUST applies?</div></div>
       <div class="tr"><div class="k">Ethereum</div><div class="mono">EVM</div><div>Yes</div><div>Not the target</div></div>
@@ -222,8 +222,8 @@
     <h2>A three-layer stack, not a pattern in the abstract</h2>
     <div class="scroller"><div class="tbl stack">
       <div class="tr h"><div>Layer</div><div>What it is</div><div>Shipped</div></div>
-      <div class="tr"><div class="k">L0 · Framework <span class="mono" style="color:var(--faint)">chain- &amp; app-agnostic</span></div><div>Reproducible-build TEE binary, libp2p mesh signing, FROST orchestration, Safe-multisig path, attested FROST-share transport, audit toolchain</div><div><span class="badge g">Production</span></div></div>
-      <div class="tr"><div class="k">L1 · Chain modules <span class="mono" style="color:var(--faint)">chain-specific</span></div><div>BTC (<code class="mono">P2WSH / P2TR / FROST-Schnorr</code>), EVM (Safe + V7 registry), XRPL (<code class="mono">SignerListSet</code> + escrow + crypto-conditions)</div><div><span class="badge g">All 3 shipped</span></div></div>
+      <div class="tr"><div class="k">L0 · Framework <span class="mono" style="color:var(--faint)">chain- &amp; app-agnostic</span></div><div>Reproducible-build TEE binary, libp2p mesh signing, threshold-signing orchestration, Safe-multisig path, attested key-share transport, audit toolchain</div><div><span class="badge g">Production</span></div></div>
+      <div class="tr"><div class="k">L1 · Chain modules <span class="mono" style="color:var(--faint)">chain-specific</span></div><div>BTC (<code class="mono">P2WSH / P2TR / threshold Schnorr</code>), EVM (Safe + V7 registry), XRPL (<code class="mono">SignerListSet</code> + escrow + crypto-conditions)</div><div><span class="badge g">All 3 shipped</span></div></div>
       <div class="tr on"><div class="k">L2 · Applications <span class="mono" style="color:var(--faint)">interchangeable</span></div><div>Phoenix · XPerp · Bridge today — and any new app on the same L0/L1</div><div><span class="badge a">Testnet</span></div></div>
     </div></div>
     <p class="note"><b style="color:var(--dim)">L0 + L1 are the technology</b> (production / all shipped). L2 is where applications live — each inherits the trust model, attestation pipeline, multisig settlement and operator quorum. Build an app, don’t rebuild the engine.</p>
@@ -235,8 +235,8 @@
       <article class="pcard ph">
         <p class="pk"><a href="https://ph18.io" target="_blank" rel="noopener">Phoenix</a></p><h3>Prediction markets</h3>
         <ul>
-          <li>XRPL: 6,700+ markets via the canonical multisig path · <code>t-of-n SignerList</code> · escrow + crypto-conditions</li>
-          <li>Bitcoin: full E2E on regtest + testnet4 · <code>FROST t-of-n / P2WSH</code> · <code>OP_RETURN</code> commitment</li>
+          <li>XRPL: 81,000+ auto-published markets (mirrored from public sources) via the canonical multisig path · <code>t-of-n SignerList</code> · escrow + crypto-conditions</li>
+          <li>Bitcoin: 89,000+ auto-published markets · full E2E on regtest + testnet4 · <code>threshold Schnorr t-of-n / P2WSH</code> · <code>OP_RETURN</code> commitment</li>
           <li>TEE-resolved markets — preimages &amp; keys never leave hardware; 7-source oracle</li>
           <li>Native-coin settlement — no wrapped tokens, no IOUs</li>
         </ul>
@@ -248,7 +248,7 @@
         <ul>
           <li>Native XRP collateral, L1 settlement in 3–5s — no bridges, no L2 withdrawal delay</li>
           <li>Margin engine inside the enclave — operators can’t front-run or see positions</li>
-          <li>Attested FROST-share transport verified on a real 3-node cluster (full sealed-state migration)</li>
+          <li>Attested key-share transport verified on a real 3-node cluster (full sealed-state migration)</li>
           <li>20+ internal adversarial security-review rounds (REQ/RESP) — findings resolved or gated pre-mainnet</li>
         </ul>
         <a class="cta" href="https://xperp.fi" target="_blank" rel="noopener">xperp.fi →</a>
@@ -258,7 +258,7 @@
         <p class="pk">TRUST Bridge</p><h3>Shielded cross-chain</h3>
         <ul>
           <li>Dual light-client / SPV verification against pinned anchors</li>
-          <li><code>FROST / BIP-340</code> threshold-Schnorr on Bitcoin Taproot</li>
+          <li>Threshold Schnorr signing on Bitcoin Taproot</li>
           <li>Release gated by an in-enclave proof of the counter-chain lock, bound to its amount</li>
           <li>Delivery into Zcash’s shielded (Orchard) pool — in development</li>
         </ul>
@@ -359,7 +359,7 @@
 
 <footer class="wrap">
   <p>Technical overview for discussion — not investment advice and not a guarantee of security. Named technologies
-    (attested hardware enclaves, FROST / Schnorr threshold signatures, SPV / light-client proofs, Zcash
+    (attested hardware enclaves, Schnorr threshold signatures, SPV / light-client proofs, Zcash
     Orchard) are industry-standard building blocks; the composition is the contribution. No software or cryptographic
     patents, by choice. Specifics are current as of the testnet stage. Last updated October 2026.</p>
 </footer>
