@@ -18,7 +18,7 @@
     if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     document.documentElement.setAttribute("data-theme", t); })();
 </script>
-<meta name="description" content="Confidant is a shielded pool for the XRP Ledger that hides the whole transaction graph — amounts and counterparties — with zero-knowledge notes. Credential-gated entry and proofs of shielded funds for lenders are being built at the XRPL hackathon; an attested enclave cluster is the production horizon.">
+<meta name="description" content="Confidant is a shielded pool for the XRP Ledger that hides the whole transaction graph — amounts and counterparties — with zero-knowledge notes. Credential-gated entry and proofs of shielded funds for lenders were built at the XRPL hackathon in New York (Oct 24–25, 2026); a native ledger feature and an attested enclave cluster are the horizon.">
 <style>
   /* Palette and scale shared by every page. Surfaces, grays and the type scale follow liminal-ui;
      the violet is the one accent: --accent for fills, --accent-text for text on the page background. */
@@ -405,7 +405,7 @@
 
   <!-- HACKATHON: LENDING ON SHIELDED CAPITAL -->
   <section>
-    <p class="kicker">This weekend · XRPL hackathon, Lending &amp; Borrowing track</p>
+    <p class="kicker">XRPL hackathon, New York, Oct 24–25 · Lending &amp; Borrowing track</p>
     <h2>Lending on shielded capital</h2>
     <p class="flead">Two features, built on-site on Oct 24–25 on top of the running pool (designs written in advance,
       code written at the event), using the ledger's own primitive — <b>XLS-70 Credentials</b>. The loan side on the
@@ -441,19 +441,19 @@
         <p>A lender types the borrower's address on the <a href="lender.html" target="_blank" rel="noopener">lender
           page</a> and reads the credential from the ledger — never the proof, the notes or the balance; only a verdict,
           with an expiry. A loan broker on the XRPL Lending Protocol would require that Credential by policy before it
-          counter-signs the loan: the design, not built this weekend.</p>
+          counter-signs the loan: the design, not built at the hackathon.</p>
       </div>
     </div>
 
     <p class="hnote">Honest line: the Credential says <b>someone controlling ≥ X answered a challenge bound to this
-      account</b> as of that ledger — an underwriting signal, a snapshot, not a lock. The steps after the weekend: the
+      account</b> as of that ledger — an underwriting signal, a snapshot, not a lock. The next steps: the
       nullifier-free proof-of-funds circuit (the design the audit accepted on 2026-10-25), revoking the credential when
       the proven notes move, and shielded collateral escrow under joint control.</p>
   </section>
 
   <!-- MASTERCARD AP4M TRACK -->
   <section id="ap4m">
-    <p class="kicker">This weekend · Mastercard AP4M track</p>
+    <p class="kicker">XRPL hackathon, New York, Oct 24–25 · Mastercard AP4M track</p>
     <h2>Pay for privacy: an agent buys the relay of a shielded transfer</h2>
     <p class="flead">A scripted agent holds shielded funds and needs to pay a supplier without publishing it. Privacy is a
       metered service: the agent pays <b>RLUSD on XRPL EVM</b> through Mastercard's AP4M for the relay of one
@@ -528,6 +528,15 @@
       design does not change — what changes is <em>whom</em> you trust: less the people running it, and instead the
       enclave manufacturer and its attestation — a hardware trust base, stated plainly. The same move would turn any
       app on the stack into its TEE-hardened version.</p>
+
+    <p class="thesis"><b>And, eventually, a ledger feature.</b> Confidant is the intermediate solution: it runs today on
+      the unchanged XRP Ledger. The spec’s amendment sketch
+      (<a href="https://github.com/kupermind/confidant/blob/main/SPEC.md#15-amendment-sketch-protocol-innovation" target="_blank" rel="noopener">section 15</a>)
+      carries the same design into the ledger itself: a commitment tree and a nullifier set as native ledger objects on
+      XLS-33 multi-purpose tokens, XLS-96’s holder, issuer and auditor key model carried over, and validators verifying
+      the proof — so no quorum is needed once it is native. The notes, proofs and memo format stay as they are; the
+      running pool is the evidence before any vote. The open questions are stated in the spec: the cost of proof
+      verification on-ledger, nullifier storage in XRPL’s object model, post-quantum.</p>
     <p class="sech">The technology has its own page — the engine, the products already on it, and what you trust:
       <a href="trust.html" target="_blank" rel="noopener">TRUST, the platform →</a></p>
   </section>
@@ -558,7 +567,8 @@
           <li>The proof-of-funds circuit that reveals no nullifiers (the accepted design) — replacing the demo-grade flow</li>
           <li>A loan broker's policy on the XRPL Lending Protocol requiring the credential (devnet)</li>
           <li>Running the pool inside the attested TRUST enclave cluster — &ldquo;shielded XRPL on TEE&rdquo;</li>
-          <li>Per-note proof-of-innocence and richer selective disclosure</li>
+          <li>An XLS proposal for the shielded pool as a ledger feature, from the spec’s amendment sketch</li>
+      <li>Per-note proof-of-innocence and richer selective disclosure</li>
           <li>Mainnet, with in-browser (wasm) client-side proving as the production path</li>
         </ul>
       </div>
@@ -580,7 +590,7 @@
   <!-- CLOSING -->
   <section class="closing">
     <p class="big">Privacy an auditor can <span class="hl">open</span> — and no single operator can <span class="hl">betray.</span></p>
-    <p class="sig">Confidant — shielded XRPL · zero-knowledge today · credential gate and proof of funds this weekend · enclave-ready later</p>
+    <p class="sig">Confidant — shielded XRPL · zero-knowledge today · credential gate and proof of funds since the hackathon · enclave-ready later</p>
   </section>
 </main>
 
@@ -588,7 +598,7 @@
   <p>Conceptual overview for discussion — not investment advice and not a guarantee of security. Confidant
     currently runs on testnet; the parameters above describe the current design and testnet deployment. A dishonest
     threshold quorum can move the pool's funds; this is stated as a known limit of the current (non-TEE) model.
-    Named technologies (Zcash Orchard, Halo 2, FROST / threshold signatures, hardware enclaves (TEE), XRPL XLS-96 Confidential
+    Named technologies (Zcash Orchard, Halo 2, threshold signatures, hardware enclaves (TEE), XRPL XLS-96 Confidential
     Transfer / XLS-70 Credentials / XLS-66 Lending Protocol) are industry-standard building blocks referenced for context; specifics are
     current as of the testnet stage.</p>
 </footer>
